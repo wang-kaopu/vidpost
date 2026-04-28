@@ -3,6 +3,16 @@ const path = require('node:path')
 
 const { login, publish, ping } = require('./src/funcs.cjs')
 
+function registerIpcListener(channel, handler) {
+  ipcMain.on(channel, (event, ...args) => {
+    Promise.resolve()
+      .then(() => handler(event, ...args))
+      .catch((error) => {
+        console.error(`[ipc:${channel}]`, error)
+      })
+  })
+}
+
 const createWindow = () => {
   const devServerUrl = 'http://localhost:5173'
   const builtAppPath = path.join(__dirname, 'app', 'index.html')
@@ -24,9 +34,9 @@ const createWindow = () => {
 }
 
 app.whenReady().then(() => {
-  ipcMain.on('login', login)
-  ipcMain.on('publish', publish)
-  ipcMain.on('ping', ping)
+  registerIpcListener('login', login)
+  registerIpcListener('publish', publish)
+  registerIpcListener('ping', ping)
 
   createWindow()
 })

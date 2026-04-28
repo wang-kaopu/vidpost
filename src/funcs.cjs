@@ -1,6 +1,7 @@
 const { BrowserWindow } = require('electron')
 const fs = require('node:fs')
 const path = require('node:path')
+const { log } = require('node:console')
 const { ulid } = require('ulid')
 
 const { runBaijiahaoLogin } = require('./platform-logins/platforms/baijiahao/index.ts')
@@ -12,7 +13,11 @@ const { cookieAuth: baijiahaoCookieAuth } = require('./platform-logins/platforms
 const { cookieAuth: douyinCookieAuth } = require('./platform-logins/platforms/douyin/cookie-auth.ts')
 const { cookieAuth: bilibiliCookieAuth } = require('./platform-logins/platforms/bilibili/cookie-auth.ts')
 const { cookieAuth: sohuCookieAuth } = require('./platform-logins/platforms/sohu/cookie-auth.ts')
-const { log } = require('node:console')
+
+const { upload: baijiahaoUpload } = require('./platform-logins/platforms/baijiahao/publish.ts')
+const { upload: douyinUpload } = require('./platform-logins/platforms/douyin/publish.ts')
+const { upload: bilibiliUpload } = require('./platform-logins/platforms/bilibili/publish.ts')
+const { upload: sohuUpload } = require('./platform-logins/platforms/sohu/publish.ts')
 
 function resolveAccountFilePath(platform) {
   const homeDir = process.env.HOME || process.env.USERPROFILE || '.'
@@ -23,35 +28,32 @@ function login(event, platform) {
   const parentWindow = BrowserWindow.fromWebContents(event.sender)
   switch (platform) {
     case 'bilibili':
-      runBilibiliLogin({
+      return runBilibiliLogin({
         accountFile: resolveAccountFilePath('bilibili'),
         timeoutMs: 120000,
         parentWindow,
       })
-      break
     case 'douyin':
-      runDouyinLogin({
+      return runDouyinLogin({
         accountFile: resolveAccountFilePath('douyin'),
         timeoutMs: 120000,
         parentWindow,
       })
-      break
     case 'sohu':
-      runSohuLogin({
+      return runSohuLogin({
         accountFile: resolveAccountFilePath('sohu'),
         timeoutMs: 120000,
         parentWindow,
       })
-      break
     case 'baijiahao':
-      runBaijiahaoLogin({
+      return runBaijiahaoLogin({
         accountFile: resolveAccountFilePath('baijiahao'),
         timeoutMs: 120000,
         parentWindow,
       })
-      break
     default:
       console.log('unsupported platform:', platform)
+      return undefined
   }
 }
 
@@ -97,22 +99,27 @@ async function ping(event, accountUlid) {
   }
 }
 
-function publish(event, platform) {
+function publish(event, payload) {
+  const { platform, accountUlid } = payload || {}
+  const normalizedPayload = { ...(payload || {}) }
+
+  if (!normalizedPayload.accountFile && accountUlid) {
+    const [accountFile] = resolveAccountFilePathByAccountUlid(accountUlid)
+    normalizedPayload.accountFile = accountFile
+  }
+
   switch (platform) {
     case 'bilibili':
-      console.log('publish to bilibili')
-      break
+      return bilibiliUpload(normalizedPayload)
     case 'douyin':
-      console.log('publish to douyin')
-      break
+      return douyinUpload(normalizedPayload)
     case 'sohu':
-      console.log('publish to sohu')
-      break
+      return sohuUpload(normalizedPayload)
     case 'baijiahao':
-      console.log('publish to baijiahao')
-      break
+      return baijiahaoUpload(normalizedPayload)
     default:
       console.log('unsupported platform:', platform)
+      return undefined
   }
 }
 
