@@ -1,7 +1,7 @@
 const { app, ipcMain, BrowserWindow } = require('electron')
 const path = require('node:path')
 
-const { login, publish } = require('./src/funcs.cjs')
+const { login, publish, ping } = require('./src/funcs.cjs')
 
 const createWindow = () => {
   const devServerUrl = 'http://localhost:5173'
@@ -26,6 +26,7 @@ const createWindow = () => {
 app.whenReady().then(() => {
   ipcMain.on('login', login)
   ipcMain.on('publish', publish)
+  ipcMain.on('ping', ping)
 
   createWindow()
 })

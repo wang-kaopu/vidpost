@@ -1,10 +1,12 @@
-import { BrowserWindow, shell } from "electron";
+import electron from "electron";
 import fs from "node:fs/promises";
 import syncFs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { PlatformLoginFlowContext } from "./types";
+
+const { BrowserWindow, shell } = electron;
 
 export type FrontendLoginResult = {
   accountFile: string;
