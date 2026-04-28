@@ -1,0 +1,20 @@
+{
+  "name": "rm-server",
+  "version": "1.0.0",
+  "description": "",
+  "main": "main.cjs",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "electron ."
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.33.0",
+  "devDependencies": {
+    "electron": "^41.3.0"
+  },
+  "dependencies": {
+    "ulid": "^3.0.2"
+  }
+}
