@@ -4,26 +4,33 @@ const path = require('node:path')
 const { log } = require('node:console')
 const { ulid } = require('ulid')
 
-const { runBaijiahaoLogin } = require('./platform-logins/platforms/baijiahao/index.ts')
-const { runBilibiliLogin } = require('./platform-logins/platforms/bilibili/index.ts')
-const { runDouyinLogin } = require('./platform-logins/platforms/douyin/index.ts')
-const { runSohuLogin } = require('./platform-logins/platforms/sohu/index.ts')
+// 引入登录函数
+const { runBaijiahaoLogin } = require('./platform-logins/platforms/baijiahao/login.ts')
+const { runBilibiliLogin } = require('./platform-logins/platforms/bilibili/login.ts')
+const { runDouyinLogin } = require('./platform-logins/platforms/douyin/login.ts')
+const { runSohuLogin } = require('./platform-logins/platforms/sohu/login.ts')
 
+// 引入探活函数
 const { cookieAuth: baijiahaoCookieAuth } = require('./platform-logins/platforms/baijiahao/cookie-auth.ts')
 const { cookieAuth: douyinCookieAuth } = require('./platform-logins/platforms/douyin/cookie-auth.ts')
 const { cookieAuth: bilibiliCookieAuth } = require('./platform-logins/platforms/bilibili/cookie-auth.ts')
 const { cookieAuth: sohuCookieAuth } = require('./platform-logins/platforms/sohu/cookie-auth.ts')
 
+// 引入发布函数
 const { upload: baijiahaoUpload } = require('./platform-logins/platforms/baijiahao/publish.ts')
 const { upload: douyinUpload } = require('./platform-logins/platforms/douyin/publish.ts')
 const { upload: bilibiliUpload } = require('./platform-logins/platforms/bilibili/publish.ts')
 const { upload: sohuUpload } = require('./platform-logins/platforms/sohu/publish.ts')
 
+// 1. 登录入口
+
+// 1.1 解析路径
 function resolveAccountFilePath(platform) {
   const homeDir = process.env.HOME || process.env.USERPROFILE || '.'
   return path.join(homeDir, '.matrix-account', 'cookie_files', `${ulid()}_${platform}.json`)
 }
 
+//1.2 登录函数
 function login(event, platform) {
   const parentWindow = BrowserWindow.fromWebContents(event.sender)
   switch (platform) {
@@ -57,6 +64,8 @@ function login(event, platform) {
   }
 }
 
+// 2. 探活入口
+// 2.1 解析账号文件路径
 function resolveAccountFilePathByAccountUlid(accountUlid) {
   const homeDir = process.env.HOME || process.env.USERPROFILE || '.'
   const cookieFilesDir = path.join(homeDir, '.matrix-account', 'cookie_files')
@@ -72,6 +81,7 @@ function resolveAccountFilePathByAccountUlid(accountUlid) {
   return [path.join(cookieFilesDir, matchedName), platform]
 }
 
+// 2.2 探活函数
 async function ping(event, accountUlid) {
   const [filePath, platform] = resolveAccountFilePathByAccountUlid(accountUlid)
   console.log('账号文件存在:', filePath)
@@ -99,6 +109,7 @@ async function ping(event, accountUlid) {
   }
 }
 
+// 3. 发布入口
 function publish(event, payload) {
   const { platform, accountUlid } = payload || {}
   const normalizedPayload = { ...(payload || {}) }
