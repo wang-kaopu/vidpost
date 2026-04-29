@@ -1,8 +1,9 @@
-const { apiClient } = require('./api-client.cjs')
+const { createApiClient } = require('./api-client.cjs')
 const { unwrapApiResponse } = require('./model/response.js')
 
 // 新增发布账号
-async function createPublishAccount(input) {
+async function createPublishAccount(input, options = {}) {
+  const apiClient = createApiClient(options.token)
   const payload = await unwrapApiResponse(
     apiClient.post('/publish/accounts', input),
     'create publish account',
@@ -19,7 +20,8 @@ async function createPublishAccount(input) {
 
 
 // 更新发布账号
-async function updatePublishAccount(accountId, input) {
+async function updatePublishAccount(accountId, input, options = {}) {
+  const apiClient = createApiClient(options.token)
   const payload = await unwrapApiResponse(
     apiClient.put(`/publish/accounts/${accountId}`, input),
     'update publish account',

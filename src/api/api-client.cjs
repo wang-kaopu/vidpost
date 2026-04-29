@@ -1,19 +1,25 @@
 const axios = require('axios')
 
 const API_BASE_URL = 'https://testai.reelsagent.com/api'
-const DEFAULT_AUTHORIZATION = '6c4ff3a4df0cdeb07ed4d2ea0fd3db69'
 
-const apiClient = axios.create({
-  baseURL: API_BASE_URL,
-  headers: {
-    Authorization: DEFAULT_AUTHORIZATION,
+function createApiClient(token) {
+  const normalizedToken = String(token || '').trim()
+  const headers = {
     'Content-Type': 'application/json',
-  },
-  timeout: 30000,
-})
+  }
+
+  if (normalizedToken) {
+    headers.Authorization = `Bearer ${normalizedToken}`
+  }
+
+  return axios.create({
+    baseURL: API_BASE_URL,
+    headers,
+    timeout: 30000,
+  })
+}
 
 module.exports = {
-  apiClient,
+  createApiClient,
   API_BASE_URL,
-  DEFAULT_AUTHORIZATION,
 }

@@ -71,7 +71,7 @@ function getAccountUpdatedAt(account) {
 }
 
 async function loginAndCreateRemoteAccount(platform, accountFile, parentWindow,
-  runLogin, syncNickname) {
+  runLogin, syncNickname, token) {
   try {
     await runLogin({
       accountFile,
@@ -89,7 +89,7 @@ async function loginAndCreateRemoteAccount(platform, accountFile, parentWindow,
       attributes: {
         cookieFilePath: accountFile,
       },
-    })
+    }, { token })
 
     console.log('创建发布账号成功，远程账号ID:', remoteAccountId)
 
@@ -141,8 +141,28 @@ async function updateRemoteAccount(account, runCookieAuth) {
   })
 }
 
+function normalizeLoginRequest(input) {
+  if (typeof input === 'string') {
+    return {
+      platform: input,
+      token: undefined,
+    }
+  }
+  if (input && typeof input === 'object') {
+    return {
+      platform: String(input.platform || '').trim(),
+      token: String(input.token || '').trim() || undefined,
+    }
+  }
+  return {
+    platform: '',
+    token: undefined,
+  }
+}
+
 //1.2 登录函数
-async function login(event, platform) {
+async function login(event, input) {
+  const { platform, token } = normalizeLoginRequest(input)
   const parentWindow = BrowserWindow.fromWebContents(event.sender)
   switch (platform) {
     case 'bilibili': {
@@ -150,7 +170,8 @@ async function login(event, platform) {
       return loginAndCreateRemoteAccount(
         'bilibili', accountFile, parentWindow,
         runBilibiliLogin,
-        syncBilibiliNickname
+        syncBilibiliNickname,
+        token,
       )
     }
     case 'douyin': {
@@ -159,6 +180,7 @@ async function login(event, platform) {
         'douyin', accountFile, parentWindow,
         runDouyinLogin,
         syncDouyinNickname,
+        token,
       )
     }
     case 'sohu': {
@@ -167,6 +189,7 @@ async function login(event, platform) {
         'sohu', accountFile, parentWindow,
         runSohuLogin,
         syncSohuNickname,
+        token,
       )
     }
     case 'baijiahao': {
@@ -175,6 +198,7 @@ async function login(event, platform) {
         'baijiahao', accountFile, parentWindow,
         runBaijiahaoLogin,
         syncBaijiahaoNickname,
+        token,
       )
     }
     default:

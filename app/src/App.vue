@@ -14,7 +14,7 @@ const createPublishPayload = (platform, accountUlid) => ({
 })
 
 const login = (platform) => {
-  window.electronAPI.login(platform)
+  window.electronAPI.login({ platform })
 }
 
 const ping = (accountUlid) => {
