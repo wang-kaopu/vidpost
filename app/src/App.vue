@@ -22,19 +22,19 @@ const ping = (platform, accountId) => {
 }
 
 const publishBilibili = () => {
-  window.electronAPI.publish(createPublishPayload('bilibili', '01KQ9XEKN0ZTQ0YR6JPTJE1FGN'))
+  window.electronAPI.publish(createPublishPayload('bilibili', '24'))
 }
 
 const publishDouyin = () => {
-  window.electronAPI.publish(createPublishPayload('douyin', '01KQADE2B6HRM8VK2BMR4V85FQ'))
+  window.electronAPI.publish(createPublishPayload('douyin', '25'))
 }
 
 const publishSohu = () => {
-  window.electronAPI.publish(createPublishPayload('sohu', '01KQADGEHXQKST6GHY71GSQ1RZ'))
+  window.electronAPI.publish(createPublishPayload('sohu', '26'))
 }
 
 const publishBaijiahao = () => {
-  window.electronAPI.publish(createPublishPayload('baijiahao', '01KQADJM3YHY93GNPK3169R9FX'))
+  window.electronAPI.publish(createPublishPayload('baijiahao', '27'))
 }
 </script>
 
