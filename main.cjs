@@ -74,6 +74,7 @@ const createWindow = () => {
   const devServerUrl = 'http://localhost:5173'
   const builtAppPath = path.join(__dirname, 'app', 'index.html')
 
+  // 创建浏览器窗口
   mainWindow = new BrowserWindow({
     width: 800,
     height: 600,
@@ -86,6 +87,7 @@ const createWindow = () => {
     mainWindow.loadFile(builtAppPath)
   })
 
+  // 注册事件，页面加载成功后将后门access_token写到localStorage（仅在用例时需要）
   mainWindow.webContents.once('did-finish-load', async () => {
     try {
       await mainWindow.webContents.executeJavaScript(
@@ -100,8 +102,10 @@ const createWindow = () => {
     }
   })
 
+  // 加载页面URL
   mainWindow.loadURL(devServerUrl)
 
+  // 将主窗口传给 API 客户端模块以便通信，如获取token
   setApiClientWindow(mainWindow)
 
   return mainWindow

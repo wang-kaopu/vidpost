@@ -37,17 +37,7 @@ export function parseAgenthuntUrl(rawUrl: string): LaunchIntent | null {
 
   try {
     const parsed = new URL(candidate);
-    if (parsed.protocol !== `${AGENTHUNT_PROTOCOL}:`) {
-      return null;
-    }
-    if (parsed.hostname !== AGENTHUNT_NAVIGATE_HOST) {
-      return null;
-    }
-
     const page = PAGE_BY_PATHNAME[normalizePathname(parsed.pathname)];
-    if (!page) {
-      return null;
-    }
 
     return { page };
   } catch {
