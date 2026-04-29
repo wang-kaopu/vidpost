@@ -28,6 +28,15 @@ const { syncDouyinNickname } = require('./platform-logins/platforms/douyin/nickn
 const { syncBilibiliNickname } = require('./platform-logins/platforms/bilibili/nickname.ts')
 const { syncSohuNickname } = require('./platform-logins/platforms/sohu/nickname.ts')
 
+// 引入HTTP请求API
+const { createPublishAccount, updatePublishAccount } = require('./api/account-api.js')
+const { createPublishTask } = require('./api/task-api.js')
+const { create } = require('axios')
+
+const { createAcccountModel } = require('./api/model/account-model.js')
+const { createTaskModel } = require('./api/model/task-model.js')
+
+
 // 1. 登录入口
 
 // 1.1 解析路径
