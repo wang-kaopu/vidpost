@@ -43,7 +43,7 @@ async function loginAndCreateRemoteAccount(platform, accountFile, parentWindow,
             parentWindow,
         })
 
-        const nickname = await syncNickname(accountFile, 3000)
+        const nickname = await syncNickname(accountFile, 6000)
         console.log(`登录完成，获取到的 ${platform} 昵称为: ${nickname}`)
 
         const { remoteAccountId } = await createPublishAccount({

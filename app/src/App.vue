@@ -1,4 +1,7 @@
 <script setup>
+import { onMounted, ref } from 'vue'
+import { registerSse } from './scripts/sse-register.js'
+
 const VIDEO_PATH = '/Users/wkp/Downloads/olivia.mp4'
 const COVER_PATH = '/Users/wkp/Downloads/olivia.jpg'
 const PUBLISH_TITLE = 'Olivia IG update'
@@ -36,6 +39,17 @@ const publishSohu = () => {
 const publishBaijiahao = () => {
   window.electronAPI.publish(createPublishPayload('baijiahao', '27'))
 }
+
+const notificationText = ref('')
+
+onMounted(() => {
+  registerSse({
+    onMessage(payload) {
+      notificationText.value = JSON.stringify(payload)
+    }
+  })
+})
+
 </script>
 
 <template>
@@ -58,4 +72,7 @@ const publishBaijiahao = () => {
   <button @click="publishSohu">搜狐号发布</button>
   <button @click="publishBaijiahao">百家号发布</button>
 
+  <br>
+  
+  <text>{{ notificationText }}</text>
 </template>

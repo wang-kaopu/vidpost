@@ -14,6 +14,9 @@ const { AGENTHUNT_PROTOCOL,
 const { setApiClientWindow } = require('./src/api/api-client.cjs')
 const BACKDOOR_TOKEN = 'b0ffc1de8f3f49340697dc140fcad274' || process.env.RM_SERVER_ACCESS_TOKEN
 
+// 引入sse服务器开启与关闭
+const { startSseServer, stopSseServer } = require('./src/sse/sse-server.cjs')
+
 // 单例锁，确保把 URL 交给现有窗口，而不是打开新窗口
 const gotSingleInstanceLock = app.requestSingleInstanceLock()
 if (!gotSingleInstanceLock) {
@@ -113,6 +116,9 @@ const createWindow = () => {
 
 // 应用准备就绪后注册 IPC 监听器并创建窗口
 app.whenReady().then(() => {
+  // 启动 SSE 服务器
+  startSseServer()
+
   registerIpcListener('login', login)
   registerIpcListener('publish', publish)
   registerIpcListener('ping', ping)
@@ -132,6 +138,10 @@ app.whenReady().then(() => {
 app.on('open-url', (event, url) => {
   event.preventDefault()
   handleProtocolUrl(url)
+})
+
+app.on('before-quit', () => {
+  stopSseServer()
 })
 
 app.on('window-all-closed', () => {

@@ -27,6 +27,11 @@ function isBilibiliPersistReadyUrl(url: string): boolean {
   return isBilibiliLoginSuccessUrl(url) && !isBilibiliLoginPageUrl(url) && !isBilibiliCrossDomainUrl(url);
 }
 
+function isBenignNavigationAbort(error: unknown): boolean {
+  const detail = error instanceof Error ? error.message : String(error);
+  return detail.includes("ERR_ABORTED") || detail.includes("biligame.com/x/passport-login/web/crossDomain");
+}
+
 // 运行 Bilibili 登录流程并导出登录态。
 export const runBilibiliLogin = async (options: PlatformLoginOptions) =>
   runPlatformLoginFlow(
@@ -50,7 +55,14 @@ export const runBilibiliLogin = async (options: PlatformLoginOptions) =>
         if (!isBilibiliLoginPageUrl(currentUrl)) {
           return false;
         }
-        await loginWindow.loadURL(BILIBILI_LOGIN_SUCCESS_URL);
+        try {
+          await loginWindow.loadURL(BILIBILI_LOGIN_SUCCESS_URL);
+        } catch (error) {
+          // Bilibili may bounce through cross-domain sync pages before landing on the creator surface.
+          if (!isBenignNavigationAbort(error)) {
+            throw error;
+          }
+        }
         return true;
       },
       beforePersist: async (loginWindow) => {

@@ -5,16 +5,20 @@ const { platformRegistry } = require('./platformRegistry.cjs')
 const { resolveDraftAccountFilePath, loginAndCreateRemoteAccount, updateRemoteAccount } = require('./service/account-service.cjs')
 const { publishAndUpdateRemoteTask } = require('./service/task-service.cjs')
 
+const { broadcast } = require('./sse/sse-server.cjs')
+
 // 1. 登录入口
 async function login(event, platform) {
   const parentWindow = BrowserWindow.fromWebContents(event.sender)
   const accountFile = resolveDraftAccountFilePath(platform)
   const { login, syncNickname } = platformRegistry[platform]
-  return loginAndCreateRemoteAccount(
+  const result = await loginAndCreateRemoteAccount(
     platform, accountFile, parentWindow,
     login,
     syncNickname
   )
+  broadcast(result)
+  return result
 }
 
 // 2. 探活入口
