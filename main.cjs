@@ -78,11 +78,11 @@ const createWindow = () => {
     }
   })
 
-  win.webContents.once('did-fail-load', () => {
-    win.loadFile(builtAppPath)
+  mainWindow.webContents.once('did-fail-load', () => {
+    mainWindow.loadFile(builtAppPath)
   })
 
-  win.loadURL(devServerUrl)
+  mainWindow.loadURL(devServerUrl)
 
   return mainWindow
 }

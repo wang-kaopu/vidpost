@@ -1,5 +1,5 @@
 const { apiClient } = require('./api-client.cjs')
-const { unwrapApiResponse } = require('./response.cjs')
+const { unwrapApiResponse } = require('./model/response.js')
 
 // 新增发布账号
 async function createPublishAccount(input) {

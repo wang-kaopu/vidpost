@@ -1,5 +1,5 @@
 const { apiClient } = require('./api-client.cjs')
-const { unwrapApiResponse } = require('./response-model.cjs')
+const { unwrapApiResponse } = require('./model/response.js')
 
 // 创建发布记录
 async function createPublishTask(input) {
