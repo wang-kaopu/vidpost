@@ -46,6 +46,30 @@ function resolveAccountFilePath(platform) {
   return path.join(homeDir, '.matrix-account', 'cookie_files', `${ulid()}_${platform}.json`)
 }
 
+function getAccountTags(account) {
+  return Array.isArray(account?.tags) ? account.tags : []
+}
+
+function getAccountCreatedAt(account) {
+  if (typeof account?.created_at === 'string') {
+    return account.created_at
+  }
+  if (typeof account?.createdAt === 'string') {
+    return account.createdAt
+  }
+  return null
+}
+
+function getAccountUpdatedAt(account) {
+  if (typeof account?.updated_at === 'string') {
+    return account.updated_at
+  }
+  if (typeof account?.updatedAt === 'string') {
+    return account.updatedAt
+  }
+  return null
+}
+
 async function loginAndCreateRemoteAccount(platform, accountFile, parentWindow,
   runLogin, syncNickname) {
   try {
@@ -84,6 +108,33 @@ async function loginAndCreateRemoteAccount(platform, accountFile, parentWindow,
     const message = error instanceof Error ? error.message : String(error)
     throw new Error(`${platform} login or remote account creation failed: ${message}`)
   }
+}
+
+async function updateRemoteAccount(account, runCookieAuth) {
+  const accountUlid = String(account?.ulid || account?.accountUlid || '').trim()
+  const platform = String(account?.platformKey || account?.platform || '').trim().toLowerCase()
+  const accountId = account?.id
+
+  if (!accountUlid || !accountId) {
+    throw new Error('ping account requires a valid ulid or id')
+  }
+
+  const [accountFile] = resolveAccountFilePathByAccountUlid(accountUlid)
+  console.log('账号文件存在:', accountFile)
+
+  const isValid = await runCookieAuth(accountFile)
+  console.log(`${platform}检测结果：`, isValid)
+
+  const nextStatus = isValid ? 'online' : 'offline'
+  await updatePublishAccount(accountId, { status: nextStatus })
+
+  return createAccountPageModel({
+    id: accountId,
+    nickname: account?.nickname ?? null,
+    status: nextStatus,
+    phoneNumber: account.phoneNumber ?? null,
+    tags: account.tags ?? []
+  })
 }
 
 //1.2 登录函数
@@ -146,30 +197,20 @@ function resolveAccountFilePathByAccountUlid(accountUlid) {
 }
 
 // 2.2 探活函数
-async function ping(event, accountUlid) {
-  const [filePath, platform] = resolveAccountFilePathByAccountUlid(accountUlid)
-  console.log('账号文件存在:', filePath)
-  let result = null;
+async function ping(event, account) {
+  const platform = getAccountPlatformKey(account)
   switch (platform) {
     case 'bilibili':
-      result = await bilibiliCookieAuth(filePath)
-      console.log(`${platform}检测结果：`, result);
-      return result
+      return updateRemoteAccount(account, bilibiliCookieAuth)
     case 'douyin':
-      result = await douyinCookieAuth(filePath)
-      console.log(`${platform}检测结果：`, result);
-      return result
+      return updateRemoteAccount(account, douyinCookieAuth)
     case 'sohu':
-      result = await sohuCookieAuth(filePath)
-      console.log(`${platform}检测结果：`, result);
-      return result
+      return updateRemoteAccount(account, sohuCookieAuth)
     case 'baijiahao':
-      result = await baijiahaoCookieAuth(filePath)
-      console.log(`${platform}检测结果：`, result);
-      return result
+      return updateRemoteAccount(account, baijiahaoCookieAuth)
     default:
       console.log('unsupported platform:', platform)
-      return false
+      throw new Error(`unsupported platform: ${platform}`)
   }
 }
 
