@@ -22,6 +22,12 @@ const { upload: douyinUpload } = require('./platform-logins/platforms/douyin/pub
 const { upload: bilibiliUpload } = require('./platform-logins/platforms/bilibili/publish.ts')
 const { upload: sohuUpload } = require('./platform-logins/platforms/sohu/publish.ts')
 
+// 引入昵称抓取函数
+const { syncBaijiahaoNickname } = require('./platform-logins/platforms/baijiahao/nickname.ts')
+const { syncDouyinNickname } = require('./platform-logins/platforms/douyin/nickname.ts')
+const { syncBilibiliNickname } = require('./platform-logins/platforms/bilibili/nickname.ts')
+const { syncSohuNickname } = require('./platform-logins/platforms/sohu/nickname.ts')
+
 // 1. 登录入口
 
 // 1.1 解析路径
@@ -31,33 +37,53 @@ function resolveAccountFilePath(platform) {
 }
 
 //1.2 登录函数
-function login(event, platform) {
+async function login(event, platform) {
   const parentWindow = BrowserWindow.fromWebContents(event.sender)
   switch (platform) {
-    case 'bilibili':
-      return runBilibiliLogin({
-        accountFile: resolveAccountFilePath('bilibili'),
+    case 'bilibili': {
+      const path = resolveAccountFilePath('bilibili')
+      const result = await runBilibiliLogin({
+        accountFile: path,
         timeoutMs: 120000,
         parentWindow,
       })
-    case 'douyin':
-      return runDouyinLogin({
-        accountFile: resolveAccountFilePath('douyin'),
+      const nickname = await syncBilibiliNickname(path, 3000)
+      console.log(`登录完成，获取到的 bilibili 昵称为: ${nickname}`);
+      return [nickname, result] 
+    }
+    case 'douyin': {
+      const path = resolveAccountFilePath('douyin')
+      const result = await runDouyinLogin({
+        accountFile: path,
         timeoutMs: 120000,
         parentWindow,
       })
-    case 'sohu':
-      return runSohuLogin({
-        accountFile: resolveAccountFilePath('sohu'),
+      const nickname = await syncDouyinNickname(path, 3000)
+      console.log(`登录完成，获取到的 douyin 昵称为: ${nickname}`);
+      return [nickname, result]
+    }
+    case 'sohu': {
+      const path = resolveAccountFilePath('sohu')
+      const result = await runSohuLogin({
+        accountFile: path,
         timeoutMs: 120000,
         parentWindow,
       })
-    case 'baijiahao':
-      return runBaijiahaoLogin({
-        accountFile: resolveAccountFilePath('baijiahao'),
+      const nickname = await syncSohuNickname(path, 3000)
+      console.log(`登录完成，获取到的 sohu 昵称为: ${nickname}`);
+      return [nickname, result]
+    }
+    case 'baijiahao': {
+      const path = resolveAccountFilePath('baijiahao')
+      const result = await runBaijiahaoLogin({
+        accountFile: path,
         timeoutMs: 120000,
         parentWindow,
       })
+      const nickname = await syncBaijiahaoNickname(path, 3000)
+      console.log(`登录完成，获取到的 baijiahao 昵称为: ${nickname}`);
+      return [nickname, result]
+    }
     default:
       console.log('unsupported platform:', platform)
       return undefined
