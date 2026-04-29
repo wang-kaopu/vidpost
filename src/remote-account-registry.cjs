@@ -1,20 +1,20 @@
 const accountRegistry = new Map()
 
-function getRemoteAccount(accountUlid) {
-  return accountRegistry.get(accountUlid) ?? null
+function getRemoteAccount(accountId) {
+  return accountRegistry.get(accountId) ?? null
 }
 
-function setRemoteAccount(accountUlid, patch) {
-  const current = accountRegistry.get(accountUlid) ?? { accountUlid }
-  const next = { ...current, ...patch, accountUlid }
-  accountRegistry.set(accountUlid, next)
+function setRemoteAccount(accountId, patch) {
+  const current = accountRegistry.get(accountId) ?? { accountId }
+  const next = { ...current, ...patch, accountId }
+  accountRegistry.set(accountId, next)
   return next
 }
 
-function requireRemoteAccount(accountUlid) {
-  const account = getRemoteAccount(accountUlid)
+function requireRemoteAccount(accountId) {
+  const account = getRemoteAccount(accountId)
   if (!account || !Number.isInteger(account.remoteAccountId)) {
-    throw new Error(`Remote account mapping not found for accountUlid: ${accountUlid}`)
+    throw new Error(`Remote account mapping not found for accountId: ${accountId}`)
   }
   return account
 }

@@ -6,7 +6,6 @@ export interface PlatformLoginFlowContext {
   platform: string;
   draftId?: string;
   accountId: string;
-  accountUlid: string;
   accountFile: string;
   timeoutMs: number;
   token?: string;
@@ -18,7 +17,6 @@ export interface PlatformLoginPayload {
   platform?: string;
   draftId?: string;
   accountId?: string;
-  accountUlid?: string;
   accountFile?: string;
   timeoutMs?: number;
   token?: string;

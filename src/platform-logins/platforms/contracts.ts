@@ -5,7 +5,6 @@ import type { MemoryStore } from "../../db/memory-store";
 export interface PlatformLoginContext {
   draftId?: string;
   accountId: string;
-  accountUlid: string;
   accountFile: string;
   timeoutMs: number;
   token?: string;
@@ -28,7 +27,6 @@ export interface ElectronPlatformLoginBridge {
 // 描述昵称同步上下文。
 export interface PlatformNicknameSyncContext {
   accountId: string;
-  accountUlid: string;
   accountFile: string;
   timeoutMs: number;
   store: MemoryStore;

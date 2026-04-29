@@ -357,7 +357,6 @@ export async function runPlatformLoginFlow(
     const context: PlatformLoginFlowContext = {
       platform: hooks.partitionPrefix.replace(/-login$/, ""),
       accountId: "",
-      accountUlid: "",
       accountFile: options.accountFile,
       timeoutMs: options.timeoutMs,
       parentWindow: options.parentWindow,

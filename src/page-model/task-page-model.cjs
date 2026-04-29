@@ -37,7 +37,6 @@ function mapPlatformShort(platform) {
 
 function createTaskPageModel({
   id,
-  ulid = null,
   platform = null,
   accountName = null,
   accountId = null,
@@ -50,7 +49,6 @@ function createTaskPageModel({
 
   return {
     id: String(id ?? ''),
-    ulid: ulid ? String(ulid) : undefined,
     platform: platformLabel,
     platformShort: mapPlatformShort(platformLabel),
     accountName: String(accountName || accountId || '未知账号'),

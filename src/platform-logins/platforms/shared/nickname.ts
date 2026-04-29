@@ -6,7 +6,7 @@ import { PlatformInfraError, PlatformTimeoutError } from "./errors.ts";
 // 描述纯昵称解析参数。
 export interface ResolveNicknameOptions {
   platformLabel: string;
-  accountUlid: string;
+  accountId: string;
   timeoutMs: number;
   fallbackPrefix?: string;
   runner: () => Promise<string | undefined>;
@@ -22,8 +22,8 @@ export interface SyncNicknameOptions {
 }
 
 // 生成占位昵称。
-export function buildFallbackNickname(platform: string, accountUlid: string): string {
-  return `${platform}-${accountUlid}`;
+export function buildFallbackNickname(platform: string, accountId: string): string {
+  return `${platform}-${accountId}`;
 }
 
 // 在超时内执行昵称抓取。
@@ -51,7 +51,7 @@ export async function withNicknameTimeout<T>(
 
 // 解析最终昵称，不依赖正式账号已存在。
 export async function resolvePlatformNickname(options: ResolveNicknameOptions): Promise<string> {
-  const fallbackNickname = buildFallbackNickname(options.fallbackPrefix || options.platformLabel, options.accountUlid);
+  const fallbackNickname = buildFallbackNickname(options.fallbackPrefix || options.platformLabel, options.accountId);
 
   try {
     const nickname = await withNicknameTimeout(options.platformLabel, options.timeoutMs, options.runner);
@@ -74,7 +74,7 @@ export async function writeBackNickname(store: DatabaseStore, accountId: string,
 export async function syncPlatformNickname(options: SyncNicknameOptions): Promise<string> {
   const nickname = await resolvePlatformNickname({
     platformLabel: options.platformLabel,
-    accountUlid: options.context.accountUlid,
+    accountId: options.context.accountId,
     timeoutMs: options.context.timeoutMs,
     fallbackPrefix: options.fallbackPrefix,
     runner: options.runner,

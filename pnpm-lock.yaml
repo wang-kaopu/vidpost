@@ -14,9 +14,6 @@ importers:
       playwright:
         specifier: ^1.59.1
         version: 1.59.1
-      ulid:
-        specifier: ^3.0.2
-        version: 3.0.2
     devDependencies:
       electron:
         specifier: ^41.3.0
@@ -365,10 +362,6 @@ packages:
   type-fest@0.13.1:
     resolution: {integrity: sha512-34R7HTnG0XIJcBSn5XhDd7nNFPRcXYRZrBB2O2jdKqYODldSzBAqzsWoZYYvduky73toYS/ESqxPvkDf/F0XMg==}
     engines: {node: '>=10'}
-
-  ulid@3.0.2:
-    resolution: {integrity: sha512-yu26mwteFYzBAot7KVMqFGCVpsF6g8wXfJzQUHvu1no3+rRRSFcSV2nKeYvNPLD2J4b08jYBDhHUjeH0ygIl9w==}
-    hasBin: true
 
   undici-types@7.16.0:
     resolution: {integrity: sha512-Zz+aZWSj8LE6zoxD+xrjh4VfkIG8Ya6LvYkZqtUQGJPZjYl53ypCaUwWqo7eI0x66KBGeRo+mlBEkMSeSZ38Nw==}
@@ -760,8 +753,6 @@ snapshots:
 
   type-fest@0.13.1:
     optional: true
-
-  ulid@3.0.2: {}
 
   undici-types@7.16.0: {}
 

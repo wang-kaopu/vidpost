@@ -6,8 +6,8 @@ exports.writeBackNickname = writeBackNickname;
 exports.syncPlatformNickname = syncPlatformNickname;
 const errors_1 = require("./errors");
 // 生成占位昵称。
-function buildFallbackNickname(platform, accountUlid) {
-    return `${platform}-${accountUlid}`;
+function buildFallbackNickname(platform, accountId) {
+    return `${platform}-${accountId}`;
 }
 // 在超时内执行昵称抓取。
 async function withNicknameTimeout(platform, timeoutMs, runner) {
@@ -36,7 +36,7 @@ async function writeBackNickname(store, accountId, nickname) {
 }
 // 统一执行昵称抓取、失败回退与写库。
 async function syncPlatformNickname(options) {
-    const fallbackNickname = buildFallbackNickname(options.fallbackPrefix || options.platformLabel, options.context.accountUlid);
+    const fallbackNickname = buildFallbackNickname(options.fallbackPrefix || options.platformLabel, options.context.accountId);
     await writeBackNickname(options.store, options.context.accountId, fallbackNickname);
     try {
         const nickname = await withNicknameTimeout(options.platformLabel, options.context.timeoutMs, options.runner);

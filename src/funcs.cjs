@@ -1,8 +1,8 @@
 const { BrowserWindow } = require('electron')
+const { randomUUID } = require('node:crypto')
 const fs = require('node:fs')
 const path = require('node:path')
 const { log } = require('node:console')
-const { ulid } = require('ulid')
 
 // 引入登录函数
 const { runBaijiahaoLogin } = require('./platform-logins/platforms/baijiahao/login.ts')
@@ -40,9 +40,30 @@ const { createTaskPageModel } = require('./page-model/task-page-model.cjs')
 // 1. 登录入口
 
 // 1.1 解析路径
-function resolveAccountFilePath(platform) {
+function resolveDraftAccountFilePath(platform) {
   const homeDir = process.env.HOME || process.env.USERPROFILE || '.'
-  return path.join(homeDir, '.matrix-account', 'cookie_files', `${ulid()}_${platform}.json`)
+  return path.join(homeDir, '.matrix-account', 'cookie_files', `${randomUUID()}_${platform}.json`)
+}
+
+function resolveAccountFilePath(accountId, platform) {
+  const homeDir = process.env.HOME || process.env.USERPROFILE || '.'
+  return path.join(homeDir, '.matrix-account', 'cookie_files', `${accountId}_${platform}.json`)
+}
+
+function finalizeAccountFile(accountFile, accountId, platform) {
+  const normalizedAccountId = String(accountId || '').trim()
+  if (!normalizedAccountId) {
+    throw new Error('finalize account file requires a valid account_id')
+  }
+
+  const targetFile = resolveAccountFilePath(normalizedAccountId, platform)
+  if (accountFile === targetFile) {
+    return targetFile
+  }
+
+  fs.mkdirSync(path.dirname(targetFile), { recursive: true })
+  fs.renameSync(accountFile, targetFile)
+  return targetFile
 }
 
 function getAccountTags(account) {
@@ -85,8 +106,11 @@ async function loginAndCreateRemoteAccount(platform, accountFile, parentWindow,
       nickname,
       platform,
       status: 'login_success',
+    })
+    const finalizedAccountFile = finalizeAccountFile(accountFile, remoteAccountId, platform)
+    await updatePublishAccount(remoteAccountId, {
       attributes: {
-        cookieFilePath: accountFile,
+        cookieFilePath: finalizedAccountFile,
       },
     })
 
@@ -94,7 +118,6 @@ async function loginAndCreateRemoteAccount(platform, accountFile, parentWindow,
 
     return createAccountPageModel({
       id: remoteAccountId,
-      ulid: null,
       nickname,
       platform,
       status: 'login_success',
@@ -110,15 +133,14 @@ async function loginAndCreateRemoteAccount(platform, accountFile, parentWindow,
 }
 
 async function updateRemoteAccount(account, runCookieAuth) {
-  const accountUlid = String(account?.ulid || account?.accountUlid || '').trim()
   const platform = String(account?.platformKey || account?.platform || '').trim().toLowerCase()
-  const accountId = account?.id
+  const accountId = String(account?.id || account?.account_id || account?.accountId || '').trim()
 
-  if (!accountUlid || !accountId) {
-    throw new Error('ping account requires a valid ulid or id')
+  if (!accountId || !platform) {
+    throw new Error('ping account requires a valid account_id and platform')
   }
 
-  const [accountFile] = resolveAccountFilePathByAccountUlid(accountUlid)
+  const accountFile = resolveAccountFilePath(accountId, platform)
   console.log('账号文件存在:', accountFile)
 
   const isValid = await runCookieAuth(accountFile)
@@ -129,7 +151,6 @@ async function updateRemoteAccount(account, runCookieAuth) {
 
   return createAccountPageModel({
     id: accountId,
-    ulid: accountUlid,
     platform,
     nickname: account?.nickname ?? null,
     status: nextStatus,
@@ -145,7 +166,7 @@ async function login(event, platform) {
   const parentWindow = BrowserWindow.fromWebContents(event.sender)
   switch (platform) {
     case 'bilibili': {
-      const accountFile = resolveAccountFilePath('bilibili')
+      const accountFile = resolveDraftAccountFilePath('bilibili')
       return loginAndCreateRemoteAccount(
         'bilibili', accountFile, parentWindow,
         runBilibiliLogin,
@@ -153,7 +174,7 @@ async function login(event, platform) {
       )
     }
     case 'douyin': {
-      const accountFile = resolveAccountFilePath('douyin')
+      const accountFile = resolveDraftAccountFilePath('douyin')
       return loginAndCreateRemoteAccount(
         'douyin', accountFile, parentWindow,
         runDouyinLogin,
@@ -161,7 +182,7 @@ async function login(event, platform) {
       )
     }
     case 'sohu': {
-      const accountFile = resolveAccountFilePath('sohu')
+      const accountFile = resolveDraftAccountFilePath('sohu')
       return loginAndCreateRemoteAccount(
         'sohu', accountFile, parentWindow,
         runSohuLogin,
@@ -169,7 +190,7 @@ async function login(event, platform) {
       )
     }
     case 'baijiahao': {
-      const accountFile = resolveAccountFilePath('baijiahao')
+      const accountFile = resolveDraftAccountFilePath('baijiahao')
       return loginAndCreateRemoteAccount(
         'baijiahao', accountFile, parentWindow,
         runBaijiahaoLogin,
@@ -183,25 +204,9 @@ async function login(event, platform) {
 }
 
 // 2. 探活入口
-// 2.1 解析账号文件路径
-function resolveAccountFilePathByAccountUlid(accountUlid) {
-  const homeDir = process.env.HOME || process.env.USERPROFILE || '.'
-  const cookieFilesDir = path.join(homeDir, '.matrix-account', 'cookie_files')
-
-  const matchedName = fs.readdirSync(cookieFilesDir).find((name) => name.startsWith(`${accountUlid}_`))
-  if (!matchedName) {
-    throw new Error(`Account file not found for ulid: ${accountUlid}`)
-  }
-
-  const platform = matchedName
-    .slice(accountUlid.length)
-    .slice(1, -5) || null
-  return [path.join(cookieFilesDir, matchedName), platform]
-}
-
-// 2.2 探活函数
+// 2.1 探活函数
 async function ping(event, account) {
-  const platform = account.platformKey || account.platform
+  const platform = account?.platformKey || account?.platform
   switch (platform) {
     case 'bilibili':
       return updateRemoteAccount(account, bilibiliCookieAuth)
@@ -223,9 +228,8 @@ async function publishAndUpdateRemoteTask(payload, runUpload) {
   const normalizedPayload = { ...(payload || {}) }
   let remoteTaskId = null
 
-  if (!normalizedPayload.accountFile && normalizedPayload.accountUlid) {
-    const [accountFile] = resolveAccountFilePathByAccountUlid(normalizedPayload.accountUlid)
-    normalizedPayload.accountFile = accountFile
+  if (!normalizedPayload.accountFile && normalizedPayload.accountId && normalizedPayload.platform) {
+    normalizedPayload.accountFile = resolveAccountFilePath(normalizedPayload.accountId, normalizedPayload.platform)
   }
 
   try {
@@ -241,7 +245,7 @@ async function publishAndUpdateRemoteTask(payload, runUpload) {
       video_type: normalizedPayload.videoType,
       status: 'running',
       attributes: {
-        account_ulid: normalizedPayload.accountUlid ?? null,
+        account_id: normalizedPayload.accountId ?? null,
         account_name: normalizedPayload.accountName ?? null,
       },
     })
@@ -260,7 +264,6 @@ async function publishAndUpdateRemoteTask(payload, runUpload) {
 
     return createTaskPageModel({
       id: remoteTaskId,
-      ulid: publishResult?.ulid ?? null,
       platform: normalizedPayload.platform,
       accountName: normalizedPayload.accountName ?? null,
       accountId: normalizedPayload.accountId ?? null,

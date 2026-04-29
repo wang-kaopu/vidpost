@@ -4,9 +4,9 @@ const COVER_PATH = '/Users/wkp/Downloads/olivia.jpg'
 const PUBLISH_TITLE = 'Olivia IG update'
 const PUBLISH_INTRODUCTION = 'Olivia IG update'
 
-const createPublishPayload = (platform, accountUlid) => ({
+const createPublishPayload = (platform, accountId) => ({
   platform,
-  accountUlid,
+  accountId,
   videoPath: VIDEO_PATH,
   coverPath: COVER_PATH,
   title: PUBLISH_TITLE,
@@ -17,8 +17,8 @@ const login = (platform) => {
   window.electronAPI.login(platform)
 }
 
-const ping = (accountUlid) => {
-  window.electronAPI.ping(accountUlid)
+const ping = (platform, accountId) => {
+  window.electronAPI.ping({ platform, accountId })
 }
 
 const publishBilibili = () => {
@@ -46,10 +46,10 @@ const publishBaijiahao = () => {
 
   <br>
 
-  <button @click="ping('01KQ9XEKN0ZTQ0YR6JPTJE1FGN')">哔哩哔哩探活</button>
-  <button @click="ping('01KQADE2B6HRM8VK2BMR4V85FQ')">抖音探活</button>
-  <button @click="ping('01KQADGEHXQKST6GHY71GSQ1RZ')">搜狐号探活</button>
-  <button @click="ping('01KQADJM3YHY93GNPK3169R9FX')">百家号探活</button>
+  <button @click="ping('bilibili', '20')">哔哩哔哩探活</button>
+  <button @click="ping('douyin', '21')">抖音探活</button>
+  <button @click="ping('sohu', '22')">搜狐号探活</button>
+  <button @click="ping('baijiahao', '23')">百家号探活</button>
 
   <br>
 
