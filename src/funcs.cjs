@@ -35,6 +35,7 @@ const { create } = require('axios')
 
 const { createAcccountModel } = require('./api/model/account-model.js')
 const { createTaskModel } = require('./api/model/task-model.js')
+const { createAccountPageModel } = require('./page-model/account-page-model.cjs')
 
 
 // 1. 登录入口
@@ -45,53 +46,81 @@ function resolveAccountFilePath(platform) {
   return path.join(homeDir, '.matrix-account', 'cookie_files', `${ulid()}_${platform}.json`)
 }
 
+async function loginAndCreateRemoteAccount(platform, accountFile, parentWindow,
+  runLogin, syncNickname) {
+  try {
+    await runLogin({
+      accountFile,
+      timeoutMs: 120000,
+      parentWindow,
+    })
+
+    const nickname = await syncNickname(accountFile, 3000)
+    console.log(`登录完成，获取到的 ${platform} 昵称为: ${nickname}`)
+
+    const { remoteAccountId } = await createPublishAccount({
+      nickname,
+      platform,
+      status: 'login_success',
+      attributes: {
+        cookieFilePath: accountFile,
+      },
+    })
+
+    console.log('创建发布账号成功，远程账号ID:', remoteAccountId)
+
+    return createAccountPageModel({
+      id: remoteAccountId,
+      ulid: null,
+      nickname,
+      platform,
+      status: 'login_success',
+      phoneNumber: null,
+      tags: [],
+      createdAt: null,
+      updatedAt: null,
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    throw new Error(`${platform} login or remote account creation failed: ${message}`)
+  }
+}
+
 //1.2 登录函数
 async function login(event, platform) {
   const parentWindow = BrowserWindow.fromWebContents(event.sender)
   switch (platform) {
     case 'bilibili': {
-      const path = resolveAccountFilePath('bilibili')
-      const result = await runBilibiliLogin({
-        accountFile: path,
-        timeoutMs: 120000,
-        parentWindow,
-      })
-      const nickname = await syncBilibiliNickname(path, 3000)
-      console.log(`登录完成，获取到的 bilibili 昵称为: ${nickname}`);
-      return [nickname, result] 
+      const accountFile = resolveAccountFilePath('bilibili')
+      return loginAndCreateRemoteAccount(
+        'bilibili', accountFile, parentWindow,
+        runBilibiliLogin,
+        syncBilibiliNickname
+      )
     }
     case 'douyin': {
-      const path = resolveAccountFilePath('douyin')
-      const result = await runDouyinLogin({
-        accountFile: path,
-        timeoutMs: 120000,
-        parentWindow,
-      })
-      const nickname = await syncDouyinNickname(path, 3000)
-      console.log(`登录完成，获取到的 douyin 昵称为: ${nickname}`);
-      return [nickname, result]
+      const accountFile = resolveAccountFilePath('douyin')
+      return loginAndCreateRemoteAccount(
+        'douyin', accountFile, parentWindow,
+        runDouyinLogin,
+        syncDouyinNickname,
+      )
     }
     case 'sohu': {
-      const path = resolveAccountFilePath('sohu')
-      const result = await runSohuLogin({
-        accountFile: path,
-        timeoutMs: 120000,
-        parentWindow,
-      })
-      const nickname = await syncSohuNickname(path, 3000)
-      console.log(`登录完成，获取到的 sohu 昵称为: ${nickname}`);
-      return [nickname, result]
+      const accountFile = resolveAccountFilePath('sohu')
+      return loginAndCreateRemoteAccount(
+        'sohu', accountFile, parentWindow,
+        runSohuLogin,
+        syncSohuNickname,
+      )
     }
     case 'baijiahao': {
-      const path = resolveAccountFilePath('baijiahao')
-      const result = await runBaijiahaoLogin({
-        accountFile: path,
-        timeoutMs: 120000,
-        parentWindow,
-      })
-      const nickname = await syncBaijiahaoNickname(path, 3000)
-      console.log(`登录完成，获取到的 baijiahao 昵称为: ${nickname}`);
-      return [nickname, result]
+      const accountFile = resolveAccountFilePath('baijiahao')
+      return loginAndCreateRemoteAccount(
+        'baijiahao', accountFile, parentWindow,
+        runBaijiahaoLogin,
+        syncBaijiahaoNickname,
+      )
     }
     default:
       console.log('unsupported platform:', platform)
