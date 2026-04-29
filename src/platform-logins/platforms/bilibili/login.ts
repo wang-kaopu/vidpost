@@ -1,5 +1,5 @@
 // 提供 Bilibili 平台的登录窗口流程。
-import { runPlatformLoginFlow, sleep, type PlatformLoginOptions } from "../../shared.ts";
+import { runPlatformLoginFlow, waitForWebContentsIdle, type PlatformLoginOptions } from "../../shared.ts";
 import { isBilibiliLoginPageUrl, isBilibiliLoginSuccessUrl } from "./mappers.ts";
 import { BILIBILI_CLOSE_BUTTON_SCRIPT, BILIBILI_LOGIN_SUCCESS_URL, BILIBILI_LOGIN_URL } from "./selectors.ts";
 
@@ -27,6 +27,11 @@ function isBilibiliPersistReadyUrl(url: string): boolean {
   return isBilibiliLoginSuccessUrl(url) && !isBilibiliLoginPageUrl(url) && !isBilibiliCrossDomainUrl(url);
 }
 
+function isNavigationAbortError(error: unknown): boolean {
+  const detail = error instanceof Error ? error.message : String(error);
+  return detail.includes("ERR_ABORTED") || detail.includes("loading");
+}
+
 // 运行 Bilibili 登录流程并导出登录态。
 export const runBilibiliLogin = async (options: PlatformLoginOptions) =>
   runPlatformLoginFlow(
@@ -50,11 +55,17 @@ export const runBilibiliLogin = async (options: PlatformLoginOptions) =>
         if (!isBilibiliLoginPageUrl(currentUrl)) {
           return false;
         }
-        await loginWindow.loadURL(BILIBILI_LOGIN_SUCCESS_URL);
+        try {
+          await loginWindow.loadURL(BILIBILI_LOGIN_SUCCESS_URL);
+        } catch (error) {
+          if (!isNavigationAbortError(error)) {
+            throw error;
+          }
+        }
         return true;
       },
       beforePersist: async (loginWindow) => {
-        await sleep(1500);
+        await waitForWebContentsIdle(loginWindow.webContents, 1200, 10_000);
         if (!isBilibiliPersistReadyUrl(loginWindow.webContents.getURL())) {
           throw new Error(`Bilibili 登录页仍在跳转，当前页面不可保存: ${loginWindow.webContents.getURL()}`);
         }
