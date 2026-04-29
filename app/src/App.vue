@@ -46,10 +46,10 @@ const publishBaijiahao = () => {
 
   <br>
 
-  <button @click="ping('bilibili', '20')">哔哩哔哩探活</button>
-  <button @click="ping('douyin', '21')">抖音探活</button>
-  <button @click="ping('sohu', '22')">搜狐号探活</button>
-  <button @click="ping('baijiahao', '23')">百家号探活</button>
+  <button @click="ping('bilibili', '24')">哔哩哔哩探活</button>
+  <button @click="ping('douyin', '25')">抖音探活</button>
+  <button @click="ping('sohu', '26')">搜狐号探活</button>
+  <button @click="ping('baijiahao', '27')">百家号探活</button>
 
   <br>
 
