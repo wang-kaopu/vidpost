@@ -37,7 +37,6 @@ const { createTaskModel } = require('./api/model/task-model.js')
 const { createAccountPageModel } = require('./page-model/account-page-model.cjs')
 const { createTaskPageModel } = require('./page-model/task-page-model.cjs')
 
-
 // 1. 登录入口
 
 // 1.1 解析路径
