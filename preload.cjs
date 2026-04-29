@@ -4,5 +4,8 @@ const { contextBridge, ipcRenderer } = require('electron/renderer')
 contextBridge.exposeInMainWorld('electronAPI', {
   login: (platform) => ipcRenderer.send('login', platform),
   publish: (payload) => ipcRenderer.send('publish', payload),
-  ping: (accountUlid) => ipcRenderer.send('ping', accountUlid)
+  ping: (accountUlid) => ipcRenderer.send('ping', accountUlid),
+  onLaunchIntent: (handler) => {
+    ipcRenderer.on('agenthunt:launch-intent', (_event, payload) => handler(payload))
+  }
 })
