@@ -130,10 +130,14 @@ async function updateRemoteAccount(account, runCookieAuth) {
 
   return createAccountPageModel({
     id: accountId,
+    ulid: accountUlid,
+    platform,
     nickname: account?.nickname ?? null,
     status: nextStatus,
     phoneNumber: account.phoneNumber ?? null,
-    tags: account.tags ?? []
+    tags: account.tags ?? [],
+    createdAt: account.createdAt ?? null,
+    updatedAt: account.updatedAt ?? null,
   })
 }
 
