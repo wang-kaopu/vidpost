@@ -2,6 +2,7 @@ const { BrowserWindow } = require('electron')
 const fs = require('node:fs')
 const path = require('node:path')
 const { log } = require('node:console')
+const { ulid } = require('ulid')
 
 // 引入登录函数
 const { runBaijiahaoLogin } = require('./platform-logins/platforms/baijiahao/login.ts')
@@ -42,26 +43,11 @@ const { createTaskPageModel } = require('./page-model/task-page-model.cjs')
 // 1.1 解析路径
 function resolveAccountFilePath(platform) {
   const homeDir = process.env.HOME || process.env.USERPROFILE || '.'
-  return path.join(homeDir, '.matrix-account', 'cookie_files', `pending_${platform}_${Date.now()}.json`)
-}
-
-function resolveAccountFilePathByAccountId(accountId, platform) {
-  const homeDir = process.env.HOME || process.env.USERPROFILE || '.'
-  return path.join(homeDir, '.matrix-account', 'cookie_files', `${accountId}_${platform}.json`)
+  return path.join(homeDir, '.matrix-account', 'cookie_files', `${ulid()}_${platform}.json`)
 }
 
 function getAccountTags(account) {
   return Array.isArray(account?.tags) ? account.tags : []
-}
-
-function getAccountPhoneNumber(account) {
-  if (typeof account?.phone_number === 'string') {
-    return account.phone_number
-  }
-  if (typeof account?.phoneNumber === 'string') {
-    return account.phoneNumber
-  }
-  return null
 }
 
 function getAccountCreatedAt(account) {
@@ -72,14 +58,6 @@ function getAccountCreatedAt(account) {
     return account.createdAt
   }
   return null
-}
-
-function parseAccountId(value) {
-  const accountId = Number(value)
-  if (!Number.isInteger(accountId) || accountId <= 0) {
-    throw new Error('account_id is required and must be a positive integer')
-  }
-  return accountId
 }
 
 function getAccountUpdatedAt(account) {
@@ -93,7 +71,7 @@ function getAccountUpdatedAt(account) {
 }
 
 async function loginAndCreateRemoteAccount(platform, accountFile, parentWindow,
-  runLogin, syncNickname, token) {
+  runLogin, syncNickname) {
   try {
     await runLogin({
       accountFile,
@@ -109,22 +87,15 @@ async function loginAndCreateRemoteAccount(platform, accountFile, parentWindow,
       platform,
       status: 'login_success',
       attributes: {
-        cookieFilePath: null,
+        cookieFilePath: accountFile,
       },
-    }, { token })
-
-    const finalAccountFile = resolveAccountFilePathByAccountId(remoteAccountId, platform)
-    fs.renameSync(accountFile, finalAccountFile)
-    await updatePublishAccount(remoteAccountId, {
-      attributes: {
-        cookieFilePath: finalAccountFile,
-      },
-    }, { token })
+    })
 
     console.log('创建发布账号成功，远程账号ID:', remoteAccountId)
 
     return createAccountPageModel({
       id: remoteAccountId,
+      ulid: null,
       nickname,
       platform,
       status: 'login_success',
@@ -140,10 +111,15 @@ async function loginAndCreateRemoteAccount(platform, accountFile, parentWindow,
 }
 
 async function updateRemoteAccount(account, runCookieAuth) {
+  const accountUlid = String(account?.ulid || account?.accountUlid || '').trim()
   const platform = String(account?.platformKey || account?.platform || '').trim().toLowerCase()
-  const accountId = parseAccountId(account?.id)
+  const accountId = account?.id
 
-  const [accountFile] = resolveAccountFilePathByAccountIdFromDisk(accountId)
+  if (!accountUlid || !accountId) {
+    throw new Error('ping account requires a valid ulid or id')
+  }
+
+  const [accountFile] = resolveAccountFilePathByAccountUlid(accountUlid)
   console.log('账号文件存在:', accountFile)
 
   const isValid = await runCookieAuth(accountFile)
@@ -154,38 +130,19 @@ async function updateRemoteAccount(account, runCookieAuth) {
 
   return createAccountPageModel({
     id: accountId,
+    ulid: accountUlid,
     platform,
     nickname: account?.nickname ?? null,
     status: nextStatus,
-    phoneNumber: getAccountPhoneNumber(account),
-    tags: getAccountTags(account),
-    createdAt: getAccountCreatedAt(account),
-    updatedAt: getAccountUpdatedAt(account),
+    phoneNumber: account.phoneNumber ?? null,
+    tags: account.tags ?? [],
+    createdAt: account.createdAt ?? null,
+    updatedAt: account.updatedAt ?? null,
   })
 }
 
-function normalizeLoginRequest(input) {
-  if (typeof input === 'string') {
-    return {
-      platform: input,
-      token: undefined,
-    }
-  }
-  if (input && typeof input === 'object') {
-    return {
-      platform: String(input.platform || '').trim(),
-      token: String(input.token || '').trim() || undefined,
-    }
-  }
-  return {
-    platform: '',
-    token: undefined,
-  }
-}
-
 //1.2 登录函数
-async function login(event, input) {
-  const { platform, token } = normalizeLoginRequest(input)
+async function login(event, platform) {
   const parentWindow = BrowserWindow.fromWebContents(event.sender)
   switch (platform) {
     case 'bilibili': {
@@ -193,8 +150,7 @@ async function login(event, input) {
       return loginAndCreateRemoteAccount(
         'bilibili', accountFile, parentWindow,
         runBilibiliLogin,
-        syncBilibiliNickname,
-        token,
+        syncBilibiliNickname
       )
     }
     case 'douyin': {
@@ -203,7 +159,6 @@ async function login(event, input) {
         'douyin', accountFile, parentWindow,
         runDouyinLogin,
         syncDouyinNickname,
-        token,
       )
     }
     case 'sohu': {
@@ -212,7 +167,6 @@ async function login(event, input) {
         'sohu', accountFile, parentWindow,
         runSohuLogin,
         syncSohuNickname,
-        token,
       )
     }
     case 'baijiahao': {
@@ -221,7 +175,6 @@ async function login(event, input) {
         'baijiahao', accountFile, parentWindow,
         runBaijiahaoLogin,
         syncBaijiahaoNickname,
-        token,
       )
     }
     default:
@@ -232,17 +185,17 @@ async function login(event, input) {
 
 // 2. 探活入口
 // 2.1 解析账号文件路径
-function resolveAccountFilePathByAccountIdFromDisk(accountId) {
+function resolveAccountFilePathByAccountUlid(accountUlid) {
   const homeDir = process.env.HOME || process.env.USERPROFILE || '.'
   const cookieFilesDir = path.join(homeDir, '.matrix-account', 'cookie_files')
 
-  const matchedName = fs.readdirSync(cookieFilesDir).find((name) => name.startsWith(`${accountId}_`))
+  const matchedName = fs.readdirSync(cookieFilesDir).find((name) => name.startsWith(`${accountUlid}_`))
   if (!matchedName) {
-    throw new Error(`Account file not found for account_id: ${accountId}`)
+    throw new Error(`Account file not found for ulid: ${accountUlid}`)
   }
 
   const platform = matchedName
-    .slice(String(accountId).length)
+    .slice(accountUlid.length)
     .slice(1, -5) || null
   return [path.join(cookieFilesDir, matchedName), platform]
 }
@@ -270,16 +223,15 @@ async function ping(event, account) {
 async function publishAndUpdateRemoteTask(payload, runUpload) {
   const normalizedPayload = { ...(payload || {}) }
   let remoteTaskId = null
-  const accountId = parseAccountId(normalizedPayload.accountId)
 
-  if (!normalizedPayload.accountFile) {
-    const [accountFile] = resolveAccountFilePathByAccountIdFromDisk(accountId)
+  if (!normalizedPayload.accountFile && normalizedPayload.accountUlid) {
+    const [accountFile] = resolveAccountFilePathByAccountUlid(normalizedPayload.accountUlid)
     normalizedPayload.accountFile = accountFile
   }
 
   try {
     const createResult = await createPublishTask({
-      account_id: accountId,
+      account_id: normalizedPayload.accountId,
       platform: normalizedPayload.platform,
       title: normalizedPayload.title,
       work_id: normalizedPayload.workId,
@@ -290,7 +242,7 @@ async function publishAndUpdateRemoteTask(payload, runUpload) {
       video_type: normalizedPayload.videoType,
       status: 'running',
       attributes: {
-        account_id: accountId,
+        account_ulid: normalizedPayload.accountUlid ?? null,
         account_name: normalizedPayload.accountName ?? null,
       },
     })
@@ -309,9 +261,10 @@ async function publishAndUpdateRemoteTask(payload, runUpload) {
 
     return createTaskPageModel({
       id: remoteTaskId,
+      ulid: publishResult?.ulid ?? null,
       platform: normalizedPayload.platform,
       accountName: normalizedPayload.accountName ?? null,
-      accountId,
+      accountId: normalizedPayload.accountId ?? null,
       title: normalizedPayload.title ?? null,
       status: 'success',
       scheduledAt: normalizedPayload.scheduledAt ?? null,

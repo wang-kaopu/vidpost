@@ -3,74 +3,10 @@ const VIDEO_PATH = '/Users/wkp/Downloads/olivia.mp4'
 const COVER_PATH = '/Users/wkp/Downloads/olivia.jpg'
 const PUBLISH_TITLE = 'Olivia IG update'
 const PUBLISH_INTRODUCTION = 'Olivia IG update'
-const ACCESS_TOKEN = 'b0ffc1de8f3f49340697dc140fcad274'
 
-const PING_ACCOUNTS = Object.freeze({
-  bilibili: {
-    id: 11,
-    user_id: '7447143878731407361',
-    nickname: 'hello-bilibili',
-    platform: 'bilibili',
-    status: 'success',
-    phone_number: 'sit velit',
-    tags: ['tempor', 'tempor enim Lorem ex occaecat'],
-    remark_name: 'dolor',
-    created_at: '2026-04-29T09:13:50',
-    updated_at: '2026-04-29T09:13:50',
-    attributes: {
-      esse_6: true,
-    },
-  },
-  douyin: {
-    id: 12,
-    user_id: '7447143878731407360',
-    nickname: 'hello',
-    platform: 'douyin',
-    status: 'success',
-    phone_number: 'sit velit',
-    tags: ['tempor', 'tempor enim Lorem ex occaecat'],
-    remark_name: 'dolor',
-    created_at: '2026-04-29T09:13:50',
-    updated_at: '2026-04-29T09:13:50',
-    attributes: {
-      esse_6: true,
-    },
-  },
-  sohu: {
-    id: 13,
-    user_id: '7447143878731407362',
-    nickname: 'hello-sohu',
-    platform: 'sohu',
-    status: 'success',
-    phone_number: 'sit velit',
-    tags: ['tempor', 'tempor enim Lorem ex occaecat'],
-    remark_name: 'dolor',
-    created_at: '2026-04-29T09:13:50',
-    updated_at: '2026-04-29T09:13:50',
-    attributes: {
-      esse_6: true,
-    },
-  },
-  baijiahao: {
-    id: 14,
-    user_id: '7447143878731407363',
-    nickname: 'hello-baijiahao',
-    platform: 'baijiahao',
-    status: 'success',
-    phone_number: 'sit velit',
-    tags: ['tempor', 'tempor enim Lorem ex occaecat'],
-    remark_name: 'dolor',
-    created_at: '2026-04-29T09:13:50',
-    updated_at: '2026-04-29T09:13:50',
-    attributes: {
-      esse_6: true,
-    },
-  },
-})
-
-const createPublishPayload = (platform, accountId) => ({
+const createPublishPayload = (platform, accountUlid) => ({
   platform,
-  accountId,
+  accountUlid,
   videoPath: VIDEO_PATH,
   coverPath: COVER_PATH,
   title: PUBLISH_TITLE,
@@ -78,30 +14,27 @@ const createPublishPayload = (platform, accountId) => ({
 })
 
 const login = (platform) => {
-  window.electronAPI.login({
-    platform,
-    token: ACCESS_TOKEN,
-  })
+  window.electronAPI.login(platform)
 }
 
-const ping = (account) => {
-  window.electronAPI.ping(account)
+const ping = (accountUlid) => {
+  window.electronAPI.ping(accountUlid)
 }
 
 const publishBilibili = () => {
-  window.electronAPI.publish(createPublishPayload('bilibili', PING_ACCOUNTS.bilibili.id))
+  window.electronAPI.publish(createPublishPayload('bilibili', '01KQ9XEKN0ZTQ0YR6JPTJE1FGN'))
 }
 
 const publishDouyin = () => {
-  window.electronAPI.publish(createPublishPayload('douyin', PING_ACCOUNTS.douyin.id))
+  window.electronAPI.publish(createPublishPayload('douyin', '01KQADE2B6HRM8VK2BMR4V85FQ'))
 }
 
 const publishSohu = () => {
-  window.electronAPI.publish(createPublishPayload('sohu', PING_ACCOUNTS.sohu.id))
+  window.electronAPI.publish(createPublishPayload('sohu', '01KQADGEHXQKST6GHY71GSQ1RZ'))
 }
 
 const publishBaijiahao = () => {
-  window.electronAPI.publish(createPublishPayload('baijiahao', PING_ACCOUNTS.baijiahao.id))
+  window.electronAPI.publish(createPublishPayload('baijiahao', '01KQADJM3YHY93GNPK3169R9FX'))
 }
 </script>
 
@@ -113,10 +46,10 @@ const publishBaijiahao = () => {
 
   <br>
 
-  <button @click="ping(PING_ACCOUNTS.bilibili)">哔哩哔哩探活</button>
-  <button @click="ping(PING_ACCOUNTS.douyin)">抖音探活</button>
-  <button @click="ping(PING_ACCOUNTS.sohu)">搜狐号探活</button>
-  <button @click="ping(PING_ACCOUNTS.baijiahao)">百家号探活</button>
+  <button @click="ping('01KQ9XEKN0ZTQ0YR6JPTJE1FGN')">哔哩哔哩探活</button>
+  <button @click="ping('01KQADE2B6HRM8VK2BMR4V85FQ')">抖音探活</button>
+  <button @click="ping('01KQADGEHXQKST6GHY71GSQ1RZ')">搜狐号探活</button>
+  <button @click="ping('01KQADJM3YHY93GNPK3169R9FX')">百家号探活</button>
 
   <br>
 

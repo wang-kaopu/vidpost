@@ -7,7 +7,8 @@ import type { PublishVerificationRequest, PublishVerificationStore } from "../..
 export interface ManualVerificationRequestInput {
   platform: string;
   subtaskId?: string | null;
-  accountId?: string | null;
+  subtaskUlid?: string | null;
+  accountUlid?: string | null;
   accountName?: string | null;
   title?: string | null;
   prompt: string;
@@ -32,7 +33,8 @@ export function createManualVerificationRequest(
     requestId: randomUUID(),
     platform: input.platform,
     subtaskId: input.subtaskId,
-    accountId: input.accountId,
+    subtaskUlid: input.subtaskUlid,
+    accountUlid: input.accountUlid,
     accountName: input.accountName,
     title: input.title,
     prompt: input.prompt,

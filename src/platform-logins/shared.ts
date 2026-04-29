@@ -177,11 +177,6 @@ const shouldFallbackToCookieOnlyState = (error: unknown) => {
   return detail.includes("ERR_ABORTED") || detail.includes("loading");
 };
 
-const isBenignNavigationAbort = (error: unknown) => {
-  const detail = error instanceof Error ? error.message : String(error);
-  return detail.includes("ERR_ABORTED") || detail.includes("loading");
-};
-
 export const exportStorageState = async (loginWindow: BrowserWindow, accountFile: string, logPrefix = "login") => {
   const cookies = await loginWindow.webContents.session.cookies.get({});
   const currentUrl = loginWindow.webContents.getURL();
@@ -471,10 +466,6 @@ export async function runPlatformLoginFlow(
     });
 
     void loginWindow.loadURL(hooks.loginUrl).catch((error: unknown) => {
-      if (isBenignNavigationAbort(error)) {
-        void maybePersistCurrentState();
-        return;
-      }
       const detail = error instanceof Error ? error.message : String(error);
       finish(new Error(`${hooks.title} 登录页加载失败: ${detail}`));
     });

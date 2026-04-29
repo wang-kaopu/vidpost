@@ -1,5 +1,6 @@
 function createAccountPageModel({
   id,
+  ulid = null,
   nickname = null,
   platform = null,
   status = 'login_success',
@@ -10,6 +11,7 @@ function createAccountPageModel({
 }) {
   return {
     id,
+    ulid,
     nickname,
     platform,
     status,

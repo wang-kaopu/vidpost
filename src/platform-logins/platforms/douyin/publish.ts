@@ -65,7 +65,8 @@ type DouyinUploadPayload = PlatformUploadPayload & {
   tags?: string[];
   timeoutMs?: number;
   subtaskId?: string;
-  accountId?: string | number;
+  subtaskUlid?: string;
+  accountUlid?: string;
   accountName?: string;
   publishVerificationStore?: PublishVerificationStore;
 };
@@ -946,7 +947,8 @@ async function fillPublishSmsCodeManually(page: Page, payload: DouyinUploadPaylo
   const request = createManualVerificationRequest(store, {
     platform: "douyin",
     subtaskId: payload.subtaskId,
-    accountId: payload.accountId == null ? null : String(payload.accountId),
+    subtaskUlid: payload.subtaskUlid,
+    accountUlid: payload.accountUlid,
     accountName: payload.accountName,
     title: payload.title,
     prompt: "抖音发布需要短信验证码",

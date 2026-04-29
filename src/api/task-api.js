@@ -1,9 +1,8 @@
-const { createApiClient } = require('./api-client.cjs')
+const { apiClient } = require('./api-client.cjs')
 const { unwrapApiResponse } = require('./model/response.js')
 
 // 创建发布记录
-async function createPublishTask(input, options = {}) {
-  const apiClient = createApiClient(options.token)
+async function createPublishTask(input) {
   const payload = await unwrapApiResponse(
     apiClient.post('/publish/tasks', input),
     'create publish task',
@@ -18,8 +17,7 @@ async function createPublishTask(input, options = {}) {
   }
 }
 
-async function updatePublishTask(taskId, input, options = {}) {
-  const apiClient = createApiClient(options.token)
+async function updatePublishTask(taskId, input) {
   return unwrapApiResponse(
     apiClient.put(`/publish/tasks/${taskId}`, input),
     'update publish task',
