@@ -32,3 +32,10 @@ export class PlatformManualVerificationError extends PlatformInfraError {
     this.name = "PlatformManualVerificationError";
   }
 }
+
+export class PlatformUserAbortedError extends PlatformInfraError {
+  constructor(message: string) {
+    super(message);
+    this.name = "PlatformUserAbortedError";
+  }
+}

@@ -1,4 +1,4 @@
-import type { PlatformTimeoutError } from "../errors";
+import { PlatformManualVerificationError, PlatformUserAbortedError } from "../errors.ts";
 
 export const MAX_UPLOAD_ATTEMPTS = 3;
 export const UPLOAD_ATTEMPT_TIMEOUT_MS = 90_000;
@@ -11,6 +11,10 @@ const CONTEXT_CLOSED_ERROR_MARKERS = [
   "context closed",
   "page has been closed",
   "page closed",
+  "页面已关闭",
+  "上传页面已关闭",
+  "发布页面已关闭",
+  "上传上下文已关闭",
 ] as const;
 
 export function isContextClosedError(error: unknown): boolean {
@@ -22,11 +26,14 @@ export function isContextClosedError(error: unknown): boolean {
 }
 
 export function normalizeUploadAttemptError(platformLabel: string, error: unknown): Error {
+  if (error instanceof PlatformUserAbortedError || error instanceof PlatformManualVerificationError) {
+    return error;
+  }
   if (error instanceof Error && (error.name === "TimeoutError" || /上传单轮超时|attempt timeout/i.test(error.message))) {
     return new Error(`${platformLabel} 上传单轮超时（>${UPLOAD_ATTEMPT_TIMEOUT_MS / 1000} 秒）`);
   }
   if (isContextClosedError(error)) {
-    return new Error(`${platformLabel} 上传上下文已关闭，已终止当前尝试`);
+    return new PlatformUserAbortedError(`${platformLabel} 上传窗口或页面已关闭，已终止发布`);
   }
   return error instanceof Error ? error : new Error(String(error));
 }
@@ -72,6 +79,9 @@ export async function withUploadRetry<T>(
       return await runner(attempt);
     } catch (error) {
       lastError = options.normalizeError ? options.normalizeError(error) : error;
+      if (lastError instanceof PlatformManualVerificationError) {
+        throw lastError;
+      }
     }
   }
 

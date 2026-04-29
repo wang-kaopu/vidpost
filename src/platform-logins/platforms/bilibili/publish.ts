@@ -147,6 +147,8 @@ type BilibiliUploadPayload = PlatformUploadPayload & {
 
 const BILIBILI_COVER_ENTRY_WAIT_TIMEOUT_MS = 20_000;
 const BILIBILI_COVER_ENTRY_POLL_INTERVAL_MS = 1_000;
+const BILIBILI_UPLOAD_ENTRY_WAIT_TIMEOUT_MS = 30_000;
+const BILIBILI_UPLOAD_ENTRY_POLL_INTERVAL_MS = 1_000;
 
 // 规范化上传参数并校验关键字段。
 function parseUploadPayload(payload: PlatformUploadPayload): BilibiliUploadPayload {
@@ -378,23 +380,31 @@ async function fillFirstVisible(page: Page, selectors: readonly string[], value:
 
 // 尽量把视频文件注入上传控件。
 async function attachVideoFile(page: Page, videoPath: string): Promise<void> {
-  const fileInput = await findFileInputAcrossScopes(page, BILIBILI_UPLOAD_FILE_INPUT_SELECTORS);
-  if (fileInput) {
-    await fileInput.setInputFiles(videoPath);
-    return;
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < BILIBILI_UPLOAD_ENTRY_WAIT_TIMEOUT_MS) {
+    const fileInput = await findFileInputAcrossScopes(page, BILIBILI_UPLOAD_FILE_INPUT_SELECTORS);
+    if (fileInput) {
+      await fileInput.setInputFiles(videoPath);
+      return;
+    }
+
+    const trigger = await findFirstVisible(page, BILIBILI_UPLOAD_TRIGGER_SELECTORS);
+    if (trigger) {
+      const chooserHandled = await pickFileWithChooser(page, async () => {
+        await trigger.click({ timeout: 5_000, force: true });
+      }, videoPath, 10_000);
+      if (chooserHandled) {
+        return;
+      }
+      throw new Error("Bilibili 视频文件选择器未能写入文件");
+    }
+
+    await dismissUploadPopups(page);
+    await page.waitForTimeout(BILIBILI_UPLOAD_ENTRY_POLL_INTERVAL_MS);
   }
 
-  const trigger = await findFirstVisible(page, BILIBILI_UPLOAD_TRIGGER_SELECTORS);
-  if (!trigger) {
-    throw new Error("未找到 Bilibili 上传视频入口");
-  }
-
-  const chooserHandled = await pickFileWithChooser(page, async () => {
-    await trigger.click({ timeout: 5_000, force: true });
-  }, videoPath, 10_000);
-  if (!chooserHandled) {
-    throw new Error("Bilibili 视频文件选择器未能写入文件");
-  }
+  throw new Error("未找到 Bilibili 上传视频入口");
 }
 
 // 清理 Bilibili 上传页上的弹层和通知。
@@ -709,10 +719,10 @@ async function uploadOnce(payload: BilibiliUploadPayload, attempt: number, maxAt
     console.info(`[bilibili:upload] 开始第 ${attempt}/${maxAttempts} 次尝试`);
     await openUploadPage(page);
     await dismissUploadPopups(page);
+    await waitForUploadSurface(page);
 
     await attachVideoFile(page, payload.videoPath);
     await dismissUploadPopups(page);
-    await waitForUploadSurface(page);
 
     await fillTitleAndDescription(page, payload.title, payload.description || payload.title);
     await setTags(page, payload.tags || []);
