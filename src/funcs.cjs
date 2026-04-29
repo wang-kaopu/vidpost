@@ -30,12 +30,12 @@ const { syncSohuNickname } = require('./platform-logins/platforms/sohu/nickname.
 
 // 引入HTTP请求API
 const { createPublishAccount, updatePublishAccount } = require('./api/account-api.js')
-const { createPublishTask } = require('./api/task-api.js')
-const { create } = require('axios')
+const { createPublishTask, updatePublishTask } = require('./api/task-api.js')
 
 const { createAcccountModel } = require('./api/model/account-model.js')
 const { createTaskModel } = require('./api/model/task-model.js')
 const { createAccountPageModel } = require('./page-model/account-page-model.cjs')
+const { createTaskPageModel } = require('./page-model/task-page-model.cjs')
 
 
 // 1. 登录入口
@@ -202,7 +202,7 @@ function resolveAccountFilePathByAccountUlid(accountUlid) {
 
 // 2.2 探活函数
 async function ping(event, account) {
-  const platform = getAccountPlatformKey(account)
+  const platform = account.platformKey || account.platform
   switch (platform) {
     case 'bilibili':
       return updateRemoteAccount(account, bilibiliCookieAuth)
@@ -219,27 +219,89 @@ async function ping(event, account) {
 }
 
 // 3. 发布入口
-function publish(event, payload) {
-  const { platform, accountUlid } = payload || {}
+// 3.1 发布并同步远端任务状态函数
+async function publishAndUpdateRemoteTask(payload, runUpload) {
   const normalizedPayload = { ...(payload || {}) }
+  let remoteTaskId = null
 
-  if (!normalizedPayload.accountFile && accountUlid) {
-    const [accountFile] = resolveAccountFilePathByAccountUlid(accountUlid)
+  if (!normalizedPayload.accountFile && normalizedPayload.accountUlid) {
+    const [accountFile] = resolveAccountFilePathByAccountUlid(normalizedPayload.accountUlid)
     normalizedPayload.accountFile = accountFile
   }
 
+  try {
+    const createResult = await createPublishTask({
+      account_id: normalizedPayload.accountId,
+      platform: normalizedPayload.platform,
+      title: normalizedPayload.title,
+      work_id: normalizedPayload.workId,
+      introduction: normalizedPayload.introduction,
+      cover_url: normalizedPayload.coverPath || normalizedPayload.coverUrl,
+      video_url: normalizedPayload.videoPath || normalizedPayload.videoUrl,
+      scheduled_at: normalizedPayload.scheduledAt === '0' ? null : normalizedPayload.scheduledAt,
+      video_type: normalizedPayload.videoType,
+      status: 'running',
+      attributes: {
+        account_ulid: normalizedPayload.accountUlid ?? null,
+        account_name: normalizedPayload.accountName ?? null,
+      },
+    })
+
+    remoteTaskId = createResult.remoteTaskId
+    const publishResult = await runUpload(normalizedPayload)
+    const link = publishResult.link
+
+    await updatePublishTask(remoteTaskId, {
+      status: 'success',
+      link: link || null,
+      attributes: {
+        publish_result: publishResult ?? null,
+      },
+    })
+
+    return createTaskPageModel({
+      id: remoteTaskId,
+      ulid: publishResult?.ulid ?? null,
+      platform: normalizedPayload.platform,
+      accountName: normalizedPayload.accountName ?? null,
+      accountId: normalizedPayload.accountId ?? null,
+      title: normalizedPayload.title ?? null,
+      status: 'success',
+      scheduledAt: normalizedPayload.scheduledAt ?? null,
+      link,
+    })
+  } catch (error) {
+    if (remoteTaskId) {
+      await updatePublishTask(remoteTaskId, {
+        status: 'failed',
+        attributes: {
+          error_message: error instanceof Error ? error.message : String(error),
+        },
+      }).catch((updateError) => {
+        console.error('更新远端发布任务失败状态失败:', updateError)
+      })
+    }
+
+    const message = error instanceof Error ? error.message : String(error)
+    throw new Error(`${normalizedPayload.platform} publish failed: ${message}`)
+  }
+}
+
+// 3.2 发布动作函数
+async function publish(event, payload) {
+  const { platform } = payload || {}
   switch (platform) {
     case 'bilibili':
-      return bilibiliUpload(normalizedPayload)
+      return publishAndUpdateRemoteTask(payload, bilibiliUpload)
     case 'douyin':
-      return douyinUpload(normalizedPayload)
+      return publishAndUpdateRemoteTask(payload, douyinUpload)
     case 'sohu':
-      return sohuUpload(normalizedPayload)
+      return publishAndUpdateRemoteTask(payload, sohuUpload)
     case 'baijiahao':
-      return baijiahaoUpload(normalizedPayload)
+      return publishAndUpdateRemoteTask(payload, baijiahaoUpload)
     default:
       console.log('unsupported platform:', platform)
-      return undefined
+      throw new Error(`unsupported platform: ${platform}`)
   }
 }
 

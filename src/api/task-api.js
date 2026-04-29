@@ -17,6 +17,15 @@ async function createPublishTask(input) {
   }
 }
 
+async function updatePublishTask(taskId, input) {
+  return unwrapApiResponse(
+    apiClient.put(`/publish/tasks/${taskId}`, input),
+    'update publish task',
+  )
+}
+
+
 module.exports = {
   createPublishTask,
+  updatePublishTask,
 }
