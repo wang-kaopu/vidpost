@@ -4,29 +4,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const { log } = require('node:console')
 
-// 引入登录函数
-const { runBaijiahaoLogin } = require('./platform-logins/platforms/baijiahao/login.ts')
-const { runBilibiliLogin } = require('./platform-logins/platforms/bilibili/login.ts')
-const { runDouyinLogin } = require('./platform-logins/platforms/douyin/login.ts')
-const { runSohuLogin } = require('./platform-logins/platforms/sohu/login.ts')
-
-// 引入探活函数
-const { cookieAuth: baijiahaoCookieAuth } = require('./platform-logins/platforms/baijiahao/cookie-auth.ts')
-const { cookieAuth: douyinCookieAuth } = require('./platform-logins/platforms/douyin/cookie-auth.ts')
-const { cookieAuth: bilibiliCookieAuth } = require('./platform-logins/platforms/bilibili/cookie-auth.ts')
-const { cookieAuth: sohuCookieAuth } = require('./platform-logins/platforms/sohu/cookie-auth.ts')
-
-// 引入发布函数
-const { upload: baijiahaoUpload } = require('./platform-logins/platforms/baijiahao/publish.ts')
-const { upload: douyinUpload } = require('./platform-logins/platforms/douyin/publish.ts')
-const { upload: bilibiliUpload } = require('./platform-logins/platforms/bilibili/publish.ts')
-const { upload: sohuUpload } = require('./platform-logins/platforms/sohu/publish.ts')
-
-// 引入昵称抓取函数
-const { syncBaijiahaoNickname } = require('./platform-logins/platforms/baijiahao/nickname.ts')
-const { syncDouyinNickname } = require('./platform-logins/platforms/douyin/nickname.ts')
-const { syncBilibiliNickname } = require('./platform-logins/platforms/bilibili/nickname.ts')
-const { syncSohuNickname } = require('./platform-logins/platforms/sohu/nickname.ts')
+const { platformRegistry } = require('./platformRegistry.cjs')
 
 // 引入HTTP请求API
 const { createPublishAccount, updatePublishAccount } = require('./api/account-api.js')
@@ -66,30 +44,6 @@ function finalizeAccountFile(accountFile, accountId, platform) {
   return targetFile
 }
 
-function getAccountTags(account) {
-  return Array.isArray(account?.tags) ? account.tags : []
-}
-
-function getAccountCreatedAt(account) {
-  if (typeof account?.created_at === 'string') {
-    return account.created_at
-  }
-  if (typeof account?.createdAt === 'string') {
-    return account.createdAt
-  }
-  return null
-}
-
-function getAccountUpdatedAt(account) {
-  if (typeof account?.updated_at === 'string') {
-    return account.updated_at
-  }
-  if (typeof account?.updatedAt === 'string') {
-    return account.updatedAt
-  }
-  return null
-}
-
 async function loginAndCreateRemoteAccount(platform, accountFile, parentWindow,
   runLogin, syncNickname) {
   try {
@@ -105,7 +59,7 @@ async function loginAndCreateRemoteAccount(platform, accountFile, parentWindow,
     const { remoteAccountId } = await createPublishAccount({
       nickname,
       platform,
-      status: 'login_success',
+      status: 'online',
     })
     const finalizedAccountFile = finalizeAccountFile(accountFile, remoteAccountId, platform)
     await updatePublishAccount(remoteAccountId, {
@@ -120,7 +74,7 @@ async function loginAndCreateRemoteAccount(platform, accountFile, parentWindow,
       id: remoteAccountId,
       nickname,
       platform,
-      status: 'login_success',
+      status: 'online',
       phoneNumber: null,
       tags: [],
       createdAt: null,
@@ -164,62 +118,21 @@ async function updateRemoteAccount(account, runCookieAuth) {
 //1.2 登录函数
 async function login(event, platform) {
   const parentWindow = BrowserWindow.fromWebContents(event.sender)
-  switch (platform) {
-    case 'bilibili': {
-      const accountFile = resolveDraftAccountFilePath('bilibili')
-      return loginAndCreateRemoteAccount(
-        'bilibili', accountFile, parentWindow,
-        runBilibiliLogin,
-        syncBilibiliNickname
-      )
-    }
-    case 'douyin': {
-      const accountFile = resolveDraftAccountFilePath('douyin')
-      return loginAndCreateRemoteAccount(
-        'douyin', accountFile, parentWindow,
-        runDouyinLogin,
-        syncDouyinNickname,
-      )
-    }
-    case 'sohu': {
-      const accountFile = resolveDraftAccountFilePath('sohu')
-      return loginAndCreateRemoteAccount(
-        'sohu', accountFile, parentWindow,
-        runSohuLogin,
-        syncSohuNickname,
-      )
-    }
-    case 'baijiahao': {
-      const accountFile = resolveDraftAccountFilePath('baijiahao')
-      return loginAndCreateRemoteAccount(
-        'baijiahao', accountFile, parentWindow,
-        runBaijiahaoLogin,
-        syncBaijiahaoNickname,
-      )
-    }
-    default:
-      console.log('unsupported platform:', platform)
-      return undefined
-  }
+  const accountFile = resolveDraftAccountFilePath(platform)
+  const { login, syncNickname } = platformRegistry[platform]
+  return loginAndCreateRemoteAccount(
+    platform, accountFile, parentWindow,
+    login,
+    syncNickname
+  )
 }
 
 // 2. 探活入口
 // 2.1 探活函数
 async function ping(event, account) {
   const platform = account?.platformKey || account?.platform
-  switch (platform) {
-    case 'bilibili':
-      return updateRemoteAccount(account, bilibiliCookieAuth)
-    case 'douyin':
-      return updateRemoteAccount(account, douyinCookieAuth)
-    case 'sohu':
-      return updateRemoteAccount(account, sohuCookieAuth)
-    case 'baijiahao':
-      return updateRemoteAccount(account, baijiahaoCookieAuth)
-    default:
-      console.log('unsupported platform:', platform)
-      throw new Error(`unsupported platform: ${platform}`)
-  }
+  const platformAbility = platformRegistry[platform]
+  return updateRemoteAccount(account, platformAbility?.ping)
 }
 
 // 3. 发布入口
@@ -292,19 +205,8 @@ async function publishAndUpdateRemoteTask(payload, runUpload) {
 // 3.2 发布动作函数
 async function publish(event, payload) {
   const { platform } = payload || {}
-  switch (platform) {
-    case 'bilibili':
-      return publishAndUpdateRemoteTask(payload, bilibiliUpload)
-    case 'douyin':
-      return publishAndUpdateRemoteTask(payload, douyinUpload)
-    case 'sohu':
-      return publishAndUpdateRemoteTask(payload, sohuUpload)
-    case 'baijiahao':
-      return publishAndUpdateRemoteTask(payload, baijiahaoUpload)
-    default:
-      console.log('unsupported platform:', platform)
-      throw new Error(`unsupported platform: ${platform}`)
-  }
+  const { upload } = platformRegistry[platform]
+  return publishAndUpdateRemoteTask(payload, upload)
 }
 
 module.exports = {
