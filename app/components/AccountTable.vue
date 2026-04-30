@@ -329,14 +329,10 @@ const createPlatformAccount = async (platform: PlatformOption) => {
   creatingPlatformKey.value = platform.key;
   platformErrorMessage.value = "";
   try {
-    if (!window.electronAPI?.startPlatformLogin) {
-      throw new Error("当前环境未注入 Electron 平台登录能力");
-    }
-    await window.electronAPI.startPlatformLogin({
-      platform: platform.key,
-      timeoutMs: 180_000,
-      token: getAccessToken(),
-    });
+    // if (!window.electronAPI?.login(platform.key)) {
+    //   throw new Error("当前环境未注入 Electron 平台登录能力");
+    // }
+    await window.electronAPI.login(platform.key);
     await loadAccounts();
     platformDialogVisible.value = false;
   } catch (error) {

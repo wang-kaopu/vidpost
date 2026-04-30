@@ -1,4 +1,4 @@
-<script setup>
+<!-- <script setup>
 import { onMounted, ref } from 'vue'
 import { registerSse } from './scripts/sse-register.js'
 
@@ -75,4 +75,4 @@ onMounted(() => {
   <br>
   
   <text>{{ notificationText }}</text>
-</template>
+</template> -->

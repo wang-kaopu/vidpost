@@ -73,19 +73,19 @@ const createWindow = () => {
   })
 
   // 注册事件，页面加载成功后将后门access_token写到localStorage（仅在用例时需要）
-  mainWindow.webContents.once('did-finish-load', async () => {
-    try {
-      await mainWindow.webContents.executeJavaScript(
-        `
-          window.localStorage.setItem('access_token', ${JSON.stringify(BACKDOOR_TOKEN)});
-        `,
-        true,
-      )
-      console.log('写入localStorage access_token 成功：', BACKDOOR_TOKEN)
-    } catch (error) {
-      console.error('写入localStorage access_token 失败：', error)
-    }
-  })
+  // mainWindow.webContents.once('did-finish-load', async () => {
+  //   try {
+  //     await mainWindow.webContents.executeJavaScript(
+  //       `
+  //         window.localStorage.setItem('access_token', ${JSON.stringify(BACKDOOR_TOKEN)});
+  //       `,
+  //       true,
+  //     )
+  //     console.log('写入localStorage access_token 成功：', BACKDOOR_TOKEN)
+  //   } catch (error) {
+  //     console.error('写入localStorage access_token 失败：', error)
+  //   }
+  // })
 
   // 加载页面URL
   mainWindow.loadURL(devServerUrl)

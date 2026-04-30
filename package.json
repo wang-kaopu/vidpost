@@ -4,8 +4,8 @@
   "description": "",
   "main": "main.cjs",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "cross-env ELECTRON_RUN_AS_NODE= electron ."
+    "test": "node --test",
+    "start": "node ./scripts/start-electron.cjs"
   },
   "keywords": [],
   "author": "",
@@ -15,7 +15,6 @@
     "onlyBuiltDependencies": ["electron"]
   },
   "devDependencies": {
-    "cross-env": "^10.1.0",
     "electron": "^41.3.0"
   },
   "dependencies": {
