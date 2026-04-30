@@ -236,7 +236,7 @@ async function fillFirstVisible(page: Page, selectors: readonly string[], value:
 
 // 尽量把视频文件注入上传控件。
 async function attachVideoFile(page: Page, videoPath: string): Promise<void> {
-  const fileInput = await findFileInput(page, BAIJIAHAO_UPLOAD_FILE_INPUT_SELECTORS);
+  const fileInput = await findFileInput(page, BAIJIAHAO_UPLOAD_FILE_INPUT_SELECTORS, undefined, "video");
   if (fileInput) {
     await fileInput.setInputFiles(videoPath);
     return;

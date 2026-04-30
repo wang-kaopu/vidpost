@@ -3,6 +3,7 @@ import type { ElementHandle, FileChooser, Frame, Locator, Page } from "playwrigh
 import { PlatformTimeoutError } from "../errors.ts";
 
 export const DEFAULT_POLL_INTERVAL_MS = 200;
+export type FileInputKind = "any" | "image" | "video";
 
 export const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -145,10 +146,28 @@ export async function domClickHandle(handle: ElementHandle): Promise<boolean> {
     .catch(() => false);
 }
 
+export function acceptMatchesKind(accept: string | null | undefined, kind: FileInputKind = "any"): boolean {
+  const normalizedAccept = String(accept || "").trim().toLowerCase();
+  if (!normalizedAccept || kind === "any") {
+    return true;
+  }
+
+  if (kind === "image") {
+    return /image|png|jpg|jpeg|gif|webp|bmp|heic|heif/i.test(normalizedAccept);
+  }
+
+  if (kind === "video") {
+    return /video|mp4|mov|mkv|avi|wmv|webm|m4v|mpeg|mpg|flv/i.test(normalizedAccept);
+  }
+
+  return true;
+}
+
 export async function findFileInput(
   page: Page,
   selectors: readonly string[],
   log?: (message: string) => void,
+  kind: FileInputKind = "any",
 ): Promise<Locator | null> {
   for (const selector of selectors) {
     const locator = page.locator(selector);
@@ -163,7 +182,7 @@ export async function findFileInput(
       if (String(type || "").toLowerCase() !== "file") {
         continue;
       }
-      if (!accept || /image|png|jpg|jpeg|gif/i.test(accept)) {
+      if (acceptMatchesKind(accept, kind)) {
         return candidate;
       }
     }
@@ -175,6 +194,7 @@ export async function findFileInputAcrossScopes(
   page: Page,
   selectors: readonly string[],
   log?: (message: string) => void,
+  kind: FileInputKind = "any",
 ): Promise<Locator | null> {
   for (const scope of listScopeCandidates(page)) {
     const scopeLabel = "url" in scope ? String(scope.url() || "") : "";
@@ -191,7 +211,7 @@ export async function findFileInputAcrossScopes(
         if (String(type || "").toLowerCase() !== "file") {
           continue;
         }
-        if (!accept || /image|png|jpg|jpeg|gif/i.test(accept)) {
+        if (acceptMatchesKind(accept, kind)) {
           return candidate;
         }
       }

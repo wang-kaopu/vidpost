@@ -276,7 +276,7 @@ async function ensureSecondaryCategory(page: Page): Promise<void> {
 }
 
 async function findCoverFileInput(page: Page): Promise<Locator | null> {
-  return findFileInput(page, SOHU_COVER_IMAGE_INPUT_SELECTORS, (message) => console.log(`[sohu:cover] ${message}`));
+  return findFileInput(page, SOHU_COVER_IMAGE_INPUT_SELECTORS, (message) => console.log(`[sohu:cover] ${message}`), "image");
 }
 
 async function triggerCoverUpload(page: Page): Promise<boolean> {

@@ -112,16 +112,26 @@ const BILIBILI_COVER_SYNC_NOW_SELECTORS = [
   "button:has-text('立即同步')",
 ];
 const BILIBILI_COVER_CONFIRM_SYNC_MODAL_SELECTORS = [
-  "div[role='dialog']:has-text('16:9')",
   "div[role='dialog']:has-text('确认同步')",
-  "div[role='dialog']:has-text('未修改')",
-  "div[class*='dialog']:has-text('16:9')",
-  "div[class*='modal']:has-text('16:9')",
+  "div[role='dialog']:has-text('同步')",
+  "div[class*='dialog']:has-text('确认同步')",
+  "div[class*='modal']:has-text('确认同步')",
+  "div[class*='dialog']:has-text('同步后')",
+  "div[class*='modal']:has-text('同步后')",
 ];
 const BILIBILI_COVER_CONFIRM_SYNC_BUTTON_SELECTORS = [
   "div[role='dialog'] button:has-text('确认同步')",
   "div[role='dialog'] span:has-text('确认同步')",
   "button:has-text('确认同步')",
+  "div[role='dialog'] button:has-text('立即同步')",
+  "div[role='dialog'] span:has-text('立即同步')",
+  "div[role='dialog'] button:has-text('确认')",
+  "div[role='dialog'] span:has-text('确认')",
+  "div[role='dialog'] button:has-text('确定')",
+  "div[role='dialog'] span:has-text('确定')",
+  "button:has-text('立即同步')",
+  "button:has-text('确认')",
+  "button:has-text('确定')",
 ];
 const BILIBILI_PUBLISH_BUTTON_SELECTORS = [
   "button:has-text('立即投稿')",
@@ -300,6 +310,14 @@ async function waitForCoverConfirmSyncModal(page: Page): Promise<Locator | null>
   return null;
 }
 
+function normalizeInlineText(value: string): string {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function looksLikeActionableCoverConfirmModal(text: string): boolean {
+  return /确认同步|同步后|将.*同步|是否同步|立即同步/.test(text);
+}
+
 async function openCoverEditor(page: Page): Promise<Locator> {
   const startedAt = Date.now();
   let lastError = "未找到封面设置入口";
@@ -345,6 +363,32 @@ async function clickFirstVisibleWithTrace(page: Page, selectors: readonly string
   return clicked;
 }
 
+async function clickFirstVisibleInRootWithTrace(root: Locator, selectors: readonly string[], label: string): Promise<boolean> {
+  for (const selector of selectors) {
+    const locator = root.locator(selector);
+    const count = await locator.count().catch(() => 0);
+    console.info(`[bilibili:upload] ${label} root probe selector=${selector} count=${count}`);
+    for (let index = 0; index < count; index += 1) {
+      const candidate = locator.nth(index);
+      const visible = await candidate.isVisible().catch(() => false);
+      const text = normalizeInlineText(await candidate.innerText().catch(() => "")).slice(0, 120);
+      const tag = await candidate.evaluate((node) => node.tagName).catch(() => "");
+      console.info(`[bilibili:upload] ${label} root candidate selector=${selector} index=${index} visible=${visible} tag=${tag} text=${text}`);
+      if (!visible) {
+        continue;
+      }
+      const clicked = await clickWithDomFallback(candidate, { timeoutMs: 5_000, force: true });
+      console.info(`[bilibili:upload] ${label} root click result=${clicked}`);
+      if (clicked) {
+        return true;
+      }
+    }
+  }
+
+  console.info(`[bilibili:upload] ${label} root no visible target`);
+  return false;
+}
+
 // 轻量点击首个可见元素。
 async function clickFirstVisible(page: Page, selectors: readonly string[]): Promise<boolean> {
   const locator = await findFirstVisible(page, selectors);
@@ -383,7 +427,7 @@ async function attachVideoFile(page: Page, videoPath: string): Promise<void> {
   const startedAt = Date.now();
 
   while (Date.now() - startedAt < BILIBILI_UPLOAD_ENTRY_WAIT_TIMEOUT_MS) {
-    const fileInput = await findFileInputAcrossScopes(page, BILIBILI_UPLOAD_FILE_INPUT_SELECTORS);
+    const fileInput = await findFileInputAcrossScopes(page, BILIBILI_UPLOAD_FILE_INPUT_SELECTORS, undefined, "video");
     if (fileInput) {
       await fileInput.setInputFiles(videoPath);
       return;
@@ -535,6 +579,7 @@ async function setThumbnail(page: Page, coverPath: string): Promise<void> {
       "input[type='file']",
     ],
     (message) => console.info(`[bilibili:upload] 封面 file input ${message}`),
+    "image",
   );
   if (fileInput) {
     console.info("[bilibili:upload] 命中封面 file input，直接写入文件");
@@ -559,6 +604,7 @@ async function setThumbnail(page: Page, coverPath: string): Promise<void> {
         "input[type='file']",
       ],
       (message) => console.info(`[bilibili:upload] 切换后封面 file input ${message}`),
+      "image",
     );
     if (fileInputAfterSwitch) {
       console.info("[bilibili:upload] 切换上传封面后命中 file input，直接写入文件");
@@ -592,8 +638,15 @@ async function setThumbnail(page: Page, coverPath: string): Promise<void> {
 
   const confirmSyncModal = await waitForCoverConfirmSyncModal(page);
   if (confirmSyncModal) {
-    if (!(await clickFirstVisibleWithTrace(page, BILIBILI_COVER_CONFIRM_SYNC_BUTTON_SELECTORS, "封面确认同步按钮"))) {
-      throw new Error("检测到封面同步确认弹层，但未找到确认同步按钮");
+    const modalText = normalizeInlineText(await confirmSyncModal.innerText().catch(() => ""));
+    const confirmClicked = await clickFirstVisibleInRootWithTrace(confirmSyncModal, BILIBILI_COVER_CONFIRM_SYNC_BUTTON_SELECTORS, "封面确认同步按钮");
+    if (!confirmClicked) {
+      if (looksLikeActionableCoverConfirmModal(modalText)) {
+        throw new Error(`检测到封面同步确认弹层，但未找到确认按钮: ${modalText.slice(0, 120)}`);
+      }
+      console.info(`[bilibili:upload] 封面同步确认弹层疑似误判，跳过 modalText=${modalText.slice(0, 160)}`);
+      await page.waitForTimeout(300);
+      return;
     }
     await page.waitForTimeout(500);
     if (!(await clickFirstVisibleWithTrace(page, BILIBILI_COVER_DONE_SELECTORS, "封面完成按钮(同步确认后)"))) {
@@ -719,9 +772,8 @@ async function uploadOnce(payload: BilibiliUploadPayload, attempt: number, maxAt
     console.info(`[bilibili:upload] 开始第 ${attempt}/${maxAttempts} 次尝试`);
     await openUploadPage(page);
     await dismissUploadPopups(page);
-    await waitForUploadSurface(page);
-
     await attachVideoFile(page, payload.videoPath);
+    await waitForUploadSurface(page);
     await dismissUploadPopups(page);
 
     await fillTitleAndDescription(page, payload.title, payload.description || payload.title);
