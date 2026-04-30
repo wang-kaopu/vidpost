@@ -22,14 +22,11 @@ const BAIJIAHAO_EDITOR_READY_SELECTORS = [
   "button:has-text('定时发布'):visible",
   "button:has-text('预计'):visible",
 ];
-const BAIJIAHAO_TITLE_SELECTORS = [
-  "#formMain textarea",
-  "#formMain input[placeholder*='标题']",
-  "textarea[placeholder*='标题']",
-  "input[placeholder*='标题']",
-  "input[type='text']",
-];
 const BAIJIAHAO_DESCRIPTION_SELECTORS = [
+  "#formMain .tags-container.videov2-title-wrap ._872ce91b1b159b92-editorArea",
+  "#formMain .tags-container.videov2-title-wrap div[class$='-editorArea']",
+  "#formMain .tags-container.videov2-title-wrap div[class*='editorArea']",
+  "#formMain .tags-container.videov2-title-wrap [contenteditable='true']",
   "#formMain [contenteditable='true']",
   "#formMain textarea",
   "textarea[placeholder*='简介']",
@@ -524,15 +521,79 @@ function parseScheduledDate(value: string): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-// 填充百家号编辑页中的标题与简介。
-async function fillTitleAndDescription(page: Page, title: string, description: string): Promise<void> {
-  if (!(await fillFirstVisible(page, BAIJIAHAO_TITLE_SELECTORS, title.slice(0, 80)))) {
-    throw new Error("未找到百家号标题输入框");
+export function buildBaijiahaoDescriptionValue(title: string, description: string): string {
+  const normalizedTitle = String(title || "").trim();
+  const normalizedDescription = String(description || "").trim();
+
+  if (!normalizedTitle) {
+    return normalizedDescription;
+  }
+  if (!normalizedDescription) {
+    return normalizedTitle;
+  }
+  if (normalizedDescription === normalizedTitle) {
+    return normalizedTitle;
   }
 
-  if (description.trim()) {
-    await fillFirstVisible(page, BAIJIAHAO_DESCRIPTION_SELECTORS, description);
+  return `${normalizedTitle}\n\n${normalizedDescription}`;
+}
+
+async function setBaijiahaoDescriptionContent(page: Page, selectors: readonly string[], value: string): Promise<boolean> {
+  const locator = await findFirstVisible(page, selectors);
+  if (!locator) {
+    return false;
   }
+
+  await locator.scrollIntoViewIfNeeded().catch(() => undefined);
+  await locator.click({ timeout: 5_000, force: true }).catch(() => undefined);
+
+  return locator.evaluate((node, nextValue) => {
+    const value = String(nextValue ?? "");
+    const setWithEvents = (target: HTMLElement) => {
+      target.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: value }));
+      target.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+
+    if (node instanceof HTMLTextAreaElement || node instanceof HTMLInputElement) {
+      node.focus();
+      node.value = value;
+      setWithEvents(node);
+      return true;
+    }
+
+    if (node instanceof HTMLElement) {
+      node.focus();
+      const doc = node.ownerDocument;
+      node.replaceChildren();
+
+      const lines = value.split("\n");
+      lines.forEach((line, index) => {
+        if (index > 0) {
+          node.append(doc.createElement("br"));
+        }
+        node.append(doc.createTextNode(line));
+      });
+
+      setWithEvents(node);
+      return true;
+    }
+
+    return false;
+  }, value).catch(() => false);
+}
+
+// 填充百家号编辑页中的标题与简介。
+async function fillTitleAndDescription(page: Page, title: string, description: string): Promise<void> {
+  const descriptionValue = buildBaijiahaoDescriptionValue(title, description);
+  if (!descriptionValue.trim()) {
+    return;
+  }
+
+  if (await setBaijiahaoDescriptionContent(page, BAIJIAHAO_DESCRIPTION_SELECTORS, descriptionValue)) {
+    return;
+  }
+
+  throw new Error("未找到百家号作品描述输入区");
 }
 
 // 设置百家号封面，找不到可用控件时直接跳过。
