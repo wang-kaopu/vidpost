@@ -63,7 +63,11 @@ const createWindow = () => {
   // 创建浏览器窗口
   mainWindow = new BrowserWindow({
     width: 940,
+<<<<<<< Updated upstream
     height: 630,
+=======
+    height: 680,
+>>>>>>> Stashed changes
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs')
     }

@@ -12,6 +12,7 @@ import { mockWorks } from "@/mock";
 import PlatformPickerDialog from "./PlatformPickerDialog.vue";
 import PublishPlanDialog from "./PublishPlanDialog.vue";
 import type { AccountItem, WorkItem } from "@/types";
+import { Item } from "ant-design-vue/es/menu";
 
 type SelectedWorkRow = {
   id: string;
@@ -315,12 +316,35 @@ const handlePublishPlanConfirm = async (): Promise<void> => {
           throw new Error(`作品 ${row.workId} 缺少发布详情`);
         }
 
+<<<<<<< Updated upstream
+        return {
+          accountId: row.accountId,
+          workId: row.workId,
         await createPublishTask({
           account_id: row.accountId,
           platform: row.platformKey,
           title: row.title,
           work_id: row.workId,
           introduction: row.summary,
+          coverPath: workPayload.coverPath,
+          videoType: workPayload.videoType || group.platform,
+          videoPath: workPayload.videoPath,
+          scheduledAt: row.scheduledAt,
+        };
+=======
+        window.electronAPI?.publish({
+          accountId: row.accountId,
+          platform: row.platformKey,
+          title: row.title,
+          workId: row.workId,
+          introduction: row.summary,
+          coverUrl: row.coverUrl,
+          videoUrl: workPayload.videoPath,
+          scheduledAt: row.scheduledAt,
+          videoType: workPayload.videoType,
+          accountName: row.accountName,
+        })
+>>>>>>> Stashed changes
           cover_url: workPayload.coverPath,
           video_url: workPayload.videoPath,
           video_type: workPayload.videoType || group.platform,
@@ -553,17 +577,9 @@ onBeforeUnmount(() => {
     <!-- 作品列表 -->
     <div class="works-content">
       <div class="waterfall-container">
-        <div
-          v-for="(column, colIndex) in waterfallColumns"
-          :key="colIndex"
-          class="waterfall-column"
-        >
-          <div
-            v-for="item in column"
-            :key="item.id"
-            class="work-card"
-            :class="{ 'is-selected': selectedWorkIds.has(item.id) }"
-          >
+        <div v-for="(column, colIndex) in waterfallColumns" :key="colIndex" class="waterfall-column">
+          <div v-for="item in column" :key="item.id" class="work-card"
+            :class="{ 'is-selected': selectedWorkIds.has(item.id) }">
             <div class="work-cover" :class="item.orientation" @click="playVideo(item)">
               <template v-if="item.status === '已完成'">
                 <img :src="getCoverUrl(item)" :alt="item.title" />
@@ -575,7 +591,8 @@ onBeforeUnmount(() => {
 
             <div class="work-card-body">
               <div class="work-card-status">
-                <span :class="['status-tag', item.status === '已完成' ? 'completed' : item.status === '生成中' ? 'processing' : 'failed']">
+                <span
+                  :class="['status-tag', item.status === '已完成' ? 'completed' : item.status === '生成中' ? 'processing' : 'failed']">
                   {{ item.status }}
                 </span>
               </div>
@@ -583,11 +600,7 @@ onBeforeUnmount(() => {
               <div class="work-card-meta">
                 <p class="work-card-time">{{ formatTime(item.updatedAt) }}</p>
                 <div v-if="item.status === '已完成'" class="work-card-check" @click.stop>
-                  <input
-                    type="checkbox"
-                    :checked="selectedWorkIds.has(item.id)"
-                    @change="toggleSelect(item.id)"
-                  />
+                  <input type="checkbox" :checked="selectedWorkIds.has(item.id)" @change="toggleSelect(item.id)" />
                 </div>
               </div>
             </div>
@@ -609,11 +622,7 @@ onBeforeUnmount(() => {
     </div>
 
     <!-- 分页加载状态 -->
-    <div
-      v-else-if="!appConfig.isMockMode && worksList.length > 0"
-      ref="sentinelRef"
-      class="load-status"
-    >
+    <div v-else-if="!appConfig.isMockMode && worksList.length > 0" ref="sentinelRef" class="load-status">
       <span v-if="loadingMore">加载中...</span>
       <span v-else-if="loadError">{{ loadError }}</span>
       <span v-else-if="isEnd" class="no-more">没有更多了</span>
@@ -632,7 +641,8 @@ onBeforeUnmount(() => {
     <div v-if="hasSelected" class="batch-action-bar">
       <div class="batch-info">
         已选择 <span class="batch-count">{{ selectedWorkIds.size }}</span> 个作品
-        <span v-if="publishPlatformAccountSummary" style="margin-left: 12px; color: #2f7ce8;">{{ publishPlatformAccountSummary }}</span>
+        <span v-if="publishPlatformAccountSummary" style="margin-left: 12px; color: #2f7ce8;">{{
+          publishPlatformAccountSummary }}</span>
       </div>
       <button type="button" class="batch-btn" @click="openPublishPlatformAccountDialog">
         创建发布计划
@@ -640,38 +650,19 @@ onBeforeUnmount(() => {
     </div>
   </transition>
 
-  <PlatformPickerDialog
-    :visible="publishPlatformAccountDialogVisible"
-    title="选择发布平台账号"
-    :description="`已选中 ${selectedCount} 个视频`"
-    :platforms="[]"
-    :loading="publishPlatformAccountLoading"
-    :error-message="publishPlatformAccountErrorMessage"
-    empty-message="暂无可用发布平台账号"
-    layout="table"
-    :table-rows="selectedWorks"
-    :table-account-options="selectedLoginSuccessPublishAccounts"
-    v-model:tableRowAccountSelections="publishWorkAccountSelections"
-    v-model:activeTableRowId="activePublishWorkRowId"
-    selection-mode="multiple"
-    confirm-label="下一步"
-    @close="closePublishPlatformAccountDialog"
-    @confirm-table="handlePublishPlatformAccountConfirm"
-    :selected-platform-keys="[]"
-  />
+  <PlatformPickerDialog :visible="publishPlatformAccountDialogVisible" title="选择发布平台账号"
+    :description="`已选中 ${selectedCount} 个视频`" :platforms="[]" :loading="publishPlatformAccountLoading"
+    :error-message="publishPlatformAccountErrorMessage" empty-message="暂无可用发布平台账号" layout="table"
+    :table-rows="selectedWorks" :table-account-options="selectedLoginSuccessPublishAccounts"
+    v-model:tableRowAccountSelections="publishWorkAccountSelections" v-model:activeTableRowId="activePublishWorkRowId"
+    selection-mode="multiple" confirm-label="下一步" @close="closePublishPlatformAccountDialog"
+    @confirm-table="handlePublishPlatformAccountConfirm" :selected-platform-keys="[]" />
 
-  <PublishPlanDialog
-    :visible="publishPlanDialogVisible"
+  <PublishPlanDialog :visible="publishPlanDialogVisible"
     :description="`已选中 ${selectedCount} 个视频，覆盖 ${publishPlanGroups.length} 个发布平台，共 ${publishPlanCount} 条计划`"
-    :error-message="publishPlanErrorMessage"
-    :submitting="publishPlanSubmitting"
-    :groups="publishPlanGroups"
-    @close="closePublishPlanDialog"
-    @remove="handlePublishPlanRemove"
-    @update-row-field="handlePublishPlanFieldUpdate"
-    @apply-all="handlePublishPlanApplyAll"
-    @confirm="handlePublishPlanConfirm"
-  />
+    :error-message="publishPlanErrorMessage" :submitting="publishPlanSubmitting" :groups="publishPlanGroups"
+    @close="closePublishPlanDialog" @remove="handlePublishPlanRemove" @update-row-field="handlePublishPlanFieldUpdate"
+    @apply-all="handlePublishPlanApplyAll" @confirm="handlePublishPlanConfirm" />
 
   <!-- 视频预览 -->
   <div v-if="previewVisible" class="video-preview-mask" @click.self="closePreview">
@@ -682,7 +673,8 @@ onBeforeUnmount(() => {
       </div>
       <div class="video-preview-body">
         <div v-if="previewLoading" class="video-preview-loading">加载中...</div>
-        <video v-else-if="previewVideoUrl" :src="previewVideoUrl" controls autoplay style="width: 100%; max-height: 70vh; display: block;"></video>
+        <video v-else-if="previewVideoUrl" :src="previewVideoUrl" controls autoplay
+          style="width: 100%; max-height: 70vh; display: block;"></video>
       </div>
     </div>
   </div>
