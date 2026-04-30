@@ -275,3 +275,53 @@ export async function deleteAccountTag(accountId: string | number, tag: string):
     throw new Error(payload.message || "删除账号标签失败");
   }
 }
+
+function getDispositionFilename(header: string | null): string | null {
+  if (!header) return null;
+  const match = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/.exec(header);
+  return match ? match[1].replace(/['"]/g, "").trim() : null;
+}
+
+export async function exportPublishTasks(options?: {
+  status?: string | string[];
+  accountId?: string | string[];
+  platform?: string | string[];
+  title?: string;
+  type?: string | string[];
+  startDate?: string;
+  endDate?: string;
+  ids?: (string | number)[];
+}): Promise<{ blob: Blob; filename?: string }> {
+  const searchParams = new URLSearchParams();
+  if (options?.status !== undefined) {
+    const values = Array.isArray(options.status) ? options.status : [options.status];
+    values.forEach((v) => searchParams.append("status", v));
+  }
+  if (options?.accountId !== undefined) {
+    const values = Array.isArray(options.accountId) ? options.accountId : [options.accountId];
+    values.forEach((v) => searchParams.append("account_id", v));
+  }
+  if (options?.platform !== undefined) {
+    const values = Array.isArray(options.platform) ? options.platform : [options.platform];
+    values.forEach((v) => searchParams.append("platform", v));
+  }
+  if (options?.title) searchParams.set("title", options.title);
+  if (options?.type !== undefined) {
+    const values = Array.isArray(options.type) ? options.type : [options.type];
+    values.forEach((v) => searchParams.append("type", v));
+  }
+  if (options?.startDate) searchParams.set("start_date", options.startDate);
+  if (options?.endDate) searchParams.set("end_date", options.endDate);
+  if (options?.ids !== undefined) {
+    options.ids.forEach((id) => searchParams.append("ids", String(id)));
+  }
+
+  const url = buildWorksApiUrl(`/publish/tasks/export?${searchParams.toString()}`);
+  const response = await fetch(url, { headers: getWorksAuthHeaders() });
+  if (!response.ok) {
+    throw new Error(`导出发布任务请求失败: HTTP ${response.status}`);
+  }
+  const blob = await response.blob();
+  const filename = getDispositionFilename(response.headers.get("content-disposition")) || undefined;
+  return { blob, filename };
+}

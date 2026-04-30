@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import AppIcon from "./AppIcon.vue";
 import PlatformLogo from "./PlatformLogo.vue";
-import { getPublishPlatforms, getPublishTasks, deletePublishTask } from "@/api/publish";
+import { getPublishPlatforms, getPublishTasks, deletePublishTask, exportPublishTasks } from "@/api/publish";
 import type { PublishTask, BackendPlatform } from "@/api/publish";
 
 // declare global {
@@ -14,6 +14,7 @@ import type { PublishTask, BackendPlatform } from "@/api/publish";
 // }
 
 const loading = ref(false);
+const exporting = ref(false);
 const errorMessage = ref("");
 const records = ref<PublishTask[]>([]);
 const selectedIds = ref<Set<number>>(new Set());
@@ -172,6 +173,36 @@ const handleDelete = async (item: PublishTask) => {
   }
 };
 
+const handleExport = async () => {
+  if (exporting.value) return;
+  exporting.value = true;
+  errorMessage.value = "";
+  try {
+    const ids = selectedIds.value.size > 0 ? Array.from(selectedIds.value) : undefined;
+    const { blob, filename } = await exportPublishTasks({
+      title: titleFilter.value.trim() || undefined,
+      platform: platformFilter.value || undefined,
+      type: categoryFilter.value || undefined,
+      startDate: scheduledStart.value || undefined,
+      endDate: scheduledEnd.value || undefined,
+      ids,
+    });
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename || "发布记录.xlsx";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : "导出失败";
+  } finally {
+    exporting.value = false;
+  }
+};
+
 onMounted(() => {
   void loadPlatforms();
   void loadRecords();
@@ -181,22 +212,20 @@ onMounted(() => {
 
 <template>
   <section class="panel-card history-card">
-    <!-- 蓝色 Header 卡片 -->
-    <div class="records-header-card">
-      <div class="records-header-left">
+    <header class="panel-header">
+      <div>
         <h2>发布记录汇总</h2>
-        <p>GEO List of Content Records</p>
       </div>
-      <div class="records-header-actions">
-        <button class="ghost-button compact" type="button" disabled>
-          <span>导出发布记录</span>
+      <div class="panel-actions">
+        <button class="ghost-button compact" type="button" :disabled="exporting || !items.length" @click="handleExport">
+          <span>{{ exporting ? "导出中..." : "导出发布记录" }}</span>
         </button>
         <button class="blue-button" type="button">
           <AppIcon name="plus" :size="16" />
           <span>新建发布</span>
         </button>
       </div>
-    </div>
+    </header>
 
     <div class="filter-section">
       <div class="filter-item">

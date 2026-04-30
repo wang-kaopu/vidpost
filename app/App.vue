@@ -5,7 +5,7 @@ import PublishVerificationDialog from "./components/PublishVerificationDialog.vu
 import SidebarNav from "./components/SidebarNav.vue";
 import AccountTable from "./components/AccountTable.vue";
 import RecordsTable from "./components/RecordsTable.vue";
-import WorksPlaceholder from "./components/WorksPlaceholder.vue";
+// import WorksPlaceholder from "./components/WorksPlaceholder.vue";
 import { cancelManualVerification, fetchPendingManualVerifications, submitManualVerificationCode } from "./api/subtasks";
 import { fetchUserProfile, loginByPhone, logout as apiLogout, refreshToken } from "./api/auth";
 import { clearSessionTokens, getAccessToken, getRefreshToken, setAccessToken, setRefreshToken } from "./config";
@@ -32,7 +32,7 @@ const currentView = computed(() => {
   if (activeMenu.value === "works2") {
     return Work;
   }
-  return WorksPlaceholder;
+  // return WorksPlaceholder;
 });
 
 const loadUserProfile = async () => {
