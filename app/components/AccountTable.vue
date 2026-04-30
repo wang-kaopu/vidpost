@@ -11,35 +11,35 @@ import {
   deleteAccountTag,
   normalizePublishAccount,
 } from "@/api/publish";
-import { pingAccount, removeAccount, updateAccount } from "@/api/accounts";
+import { removeAccount, updateAccount } from "@/api/accounts";
 import type { PublishAccountItem, PlatformOption, BackendPlatform } from "@/api/publish";
 import { getAccessToken } from "@/config";
 
-declare global {
-  interface Window {
-    electronAPI?: {
-      openExternal: (url: string) => Promise<void>;
-      startPlatformLogin: (payload: {
-        platform: string;
-        timeoutMs?: number;
-        token?: string;
-      }) => Promise<{
-        draft: { draft_id: string; status: string };
-        account: {
-          id: string;
-          ulid: string;
-          nickname: string;
-          platform: string;
-          status: string;
-          phoneNumber: string;
-          tags: string[];
-          createdAt: string;
-          updatedAt: string;
-        };
-      }>;
-    };
-  }
-}
+// declare global {
+//   interface Window {
+//     electronAPI?: {
+//       openExternal: (url: string) => Promise<void>;
+//       startPlatformLogin: (payload: {
+//         platform: string;
+//         timeoutMs?: number;
+//         token?: string;
+//       }) => Promise<{
+//         draft: { draft_id: string; status: string };
+//         account: {
+//           id: string;
+//           ulid: string;
+//           nickname: string;
+//           platform: string;
+//           status: string;
+//           phoneNumber: string;
+//           tags: string[];
+//           createdAt: string;
+//           updatedAt: string;
+//         };
+//       }>;
+//     };
+//   }
+// }
 
 const loading = ref(false);
 const errorMessage = ref("");
@@ -272,7 +272,7 @@ const handlePingAccount = async (item: PublishAccountItem) => {
   pingingAccountId.value = item.id;
   errorMessage.value = "";
   try {
-    await pingAccount(item.id);
+    await window.electronAPI?.ping({id: item.id, platform: item.platformKey});
     await loadAccounts();
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : "账号检测失败";
