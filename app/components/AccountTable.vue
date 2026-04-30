@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import AppIcon from "./AppIcon.vue";
 import PlatformLogo from "./PlatformLogo.vue";
 import PlatformPickerDialog from "./PlatformPickerDialog.vue";
@@ -13,7 +13,6 @@ import {
 } from "@/api/publish";
 import { removeAccount, updateAccount } from "@/api/accounts";
 import type { PublishAccountItem, PlatformOption, BackendPlatform } from "@/api/publish";
-import { getAccessToken } from "@/config";
 
 // declare global {
 //   interface Window {
@@ -53,7 +52,7 @@ const filterStatus = ref("");
 
 const platformOptions = ref<PlatformOption[]>([]);
 const tagOptions = ref<string[]>([]);
-const statusOptions = ref<string[]>(["online", "success", "offline"]);
+const statusOptions = ref<string[]>(["online", "offline"]);
 
 const page = ref(1);
 const pageSize = ref(10);
@@ -65,19 +64,15 @@ const platforms = ref<PlatformOption[]>([]);
 const selectedPlatformKeys = ref<string[]>([]);
 const creatingPlatformKey = ref("");
 
-const editingAccountId = ref("");
-const draftNickname = ref("");
-const nicknameInputRef = ref<HTMLInputElement | null>(null);
-
 const tagDialogVisible = ref(false);
 const tagDialogTarget = ref<PublishAccountItem | null>(null);
 const tagDialogDraft = ref("");
 const tagDialogLoading = ref(false);
 const tagDialogError = ref("");
 
-const savingAccountId = ref("");
 const deletingAccountId = ref("");
 const pingingAccountId = ref("");
+const pingingAll = ref(false);
 
 const statusLabelMap: Record<string, string> = {
   online: "在线",
@@ -189,35 +184,52 @@ const handlePageChange = (newPage: number) => {
   page.value = newPage;
 };
 
-const isEditing = (item: PublishAccountItem) => editingAccountId.value === item.id;
+const renameDialogVisible = ref(false);
+const renameDialogTarget = ref<PublishAccountItem | null>(null);
+const renameDialogDraft = ref("");
+const renameDialogLoading = ref(false);
+const renameDialogError = ref("");
 
-const beginEdit = (item: PublishAccountItem) => {
-  if (editingAccountId.value && editingAccountId.value !== item.id) return;
-  editingAccountId.value = item.id;
-  draftNickname.value = item.nickname;
-  void nextTick(() => nicknameInputRef.value?.focus());
+const openRenameDialog = (item: PublishAccountItem) => {
+  renameDialogTarget.value = item;
+  renameDialogDraft.value = item.nickname;
+  renameDialogError.value = "";
+  renameDialogLoading.value = false;
+  renameDialogVisible.value = true;
 };
 
-const cancelEdit = () => {
-  editingAccountId.value = "";
-  draftNickname.value = "";
+const closeRenameDialog = () => {
+  renameDialogVisible.value = false;
+  renameDialogTarget.value = null;
+  renameDialogDraft.value = "";
+  renameDialogError.value = "";
+  renameDialogLoading.value = false;
 };
 
-const handleSaveNickname = async (item: PublishAccountItem) => {
-  const next = draftNickname.value.trim();
+const confirmRenameDialog = async () => {
+  const item = renameDialogTarget.value;
+  if (!item) return;
+  const next = renameDialogDraft.value.trim();
   if (!next || next === item.nickname) {
-    cancelEdit();
+    closeRenameDialog();
     return;
   }
-  savingAccountId.value = item.id;
+  renameDialogLoading.value = true;
+  renameDialogError.value = "";
   try {
     await updateAccount(item.id, { nickname: next });
     item.nickname = next;
-    cancelEdit();
+    closeRenameDialog();
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : "重命名失败";
+    const msg = error instanceof Error ? error.message : "重命名失败";
+    if (msg.toLowerCase() === "success") {
+      item.nickname = next;
+      closeRenameDialog();
+    } else {
+      renameDialogError.value = msg;
+    }
   } finally {
-    savingAccountId.value = "";
+    renameDialogLoading.value = false;
   }
 };
 
@@ -268,7 +280,7 @@ const handleDeleteTag = async (item: PublishAccountItem, tag: string) => {
 };
 
 const handlePingAccount = async (item: PublishAccountItem) => {
-  if (editingAccountId.value || savingAccountId.value || deletingAccountId.value || pingingAccountId.value) return;
+  if (renameDialogLoading.value || deletingAccountId.value || pingingAccountId.value) return;
   pingingAccountId.value = item.id;
   errorMessage.value = "";
   try {
@@ -281,8 +293,16 @@ const handlePingAccount = async (item: PublishAccountItem) => {
   }
 };
 
+const handlePingAllAccounts = async () => {
+  if (pingingAll.value) return;
+  pingingAll.value = true;
+  errorMessage.value = "";
+  await loadAccounts();
+  pingingAll.value = false;
+};
+
 const handleDeleteAccount = async (item: PublishAccountItem) => {
-  if (editingAccountId.value || savingAccountId.value || deletingAccountId.value || pingingAccountId.value) return;
+  if (renameDialogLoading.value || deletingAccountId.value || pingingAccountId.value) return;
   if (!window.confirm(`确认删除账号"${item.nickname}"吗？`)) return;
   deletingAccountId.value = item.id;
   errorMessage.value = "";
@@ -357,6 +377,10 @@ onMounted(() => {
         <!-- <p>管理并监控所有社交平台的账号同步状态与访问凭证</p> -->
       </div>
       <div class="panel-actions">
+        <button class="green-button" type="button" :disabled="pingingAll" @click="handlePingAllAccounts">
+          <AppIcon name="refresh" :size="18" />
+          <span>{{ pingingAll ? "检测中..." : "检测全部账号" }}</span>
+        </button>
         <button class="blue-button" type="button" @click="openPlatformDialog">
           <AppIcon name="plus" :size="18" />
           <span>新增账号</span>
@@ -443,19 +467,7 @@ onMounted(() => {
               <PlatformLogo :platform="item.platform" />
             </div>
           </td>
-          <td>
-            <input
-              v-if="isEditing(item)"
-              ref="nicknameInputRef"
-              v-model="draftNickname"
-              class="account-edit-input"
-              type="text"
-              @blur="handleSaveNickname(item)"
-              @keydown.enter="handleSaveNickname(item)"
-              @keydown.esc="cancelEdit"
-            />
-            <span v-else>{{ item.nickname }}</span>
-          </td>
+          <td>{{ item.nickname }}</td>
           <td>{{ item.id }}</td>
           <td>{{ item.remarkName }}</td>
           <td>{{ item.phoneNumber }}</td>
@@ -482,14 +494,14 @@ onMounted(() => {
             <div class="table-links">
               <button
                 type="button"
-                :disabled="Boolean(editingAccountId && !isEditing(item))"
-                @click="beginEdit(item)"
+                :disabled="Boolean(renameDialogLoading || deletingAccountId || pingingAccountId)"
+                @click="openRenameDialog(item)"
               >
-                {{ isEditing(item) ? (savingAccountId === item.id ? "保存中..." : "保存") : "重命名" }}
+                重命名
               </button>
               <button
                 type="button"
-                :disabled="Boolean(editingAccountId || savingAccountId || deletingAccountId || pingingAccountId)"
+                :disabled="Boolean(renameDialogLoading || deletingAccountId || pingingAccountId)"
                 @click="handlePingAccount(item)"
               >
                 {{ pingingAccountId === item.id ? "检测中..." : "检测" }}
@@ -497,7 +509,7 @@ onMounted(() => {
               <button
                 type="button"
                 class="danger-text"
-                :disabled="Boolean(editingAccountId || savingAccountId || deletingAccountId || pingingAccountId)"
+                :disabled="Boolean(renameDialogLoading || deletingAccountId || pingingAccountId)"
                 @click="handleDeleteAccount(item)"
               >
                 <AppIcon name="trash" :size="16" />
@@ -574,6 +586,42 @@ onMounted(() => {
               @click="confirmTagDialog"
             >
               {{ tagDialogLoading ? "提交中..." : "确认" }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </teleport>
+
+    <teleport to="body">
+      <div v-if="renameDialogVisible" class="platform-dialog-mask" @click.self="closeRenameDialog">
+        <div class="tag-dialog">
+          <div class="tag-dialog-header">
+            <h3>重命名</h3>
+            <button type="button" class="platform-dialog-close" @click="closeRenameDialog">×</button>
+          </div>
+          <div class="tag-dialog-body">
+            <div class="tag-dialog-field">
+              <input
+                v-model="renameDialogDraft"
+                type="text"
+                placeholder="请输入新的昵称"
+                maxlength="30"
+                :disabled="renameDialogLoading"
+                @keydown.enter="confirmRenameDialog"
+              />
+              <div class="tag-dialog-char-count">{{ renameDialogDraft.length }} / 30</div>
+            </div>
+            <div v-if="renameDialogError" class="tag-dialog-error">{{ renameDialogError }}</div>
+          </div>
+          <div class="tag-dialog-footer">
+            <button type="button" class="ghost-button" :disabled="renameDialogLoading" @click="closeRenameDialog">取消</button>
+            <button
+              type="button"
+              class="blue-button"
+              :disabled="!renameDialogDraft.trim() || renameDialogLoading"
+              @click="confirmRenameDialog"
+            >
+              {{ renameDialogLoading ? "提交中..." : "确认" }}
             </button>
           </div>
         </div>

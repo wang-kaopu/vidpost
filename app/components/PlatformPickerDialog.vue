@@ -75,7 +75,7 @@ const canConfirm = computed(
       : props.selectionMode === "multiple" && !props.loading && props.selectedPlatformKeys.length > 0,
 );
 const loginSuccessTableAccountOptions = computed(() =>
-  props.tableAccountOptions.filter((account) => account.rawStatus === "login_success"),
+  props.tableAccountOptions.filter((account) => account.rawStatus === "login_success" || account.rawStatus === "online"),
 );
 
 const isSelected = (platformKey: string) => selectedSet.value.has(platformKey);

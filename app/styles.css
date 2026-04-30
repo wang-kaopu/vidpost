@@ -128,6 +128,7 @@ button {
 .ghost-button,
 .primary-login,
 .blue-button,
+.green-button,
 .profile-logout,
 .open-link {
   transition:
@@ -139,6 +140,7 @@ button {
 .ghost-button:hover,
 .primary-login:hover,
 .blue-button:hover,
+.green-button:hover,
 .profile-logout:hover,
 .open-link:hover {
   transform: translateY(-1px);
@@ -527,6 +529,24 @@ button {
   background: linear-gradient(135deg, #4d9cff, #2d79dd);
   color: #fff;
   box-shadow: 0 12px 24px rgba(77, 156, 255, 0.24);
+}
+
+.green-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 52px;
+  padding: 0 18px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #4caf50, #2e7d32);
+  color: #fff;
+  box-shadow: 0 12px 24px rgba(76, 175, 80, 0.24);
+}
+
+.green-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+  transform: none;
 }
 
 .data-table {

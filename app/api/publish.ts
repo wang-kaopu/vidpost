@@ -156,6 +156,40 @@ export async function getPublishTasks(options?: {
   return assertSuccess(payload, "发布任务列表响应格式无效");
 }
 
+export async function createPublishTask(payload: {
+  account_id: string | number;
+  platform: string;
+  title?: string | null;
+  work_id?: string | number | null;
+  introduction?: string | null;
+  cover_url?: string | null;
+  video_url?: string | null;
+  scheduled_at?: string | null;
+  link?: string | null;
+  video_type?: string | null;
+  status?: string | null;
+  attributes?: unknown;
+}): Promise<{ taskId: string | number }> {
+  const url = buildWorksApiUrl("/publish/tasks");
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      ...(getWorksAuthHeaders() || {}),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    throw new Error(`创建发布任务请求失败: HTTP ${response.status}`);
+  }
+  const result = (await response.json()) as ApiEnvelope<{ task_id?: number | string | null }>;
+  const data = assertSuccess(result, "创建发布任务响应格式无效");
+  if (data.task_id == null) {
+    throw new Error(result.message || "创建发布任务响应缺少 task_id");
+  }
+  return { taskId: data.task_id };
+}
+
 export async function deletePublishTask(taskId: string | number): Promise<void> {
   const url = buildWorksApiUrl(`/publish/tasks/${taskId}`);
   const response = await fetch(url, {

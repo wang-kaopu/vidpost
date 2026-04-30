@@ -5,9 +5,8 @@ import {
   PlayCircleOutlined,
 } from "@ant-design/icons-vue";
 import AppIcon from "./AppIcon.vue";
-import { fetchAccounts } from "@/api/accounts";
-import { executePublishPlans } from "@/api/subtasks";
 import { fetchWorkPublishPayload, fetchWorksPage } from "@/api/works";
+import { getPublishAccounts, normalizePublishAccount, createPublishTask } from "@/api/publish";
 import { appConfig } from "@/config";
 import { mockWorks } from "@/mock";
 import PlatformPickerDialog from "./PlatformPickerDialog.vue";
@@ -20,20 +19,23 @@ type SelectedWorkRow = {
   category: string;
 };
 
+type PublishPlanRow = {
+  id: string;
+  workId: string;
+  accountId: string;
+  platformKey: string;
+  coverUrl: string;
+  coverAlt: string;
+  title: string;
+  videoCategory: string;
+  accountName: string;
+  scheduledAt: string;
+  summary: string;
+};
+
 type PublishPlanGroup = {
   platform: string;
-  rows: Array<{
-    id: string;
-    workId: string;
-    accountId: string;
-    coverUrl: string;
-    coverAlt: string;
-    title: string;
-    videoCategory: string;
-    accountName: string;
-    scheduledAt: string;
-    summary: string;
-  }>;
+  rows: PublishPlanRow[];
 };
 
 type PublishPlanDraft = {
@@ -109,7 +111,7 @@ const selectedWorks = computed<SelectedWorkRow[]>(() =>
 );
 const selectedWorkMap = computed(() => new Map(worksList.value.map((item) => [item.id, item])));
 const selectedLoginSuccessPublishAccounts = computed(() =>
-  publishPlatformAccounts.value.filter((account) => account.rawStatus === "login_success"),
+  publishPlatformAccounts.value.filter((account) => account.rawStatus === "login_success" || account.rawStatus === "online"),
 );
 const publishPlanGroups = computed<PublishPlanGroup[]>(() => {
   const selectedAccountMap = new Map(
@@ -138,6 +140,7 @@ const publishPlanGroups = computed<PublishPlanGroup[]>(() => {
         id: rowId,
         workId: work.id,
         accountId: account.id,
+        platformKey: account.platformKey || "",
         coverUrl: sourceWork?.cover || "",
         coverAlt: work.title,
         title: draft?.title || work.title,
@@ -203,7 +206,20 @@ const openPublishPlatformAccountDialog = async (): Promise<void> => {
   syncPublishPlanDrafts(nextSelections);
 
   try {
-    publishPlatformAccounts.value = await fetchAccounts();
+    const res = await getPublishAccounts({ limit: 999 });
+    publishPlatformAccounts.value = (res.list || []).map((raw) => {
+      const normalized = normalizePublishAccount(raw);
+      return {
+        id: normalized.id,
+        platform: normalized.platform,
+        platformKey: normalized.platformKey,
+        nickname: normalized.nickname,
+        status: normalized.statusLabel,
+        rawStatus: normalized.status,
+        phone: normalized.phoneNumber,
+        tag: normalized.tags.join(" / ") || "--",
+      } as AccountItem;
+    });
   } catch (error) {
     publishPlatformAccountErrorMessage.value = error instanceof Error ? error.message : "发布平台账号列表加载失败";
     publishPlatformAccounts.value = [];
@@ -291,27 +307,29 @@ const handlePublishPlanConfirm = async (): Promise<void> => {
       selectedWorks.value.map(async (work) => [work.id, await fetchWorkPublishPayload(work.id)] as const),
     );
     const workPayloadMap = new Map(workPayloadEntries);
-    const plans = publishPlanGroups.value.flatMap((group) =>
-      group.rows.map((row) => {
+
+    const tasks = publishPlanGroups.value.flatMap((group) =>
+      group.rows.map(async (row) => {
         const workPayload = workPayloadMap.get(row.workId);
         if (!workPayload) {
           throw new Error(`作品 ${row.workId} 缺少发布详情`);
         }
 
-        return {
-          accountId: row.accountId,
-          workId: row.workId,
+        await createPublishTask({
+          account_id: row.accountId,
+          platform: row.platformKey,
           title: row.title,
+          work_id: row.workId,
           introduction: row.summary,
-          coverPath: workPayload.coverPath,
-          videoType: workPayload.videoType || group.platform,
-          videoPath: workPayload.videoPath,
-          scheduledAt: row.scheduledAt,
-        };
+          cover_url: workPayload.coverPath,
+          video_url: workPayload.videoPath,
+          video_type: workPayload.videoType || group.platform,
+          scheduled_at: row.scheduledAt === IMMEDIATE_PUBLISH_VALUE ? undefined : row.scheduledAt,
+        });
       }),
     );
 
-    await executePublishPlans(plans);
+    await Promise.all(tasks);
     resetPublishPlanState();
   } catch (error) {
     publishPlanErrorMessage.value = error instanceof Error ? error.message : "发布失败";
