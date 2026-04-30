@@ -1,7 +1,6 @@
 const { BrowserWindow } = require('electron')
 
 const { platformRegistry } = require('./platformRegistry.cjs')
-const { createSemaphore } = require('./utils/lock.cjs')
 
 const { resolveDraftAccountFilePath, loginAndCreateRemoteAccount, updateRemoteAccount } = require('./service/account-service.cjs')
 const { publishAndUpdateRemoteTask } = require('./service/task-service.cjs')
@@ -32,12 +31,10 @@ async function ping(event, account) {
 }
 
 // 3. 发布入口
-const publishSemaphore = createSemaphore(2) // 默认2并发发布任务
 async function publish(event, payload) {
   const { platform } = payload || {}
   const { upload } = platformRegistry[platform]
-  // 限制并发执行
-  return publishSemaphore.withPermit(() => publishAndUpdateRemoteTask(payload, upload))
+  return publishAndUpdateRemoteTask(payload, upload)
 }
 
 module.exports = {

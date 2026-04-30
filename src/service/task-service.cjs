@@ -6,11 +6,36 @@ const { createTaskPageModel } = require('../page-model/task-page-model.cjs')
 const { PublishAssetCache } = require('./publish-asset-cache.cjs')
 const publishAssetCache = new PublishAssetCache()
 
+const IMMEDIATE_PUBLISH_SENTINELS = new Set([
+    '0',
+    'current',
+    'now',
+    'immediate',
+    '当前',
+    '立即',
+    '立即发布',
+])
+
+function normalizeScheduledAt(value) {
+    const normalized = String(value ?? '').trim()
+    if (!normalized) {
+        return ''
+    }
+
+    if (IMMEDIATE_PUBLISH_SENTINELS.has(normalized) || IMMEDIATE_PUBLISH_SENTINELS.has(normalized.toLowerCase())) {
+        return ''
+    }
+
+    return normalized
+}
+
 // 发布并更新远程发布记录
 async function publishAndUpdateRemoteTask(payload, runUpload) {
     // 浅拷贝
     const normalizedPayload = payload ? { ...payload } : {}
     let remoteTaskId = null
+
+    normalizedPayload.scheduledAt = normalizeScheduledAt(normalizedPayload.scheduledAt)
 
     // 如果没有提供账号文件路径，但提供了账号ID和平台，则解析出账号文件路径
     if (!normalizedPayload.accountFile && normalizedPayload.accountId && normalizedPayload.platform) {
@@ -27,7 +52,7 @@ async function publishAndUpdateRemoteTask(payload, runUpload) {
             introduction: normalizedPayload.introduction,
             cover_url: normalizedPayload.coverPath || normalizedPayload.coverUrl,
             video_url: normalizedPayload.videoPath || normalizedPayload.videoUrl,
-            scheduled_at: normalizedPayload.scheduledAt === '0' ? null : normalizedPayload.scheduledAt,
+            scheduled_at: normalizedPayload.scheduledAt || null,
             video_type: normalizedPayload.videoType,
             status: 'running',
             attributes: {
@@ -109,5 +134,6 @@ async function publishAndUpdateRemoteTask(payload, runUpload) {
 }
 
 module.exports = {
+    normalizeScheduledAt,
     publishAndUpdateRemoteTask,
 }

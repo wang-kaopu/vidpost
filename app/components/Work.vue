@@ -12,7 +12,6 @@ import { mockWorks } from "@/mock";
 import PlatformPickerDialog from "./PlatformPickerDialog.vue";
 import PublishPlanDialog from "./PublishPlanDialog.vue";
 import type { AccountItem, WorkItem } from "@/types";
-import { Item } from "ant-design-vue/es/menu";
 
 type SelectedWorkRow = {
   id: string;
@@ -304,18 +303,24 @@ const handlePublishPlanConfirm = async (): Promise<void> => {
   publishPlanErrorMessage.value = "";
 
   try {
+    const publishApi = window.electronAPI?.publish;
+    if (!publishApi) {
+      throw new Error("当前环境未注入发布能力");
+    }
+
     const workPayloadEntries = await Promise.all(
       selectedWorks.value.map(async (work) => [work.id, await fetchWorkPublishPayload(work.id)] as const),
     );
     const workPayloadMap = new Map(workPayloadEntries);
 
-    const tasks = publishPlanGroups.value.flatMap((group) =>
-      group.rows.map(async (row) => {
+    const publishTasks = publishPlanGroups.value.flatMap((group) =>
+      group.rows.map((row) => {
         const workPayload = workPayloadMap.get(row.workId);
         if (!workPayload) {
           throw new Error(`作品 ${row.workId} 缺少发布详情`);
         }
-        window.electronAPI?.publish({
+
+        return {
           accountId: row.accountId,
           platform: row.platformKey,
           title: row.title,
@@ -326,11 +331,14 @@ const handlePublishPlanConfirm = async (): Promise<void> => {
           scheduledAt: row.scheduledAt,
           videoType: workPayload.videoType,
           accountName: row.accountName,
-        });
+        };
       }),
     );
 
-    await Promise.all(tasks);
+    for (const task of publishTasks) {
+      publishApi(task);
+    }
+
     resetPublishPlanState();
   } catch (error) {
     publishPlanErrorMessage.value = error instanceof Error ? error.message : "发布失败";
