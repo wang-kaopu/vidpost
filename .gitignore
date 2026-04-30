@@ -19,4 +19,12 @@ bin-release/
 
 node_modules
 app/node_modules
+
 .omx/
+
+平台发布记录状态改造计划.md
+
+src/script/baijiahao-video-state-success.cjs
+src/script/douyin-video-state-success.cjs
+src/script/sohu-video-state-success.cjs
+src/script/bilibili-video-state-success copy.cjs

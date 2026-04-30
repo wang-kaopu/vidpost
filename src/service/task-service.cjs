@@ -1,7 +1,6 @@
 const { resolveAccountFilePath } = require('../service/account-service.cjs')
 const { createPublishTask, updatePublishTask } = require('../api/task-api.js')
 
-const { createTaskModel } = require('../api/model/task-model.js')
 const { createTaskPageModel } = require('../page-model/task-page-model.cjs')
 
 const { PublishAssetCache } = require('./publish-asset-cache.cjs')
@@ -55,15 +54,23 @@ async function publishAndUpdateRemoteTask(payload, runUpload) {
             throw new Error(failureMessage)
         }
 
-        // 扩展点：写回链接
+        // 扩展点：写回链接(deprecated)
         const link = publishResult.link
 
         // 更新远程发布记录
         await updatePublishTask(remoteTaskId, {
-            status: 'success',
+            status: 'reviewing',
             link: link || null,
             attributes: {
+                account_id: normalizedPayload.accountId ?? null,
+                account_name: normalizedPayload.accountName ?? null,
                 publish_result: publishResult ?? null,
+                review_state_clues: {
+                    title: payload.title ?? null,
+                    published_at: new Date().toISOString(),
+                    platform_work_id: publishResult?.postId ?? publishResult?.articleId ?? null,
+                    share_url: publishResult?.link ?? null,
+                }
             },
         })
 
@@ -73,16 +80,23 @@ async function publishAndUpdateRemoteTask(payload, runUpload) {
             accountName: normalizedPayload.accountName ?? null,
             accountId: normalizedPayload.accountId ?? null,
             title: normalizedPayload.title ?? null,
-            status: 'success',
+            status: 'reviewing',
             scheduledAt: normalizedPayload.scheduledAt ?? null,
             link,
         })
     } catch (error) {
         if (remoteTaskId) {
+            const message = error instanceof Error ? error.message : String(error)
             await updatePublishTask(remoteTaskId, {
                 status: 'failed',
                 attributes: {
-                    error_message: error instanceof Error ? error.message : String(error),
+                    account_id: normalizedPayload.accountId ?? null,
+                    account_name: normalizedPayload.accountName ?? null,
+                    error_message: message,
+                    failure_detail: {
+                        detail: 'publish_before_submit',
+                        reason: message,
+                    },
                 },
             }).catch((updateError) => {
                 console.error('更新远端发布任务失败状态失败:', updateError)

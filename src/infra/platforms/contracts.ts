@@ -44,10 +44,44 @@ export interface PlatformUploadResult {
   [key: string]: unknown;
 }
 
+// 描述平台侧发布记录状态。
+export type PlatformPublishedTaskStatus = "reviewing" | "public" | "non_public";
+
+// 描述状态查询命中的主要线索。
+export type PlatformPublishedStateMatchedBy =
+  | "platform_work_id"
+  | "share_url"
+  | "title"
+  | "title_and_time_window"
+  | "manual"
+  | "unknown";
+
+// 描述发布记录状态查询入参。
+export interface PlatformPublishedStatePayload {
+  accountFile: string;
+  title?: string | null;
+  remoteTaskId?: string | number | null;
+  publishedAt?: string | null;
+  link?: string | null;
+  attributes?: Record<string, unknown> | null;
+  publishResult?: Record<string, unknown> | null;
+  timeoutMs?: number;
+}
+
+// 描述平台审核查询结果，直接映射为统一任务状态。
+export interface PlatformPublishedStateResult {
+  status: PlatformPublishedTaskStatus;
+  link?: string | null;
+  raw: unknown;
+  matchedBy?: PlatformPublishedStateMatchedBy;
+  reason?: string | null;
+}
+
 // 描述平台适配器在本阶段需要提供的能力。
 export interface PlatformAdapter {
   startLogin(context: PlatformLoginContext): Promise<PlatformLoginResult>;
   cookieAuth(accountFile: string): Promise<boolean>;
   syncNickname(context: PlatformNicknameSyncContext): Promise<string>;
   upload(payload: PlatformUploadPayload): Promise<PlatformUploadResult>;
+  fetchPublishedState?(payload: PlatformPublishedStatePayload): Promise<PlatformPublishedStateResult | null>;
 }
