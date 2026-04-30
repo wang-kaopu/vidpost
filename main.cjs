@@ -62,8 +62,8 @@ const createWindow = () => {
 
   // 创建浏览器窗口
   mainWindow = new BrowserWindow({
-    width: 800,
-    height: 600,
+    width: 940,
+    height: 630,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs')
     }
