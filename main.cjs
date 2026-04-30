@@ -18,6 +18,7 @@ const BACKDOOR_TOKEN = 'b0ffc1de8f3f49340697dc140fcad274' || process.env.RM_SERV
 
 // 引入sse服务器开启与关闭
 const { startSseServer, stopSseServer } = require('./src/sse/sse-server.cjs')
+const { syncTaskStateBg } = require('./src/service/task-state-service.cjs')
 
 // 注册自定义协议的辅助处理函数
 let mainWindow = null
@@ -104,6 +105,7 @@ app.whenReady().then(() => {
   registerIpcListener('login', login)
   registerIpcListener('publish', publish)
   registerIpcListener('ping', ping)
+  registerIpcListener('sync-task-state-bg', syncTaskStateBg)
 
   const registration = resolveProtocolClientRegistration(process.argv, app.isDefaultApp)
   if (registration) {

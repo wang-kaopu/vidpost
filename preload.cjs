@@ -7,5 +7,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   ping: (payload) => ipcRenderer.send('ping', payload),
   onLaunchIntent: (handler) => {
     ipcRenderer.on('agenthunt:launch-intent', (_event, payload) => handler(payload))
-  }
+  },
+  syncTaskStateBg: () => ipcRenderer.send('sync-task-state-bg'),
 })

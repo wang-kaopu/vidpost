@@ -7,6 +7,8 @@ const { publishAndUpdateRemoteTask } = require('./service/task-service.cjs')
 
 const { broadcast } = require('./sse/sse-server.cjs')
 
+const { syncTaskStateBg } = require('./service/task-state-service.cjs')
+
 // 1. 登录入口
 async function login(event, platform) {
   const parentWindow = BrowserWindow.fromWebContents(event.sender)
@@ -38,5 +40,6 @@ async function publish(event, payload) {
 module.exports = {
   login,
   publish,
-  ping
+  ping,
+  syncTaskStateBg
 }

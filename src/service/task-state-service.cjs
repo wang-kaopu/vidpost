@@ -46,6 +46,7 @@ function isTaskStateSyncRunning() {
     return taskStateSyncRunning
 }
 
+// builder，构建发布记录的审核状态
 function buildReviewState(task, fetchResult) {
     return {
         status: normalizeString(fetchResult?.status) ?? REVIEWING_STATUS,
@@ -58,6 +59,7 @@ function buildReviewState(task, fetchResult) {
     }
 }
 
+// builder，构建发布记录的审核状态（失败时）
 function buildReviewStateError(task, message) {
     const attributes = normalizeRecord(task?.attributes)
     const previousReviewState = normalizeRecord(attributes?.review_state)
@@ -80,6 +82,7 @@ function mergeTaskAttributes(task, patches = {}) {
     }
 }
 
+// 列出所有审核中的发布记录，分页查询直到取完
 async function listAllReviewingTasks(limit = DEFAULT_LIST_LIMIT) {
     const tasks = []
     let lastId = 0
@@ -99,6 +102,7 @@ async function listAllReviewingTasks(limit = DEFAULT_LIST_LIMIT) {
     return tasks
 }
 
+// builder，构建查询发布状态时需要的payload
 function buildFetchPayload(task) {
     const attributes = normalizeRecord(task.attributes)
     const accountFile = task.accountId && task.platform
@@ -116,7 +120,8 @@ function buildFetchPayload(task) {
     }
 }
 
-async function markReviewingTaskSyncError(task, message) {
+// 将单个发布记录的状态标记为同步失败，写入错误信息以便排查
+async function markTaskStateSyncError(task, message) {
     await updatePublishTask(task.id, {
         status: REVIEWING_STATUS,
         attributes: mergeTaskAttributes(task, {
@@ -125,28 +130,26 @@ async function markReviewingTaskSyncError(task, message) {
     })
 }
 
-async function syncSingleReviewingTask(task) {
+// 同步单个发布记录的状态
+async function syncSingleTaskState(task) {
     const platform = normalizeString(task?.platform)
     const taskId = task?.id
-
     if (!Number.isInteger(taskId)) {
         return { skipped: true, reason: 'invalid_task_id' }
     }
-
     if (!platform) {
-        await markReviewingTaskSyncError(task, 'task platform is missing')
+        await markTaskStateSyncError(task, 'task platform is missing')
         return { skipped: true, reason: 'missing_platform', taskId }
     }
-
     const fetchPublishedState = platformRegistry?.[platform]?.fetchPublishedState
     if (typeof fetchPublishedState !== 'function') {
-        await markReviewingTaskSyncError(task, `${platform} fetchPublishedState is unavailable`)
+        await markTaskStateSyncError(task, `${platform} fetchPublishedState is unavailable`)
         return { skipped: true, reason: 'missing_fetcher', taskId, platform }
     }
 
     const fetchPayload = buildFetchPayload(task)
     if (!normalizeString(fetchPayload.accountFile)) {
-        await markReviewingTaskSyncError(task, `${platform} accountFile is missing`)
+        await markTaskStateSyncError(task, `${platform} accountFile is missing`)
         return { skipped: true, reason: 'missing_account_file', taskId, platform }
     }
 
@@ -162,7 +165,6 @@ async function syncSingleReviewingTask(task) {
                 review_state: buildReviewState(task, fetchResult),
             }),
         })
-
         return {
             taskId,
             platform,
@@ -170,7 +172,7 @@ async function syncSingleReviewingTask(task) {
         }
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
-        await markReviewingTaskSyncError(task, message)
+        await markTaskStateSyncError(task, message)
         return {
             taskId,
             platform,
@@ -180,6 +182,7 @@ async function syncSingleReviewingTask(task) {
     }
 }
 
+// doRuns，真正执行查询发布状态的函数，返回本次执行的结果统计
 async function runTaskStateSync(options = {}) {
     const limit = Number.isInteger(options.limit) && options.limit > 0 ? options.limit : DEFAULT_LIST_LIMIT
     const tasks = await listAllReviewingTasks(limit)
@@ -196,7 +199,7 @@ async function runTaskStateSync(options = {}) {
     }
 
     for (const task of tasks) {
-        const result = await syncSingleReviewingTask(task)
+        const result = await syncSingleTaskState(task)
         summary.processed += 1
 
         if (result?.status === REVIEWING_STATUS) {
@@ -215,7 +218,8 @@ async function runTaskStateSync(options = {}) {
     return summary
 }
 
-async function syncReviewingTasks(options = {}) {
+// 尝试获取锁并开始查询作品状态（主动动作）
+async function syncTaskState(options = {}) {
     if (!tryAcquireTaskStateSyncLock()) {
         return {
             started: false,
@@ -229,7 +233,6 @@ async function syncReviewingTasks(options = {}) {
             errors: 0,
         }
     }
-
     try {
         return await runTaskStateSync(options)
     } finally {
@@ -237,8 +240,8 @@ async function syncReviewingTasks(options = {}) {
     }
 }
 
-// 打开发布记录页面时尝试获取锁并开始查询作品状态
-function syncReviewingTasksInBackground(options = {}) {
+// 尝试获取锁并开始查询作品状态（后台进行，用于打开发布记录页面时；bg意为background）
+function syncTaskStateBg(options = {}) {
     if (!tryAcquireTaskStateSyncLock()) {
         return {
             started: false,
@@ -254,7 +257,7 @@ function syncReviewingTasksInBackground(options = {}) {
         }
     })()
     promise.catch((error) => {
-        console.error('后台巡检 reviewing 任务失败:', error)
+        console.error('后台巡检 task state 失败:', error)
     })
     return {
         started: true,
@@ -265,7 +268,7 @@ function syncReviewingTasksInBackground(options = {}) {
 
 module.exports = {
     isTaskStateSyncRunning,
-    syncReviewingTasks,
-    syncReviewingTasksInBackground,
+    syncTaskState,
+    syncTaskStateBg,
     tryAcquireTaskStateSyncLock,
 }
