@@ -4,6 +4,9 @@ const { createPublishTask, updatePublishTask } = require('../api/task-api.js')
 const { createTaskModel } = require('../api/model/task-model.js')
 const { createTaskPageModel } = require('../page-model/task-page-model.cjs')
 
+const { PublishAssetCache } = require('./publish-asset-cache.cjs')
+const publishAssetCache = new PublishAssetCache()
+
 // 发布并更新远程发布记录
 async function publishAndUpdateRemoteTask(payload, runUpload) {
     // 浅拷贝
@@ -34,9 +37,17 @@ async function publishAndUpdateRemoteTask(payload, runUpload) {
             },
         })
 
+        remoteTaskId = createResult.remoteTaskId
+
+        const materializedPayload = await publishAssetCache.materializePublishPayload({
+            ...normalizedPayload,
+            remoteTaskId,
+        })
+
+
         // 发布动作
         remoteTaskId = createResult.remoteTaskId
-        const publishResult = await runUpload(normalizedPayload)
+        const publishResult = await runUpload(materializedPayload)
         if (!publishResult || publishResult.success !== true) {
             const failureMessage = publishResult && typeof publishResult.message === 'string' && publishResult.message.trim()
                 ? publishResult.message.trim()
