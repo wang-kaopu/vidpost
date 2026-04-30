@@ -315,23 +315,6 @@ const handlePublishPlanConfirm = async (): Promise<void> => {
         if (!workPayload) {
           throw new Error(`作品 ${row.workId} 缺少发布详情`);
         }
-
-<<<<<<< Updated upstream
-        return {
-          accountId: row.accountId,
-          workId: row.workId,
-        await createPublishTask({
-          account_id: row.accountId,
-          platform: row.platformKey,
-          title: row.title,
-          work_id: row.workId,
-          introduction: row.summary,
-          coverPath: workPayload.coverPath,
-          videoType: workPayload.videoType || group.platform,
-          videoPath: workPayload.videoPath,
-          scheduledAt: row.scheduledAt,
-        };
-=======
         window.electronAPI?.publish({
           accountId: row.accountId,
           platform: row.platformKey,
@@ -343,12 +326,6 @@ const handlePublishPlanConfirm = async (): Promise<void> => {
           scheduledAt: row.scheduledAt,
           videoType: workPayload.videoType,
           accountName: row.accountName,
-        })
->>>>>>> Stashed changes
-          cover_url: workPayload.coverPath,
-          video_url: workPayload.videoPath,
-          video_type: workPayload.videoType || group.platform,
-          scheduled_at: row.scheduledAt === IMMEDIATE_PUBLISH_VALUE ? undefined : row.scheduledAt,
         });
       }),
     );
