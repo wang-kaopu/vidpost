@@ -5,13 +5,13 @@ import PlatformLogo from "./PlatformLogo.vue";
 import { getPublishPlatforms, getPublishTasks, deletePublishTask } from "@/api/publish";
 import type { PublishTask, BackendPlatform } from "@/api/publish";
 
-declare global {
-  interface Window {
-    electronAPI?: {
-      openExternal: (url: string) => Promise<void>;
-    };
-  }
-}
+// declare global {
+//   interface Window {
+//     electronAPI?: {
+//       openExternal: (url: string) => Promise<void>;
+//     };
+//   }
+// }
 
 const loading = ref(false);
 const errorMessage = ref("");
@@ -175,6 +175,7 @@ const handleDelete = async (item: PublishTask) => {
 onMounted(() => {
   void loadPlatforms();
   void loadRecords();
+  window.electronAPI?.syncTaskStateBg();
 });
 </script>
 
@@ -215,7 +216,7 @@ onMounted(() => {
       <div class="filter-item">
         <label>视频类别</label>
         <select v-model="categoryFilter">
-          <option value="">选择类别</option>
+          <optionƒ value="">选择类别</optionƒ>
           <option v-for="c in categoryOptions" :key="c.value" :value="c.value">{{ c.label }}</option>
         </select>
       </div>
