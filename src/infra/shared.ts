@@ -1,6 +1,6 @@
 import electron from "electron";
-import fs from "node:fs/promises";
 import syncFs from "node:fs";
+import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -57,8 +57,8 @@ const SHARED_DIRNAME = path.dirname(fileURLToPath(import.meta.url));
 const CLOSE_BUTTON_CSS_PATH = resolveRuntimeAssetPath(
   [
     path.join(SHARED_DIRNAME, "close-button.css"),
-    path.join(SHARED_DIRNAME, "../../platform-logins/close-button.css"),
-    path.join(process.cwd(), "src", "platform-logins", "close-button.css"),
+    path.join(SHARED_DIRNAME, "../../infra/close-button.css"),
+    path.join(process.cwd(), "src", "infra", "close-button.css"),
   ],
   "平台登录关闭按钮样式",
 );

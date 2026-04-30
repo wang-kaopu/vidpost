@@ -10,6 +10,8 @@ const { AGENTHUNT_PROTOCOL,
   extractProtocolUrlFromCommandLine,
   parseAgenthuntUrl } = require('./src/deep-link.ts')
 
+const { getSingletonLock } = require('./src/utils/lock.cjs')
+
 // 引入 API 客户端设置函数
 const { setApiClientWindow } = require('./src/api/api-client.cjs')
 const BACKDOOR_TOKEN = 'b0ffc1de8f3f49340697dc140fcad274' || process.env.RM_SERVER_ACCESS_TOKEN
@@ -17,26 +19,9 @@ const BACKDOOR_TOKEN = 'b0ffc1de8f3f49340697dc140fcad274' || process.env.RM_SERV
 // 引入sse服务器开启与关闭
 const { startSseServer, stopSseServer } = require('./src/sse/sse-server.cjs')
 
-// 单例锁，确保把 URL 交给现有窗口，而不是打开新窗口
-const gotSingleInstanceLock = app.requestSingleInstanceLock()
-if (!gotSingleInstanceLock) {
-  app.quit()
-} else {
-  app.on('second-instance', (_event, argv) => {
-    const deepLinkUrl = extractProtocolUrlFromCommandLine(argv)
-    if (deepLinkUrl) {
-      handleProtocolUrl(deepLinkUrl)
-      return
-    }
-    if (!mainWindow) {
-      return
-    }
-    if (mainWindow.isMinimized()) {
-      mainWindow.restore()
-    }
-    mainWindow.focus()
-  })
-}
+// 注册自定义协议的辅助处理函数
+let mainWindow = null
+let pendingLaunchIntent = null
 
 // 注册 IPC 监听器的通用函数，便于处理可能未catch的异步函数异常
 function registerIpcListener(channel, handler) {
@@ -49,27 +34,24 @@ function registerIpcListener(channel, handler) {
   })
 }
 
-// 注册自定义协议的辅助处理函数
-let mainWindow = null
-let pendingLaunchIntent = null
-
 function handleProtocolUrl(rawUrl) {
   const launchIntent = parseAgenthuntUrl(rawUrl)
   if (!launchIntent) {
     return
   }
   pendingLaunchIntent = launchIntent
-  if (!mainWindow) {
+  if (!mainWindow || mainWindow.isDestroyed()) {
     return
   }
   if (mainWindow.isMinimized()) {
     mainWindow.restore()
   }
   mainWindow.focus()
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('agenthunt:launch-intent', launchIntent)
-  }
+  mainWindow.webContents.send('agenthunt:launch-intent', launchIntent)
 }
+
+// 单例锁，确保把 URL 交给现有窗口，而不是打开新窗口
+getSingletonLock(() => mainWindow, extractProtocolUrlFromCommandLine, handleProtocolUrl)
 
 
 // 创建主窗口
