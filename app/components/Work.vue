@@ -6,7 +6,7 @@ import {
 } from "@ant-design/icons-vue";
 import AppIcon from "./AppIcon.vue";
 import { fetchWorkPublishPayload, fetchWorksPage } from "@/api/works";
-import { getPublishAccounts, normalizePublishAccount, createPublishTask } from "@/api/publish";
+import { getPublishAccounts, normalizePublishAccount } from "@/api/publish";
 import { appConfig } from "@/config";
 import { mockWorks } from "@/mock";
 import PlatformPickerDialog from "./PlatformPickerDialog.vue";

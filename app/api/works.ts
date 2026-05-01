@@ -1,17 +1,6 @@
-import { buildWorksApiUrl, frontendEnv, getAccessToken } from "@/config";
+import { apiClient, normalizeQueryParams, requestEnvelope } from "./request";
+import type { ApiEnvelope, ListResponse } from "./types";
 import type { WorkItem, WorkStatus } from "@/types";
-
-interface ApiEnvelope<T> {
-  code: number;
-  message: string;
-  data: T | null;
-}
-
-interface BackendWorksPage {
-  list?: BackendWork[];
-  is_end?: boolean;
-  last_id?: number;
-}
 
 interface BackendWork {
   work_id: number;
@@ -71,34 +60,18 @@ const DEFAULT_COVER =
     </svg>
   `);
 
-function getWorksAuthHeaders(): HeadersInit | undefined {
-  const runtimeToken = getAccessToken();
-  const envToken = frontendEnv.worksApiToken;
-  const token = runtimeToken || envToken;
-  if (!token) {
-    return undefined;
-  }
-
-  return {
-    Authorization: token.startsWith("Bearer ") ? token : `Bearer ${token}`,
-  };
-}
-
 function resolveWorkStatus(work: BackendWork): WorkStatus {
   const rawStatus = String(
     work.is_fast ? work.project_status : work.is_edited ? work.edit_status : work.status,
   )
     .trim()
     .toLowerCase();
-
   if (rawStatus === "completed") {
     return "已完成";
   }
-
   if (rawStatus === "failed") {
     return "生成失败";
   }
-
   return "生成中";
 }
 
@@ -107,7 +80,6 @@ function formatUpdatedAt(value: string): string {
   if (Number.isNaN(date.getTime())) {
     return value;
   }
-
   const formatter = new Intl.DateTimeFormat("zh-CN", {
     month: "2-digit",
     day: "2-digit",
@@ -115,7 +87,6 @@ function formatUpdatedAt(value: string): string {
     minute: "2-digit",
     hour12: false,
   });
-
   return formatter.format(date).replace(",", "");
 }
 
@@ -123,26 +94,21 @@ function mapWorkType(type: string | null | undefined): { platform: string; platf
   if (type === "talking_head_video") {
     return { platform: "真人口播视频", platformShort: "播" };
   }
-
   if (type === "ai_ad_video") {
     return { platform: "卡通营销视频", platformShort: "卡" };
   }
-
   if (type === "ai_sora_video") {
     return { platform: "高级广告大片", platformShort: "高" };
   }
-
   if (type === "social_commerce_video") {
     return { platform: "全球网红带货视频", platformShort: "全" };
   }
-
   return { platform: "数字人", platformShort: "数" };
 }
 
 function normalizeWork(work: BackendWork): WorkItem {
   const cover = String(work.edited_cover_url || work.video_cover_url || "").trim() || DEFAULT_COVER;
   const { platform, platformShort } = mapWorkType(work.type);
-
   return {
     id: String(work.work_id),
     platform,
@@ -160,6 +126,7 @@ function resolveVideoTypeLabel(type: string | null | undefined): string {
   return mapWorkType(type).platform;
 }
 
+// 获取作品列表
 export async function fetchWorksPage(options?: {
   lastId?: number;
   limit?: number;
@@ -168,51 +135,36 @@ export async function fetchWorksPage(options?: {
   createdAtStart?: string;
   createdAtEnd?: string;
 }): Promise<FetchWorksPageResult> {
-  const searchParams = new URLSearchParams({
-    last_id: String(options?.lastId ?? 0),
-    limit: String(options?.limit ?? DEFAULT_PAGE_SIZE),
-  });
-  if (options?.title) searchParams.set("title", options.title);
-  if (options?.type) searchParams.set("type", options.type);
-  if (options?.createdAtStart) searchParams.set("created_at_start", options.createdAtStart);
-  if (options?.createdAtEnd) searchParams.set("created_at_end", options.createdAtEnd);
-
-  const response = await fetch(buildWorksApiUrl(`/digital_human_works?${searchParams.toString()}`), {
-    headers: getWorksAuthHeaders(),
-  });
-
-  if (!response.ok) {
-    throw new Error(`作品列表请求失败: HTTP ${response.status}`);
+  const data = await requestEnvelope(
+    apiClient.get<ApiEnvelope<ListResponse<BackendWork>>>("/digital_human_works", {
+      params: normalizeQueryParams({
+        last_id: options?.lastId ?? 0,
+        limit: options?.limit ?? DEFAULT_PAGE_SIZE,
+        title: options?.title,
+        type: options?.type,
+        created_at_start: options?.createdAtStart,
+        created_at_end: options?.createdAtEnd,
+      }),
+    }),
+    "作品列表请求失败",
+  );
+  const list = data.list;
+  if (!Array.isArray(list)) {
+    throw new Error("作品列表响应格式无效");
   }
-
-  const payload = (await response.json()) as ApiEnvelope<BackendWorksPage>;
-  const list = payload.data?.list;
-  if (payload.code !== 0 || !Array.isArray(list)) {
-    throw new Error(payload.message || "作品列表响应格式无效");
-  }
-
   return {
     items: list.map(normalizeWork),
-    isEnd: Boolean(payload.data?.is_end),
-    lastId: Number(payload.data?.last_id ?? 0),
+    isEnd: Boolean(data.is_end),
+    lastId: Number(data.last_id ?? 0),
   };
 }
 
+// 获取作品发布所需的信息
 export async function fetchWorkPublishPayload(workId: string): Promise<WorkPublishPayload> {
-  const response = await fetch(buildWorksApiUrl(`/digital_human_works/${workId}`), {
-    headers: getWorksAuthHeaders(),
-  });
-
-  if (!response.ok) {
-    throw new Error(`作品详情请求失败: HTTP ${response.status}`);
-  }
-
-  const payload = (await response.json()) as ApiEnvelope<BackendWorkDetail>;
-  if (payload.code !== 0 || !payload.data) {
-    throw new Error(payload.message || "作品详情响应格式无效");
-  }
-
-  const data = payload.data;
+  const data = await requestEnvelope(
+    apiClient.get<ApiEnvelope<BackendWorkDetail>>(`/digital_human_works/${workId}`),
+    "作品详情请求失败",
+  );
   const videoPath = String(data.edited_url || data.video_url || "").trim();
   if (!videoPath) {
     throw new Error(`作品 ${workId} 缺少可发布视频地址`);

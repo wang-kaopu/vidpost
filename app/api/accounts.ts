@@ -1,18 +1,6 @@
-import { buildWorksApiUrl } from "@/config";
-import { getWorksAuthHeaders } from "./request";
+import { apiClient, normalizeQueryParams, requestEnvelope, requestSuccess } from "./request";
+import type { ApiEnvelope, ListResponse } from "./types";
 import type { AccountItem } from "@/types";
-
-interface ApiEnvelope<T> {
-  code: number;
-  message: string;
-  data: T;
-}
-
-interface ListResponse<T> {
-  list?: T[] | null;
-  is_end?: boolean;
-  last_id?: number;
-}
 
 export interface FetchAccountsOptions {
   tags?: string[];
@@ -72,7 +60,6 @@ function normalizeAccount(account: BackendAccount): AccountItem {
     : [];
   const phone = String(account.phone_number || "").trim();
   const rawStatus = String(account.status || "").trim().toLowerCase();
-
   return {
     id: String(account.id ?? ""),
     ulid: account.user_id ? String(account.user_id) : undefined,
@@ -87,118 +74,70 @@ function normalizeAccount(account: BackendAccount): AccountItem {
   };
 }
 
-function assertSuccess<T>(payload: ApiEnvelope<T>, fallbackMessage: string): T {
-  if (payload.code !== 0 || payload.data == null) {
-    throw new Error(payload.message || fallbackMessage);
-  }
-
-  return payload.data;
-}
-
+// 获取账号详情
 async function fetchAccountDetail(accountId: string): Promise<AccountItem> {
-  const response = await fetch(buildWorksApiUrl(`/publish/accounts/${accountId}`), {
-    headers: getWorksAuthHeaders(),
-  });
-  if (!response.ok) {
-    throw new Error(`账号详情请求失败: HTTP ${response.status}`);
-  }
-
-  const payload = (await response.json()) as ApiEnvelope<BackendAccount>;
-  return normalizeAccount(assertSuccess(payload, "账号详情响应格式无效"));
+  const data = await requestEnvelope(
+    apiClient.get<ApiEnvelope<BackendAccount>>(`/publish/accounts/${accountId}`),
+    "账号详情请求失败",
+  );
+  return normalizeAccount(data);
 }
 
+// 获取账号列表
 export async function fetchAccounts(options?: FetchAccountsOptions): Promise<AccountItem[]> {
-  const searchParams = new URLSearchParams({
-    status: options?.status?.trim() ?? "",
-    nickname: options?.nickname?.trim() ?? "",
-    phone: options?.phone?.trim() ?? "",
-    last_id: String(options?.lastId ?? 0),
-    limit: String(options?.limit ?? 99),
-  });
-  const tags = Array.isArray(options?.tags)
-    ? options.tags.map((tag) => String(tag).trim()).filter(Boolean)
-    : [];
-
-  if (tags.length > 0) {
-    for (const tag of tags) {
-      searchParams.append("tags", tag);
-    }
-  } else {
-    searchParams.set("tags", "");
-  }
-
-  const response = await fetch(buildWorksApiUrl(`/publish/accounts?${searchParams.toString()}`), {
-    headers: getWorksAuthHeaders(),
-  });
-  if (!response.ok) {
-    throw new Error(`账号列表请求失败: HTTP ${response.status}`);
-  }
-
-  const payload = (await response.json()) as ApiEnvelope<ListResponse<BackendAccount>>;
-  const data = assertSuccess(payload, "账号列表响应格式无效");
+  const data = await requestEnvelope(
+    apiClient.get<ApiEnvelope<ListResponse<BackendAccount>>>("/publish/accounts", {
+      params: normalizeQueryParams({
+        status: options?.status,
+        nickname: options?.nickname,
+        phone: options?.phone,
+        last_id: options?.lastId ?? 0,
+        limit: options?.limit ?? 99,
+        tags: options?.tags,
+      }),
+    }),
+    "账号列表请求失败",
+  );
   if (!Array.isArray(data.list)) {
-    throw new Error(payload.message || "账号列表响应格式无效");
+    throw new Error("账号列表响应格式无效");
   }
-
   return data.list.map(normalizeAccount);
 }
 
+// 重命名账号（本质上是更新昵称）
 export async function renameAccount(accountId: string, nickname: string): Promise<AccountItem> {
   return updateAccount(accountId, { nickname });
 }
 
+// 更新账号信息（昵称、手机号、标签）
 export async function updateAccount(
   accountId: string,
   payload: { nickname?: string; phoneNumber?: string; tags?: string[] },
 ): Promise<AccountItem> {
-  const response = await fetch(buildWorksApiUrl(`/publish/accounts/${accountId}`), {
-    method: "PUT",
-    headers: {
-      ...(getWorksAuthHeaders() || {}),
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
+  await requestSuccess(
+    apiClient.put<ApiEnvelope<unknown>>(`/publish/accounts/${accountId}`, {
       ...(payload.nickname !== undefined ? { nickname: payload.nickname } : {}),
       ...(payload.phoneNumber !== undefined ? { phone_number: payload.phoneNumber } : {}),
       ...(payload.tags !== undefined ? { tags: payload.tags } : {}),
     }),
-  });
-  if (!response.ok) {
-    throw new Error(`账号更新请求失败: HTTP ${response.status}`);
-  }
-
-  const result = (await response.json()) as ApiEnvelope<unknown>;
-  assertSuccess(result, "账号更新响应格式无效");
+    "账号更新请求失败",
+  );
   return fetchAccountDetail(accountId);
 }
 
+// 删除账号记录
 export async function removeAccount(accountId: string): Promise<void> {
-  const response = await fetch(buildWorksApiUrl(`/publish/accounts/${accountId}`), {
-    method: "DELETE",
-    headers: getWorksAuthHeaders(),
-  });
-  if (!response.ok) {
-    throw new Error(`账号删除请求失败: HTTP ${response.status}`);
-  }
-
-  const payload = (await response.json()) as ApiEnvelope<unknown>;
-  assertSuccess(payload, "账号删除响应格式无效");
+  await requestSuccess(
+    apiClient.delete<ApiEnvelope<unknown>>(`/publish/accounts/${accountId}`),
+    "账号删除请求失败",
+  );
 }
 
-export async function setAccountStatus(accountId: string, status: "login_success" | "login_fail"): Promise<AccountItem> {
-  const response = await fetch(buildWorksApiUrl(`/publish/accounts/${accountId}`), {
-    method: "PUT",
-    headers: {
-      ...(getWorksAuthHeaders() || {}),
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ status }),
-  });
-  if (!response.ok) {
-    throw new Error(`账号状态更新请求失败: HTTP ${response.status}`);
-  }
-
-  const payload = (await response.json()) as ApiEnvelope<unknown>;
-  assertSuccess(payload, "账号状态更新响应格式无效");
+// 设置账号状态（在线/离线）
+export async function setAccountStatus(accountId: string, status: "online" | "offline"): Promise<AccountItem> {
+  await requestSuccess(
+    apiClient.put<ApiEnvelope<unknown>>(`/publish/accounts/${accountId}`, { status }),
+    "账号状态更新请求失败",
+  );
   return fetchAccountDetail(accountId);
 }

@@ -2,8 +2,6 @@
 
 interface ImportMetaEnv {
   readonly VITE_API_BASE_URL?: string;
-  readonly VITE_WORKS_API_BASE_URL?: string;
-  readonly VITE_WORKS_API_TOKEN?: string;
   readonly VITE_APP_NAME?: string;
   readonly VITE_MOCK_MODE?: string;
 }
