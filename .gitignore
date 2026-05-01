@@ -32,3 +32,6 @@ src/script/baijiahao-video-state-success.cjs
 src/script/douyin-video-state-success.cjs
 src/script/sohu-video-state-success.cjs
 src/script/bilibili-video-state-success copy.cjs
+
+
+app/.DS_Store

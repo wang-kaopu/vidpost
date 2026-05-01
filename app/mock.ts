@@ -1,4 +1,4 @@
-import type { AccountItem, PublishRecord, WorkItem } from "./types";
+import type { AccountItem, WorkItem } from "./types";
 
 const makeCover = (label: string, toneA: string, toneB: string) =>
   `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
@@ -70,79 +70,6 @@ export const mockAccounts: AccountItem[] = [
     status: "在线",
     phone: "0711233603",
     tag: "生活",
-  },
-];
-
-export const mockRecords: PublishRecord[] = [
-  {
-    id: "r1",
-    platform: "今日头条",
-    platformShort: "头",
-    accountName: "Halloamaster",
-    title: "春日限定！这家樱花咖啡馆值得二刷",
-    status: "success",
-    scheduledAt: "2026-04-22 14:30",
-    link: "https://example.com/toutiao/r1",
-  },
-  {
-    id: "r2",
-    platform: "搜狐号",
-    platformShort: "狐",
-    accountName: "Moliertiten",
-    title: "2026年将改变生活的5大科技趋势",
-    status: "running",
-    scheduledAt: "2026-04-22 16:00",
-    link: "https://example.com/sohu/r2",
-  },
-  {
-    id: "r3",
-    platform: "百家号",
-    platformShort: "百",
-    accountName: "Haiiiamarster",
-    title: "2026年将改变生活的5大科技趋势",
-    status: "ready",
-    scheduledAt: "2026-04-22 16:00",
-    link: "https://example.com/baijia/r3",
-  },
-  {
-    id: "r4",
-    platform: "知乎",
-    platformShort: "知",
-    accountName: "知乎",
-    title: "春日限定！这家樱花咖啡馆值得二刷",
-    status: "failed",
-    scheduledAt: "2026-04-22 14:30",
-    link: "https://example.com/zhihu/r4",
-  },
-  {
-    id: "r5",
-    platform: "知乎",
-    platformShort: "知",
-    accountName: "知乎",
-    title: "2026年将改变生活的5大科技趋势",
-    status: "success",
-    scheduledAt: "2026-04-22 16:00",
-    link: "https://example.com/zhihu/r5",
-  },
-  {
-    id: "r6",
-    platform: "视频号",
-    platformShort: "视",
-    accountName: "klalicamaster",
-    title: "春日限定！这家樱花咖啡馆值得二刷",
-    status: "running",
-    scheduledAt: "2026-04-22 14:30",
-    link: "https://example.com/sph/r6",
-  },
-  {
-    id: "r7",
-    platform: "视频号",
-    platformShort: "视",
-    accountName: "klalicamaster",
-    title: "2026年将改变生活的5大科技趋势",
-    status: "ready",
-    scheduledAt: "2026-04-22 17:00",
-    link: "https://example.com/sph/r7",
   },
 ];
 

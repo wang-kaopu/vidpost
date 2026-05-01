@@ -1,6 +1,5 @@
 export interface FrontendEnv {
   apiBaseUrl: string;
-  embeddedApiBaseUrl: string;
   worksApiBaseUrl: string;
   worksApiToken: string;
   appName: string;
@@ -8,7 +7,6 @@ export interface FrontendEnv {
 }
 
 const DEFAULT_API_BASE_URL = "https://testai.reelsagent.com";
-const DEFAULT_EMBEDDED_API_BASE_URL = "http://127.0.0.1:18000";
 const DEFAULT_WORKS_API_BASE_URL = "https://testai.reelsagent.com/api";
 const DEFAULT_APP_NAME = "Matrix Account Console";
 
@@ -22,7 +20,6 @@ function readEnvValue(value: string | undefined, fallback = ""): string {
 
 export const frontendEnv: FrontendEnv = {
   apiBaseUrl: trimTrailingSlash(readEnvValue(import.meta.env.VITE_API_BASE_URL, DEFAULT_API_BASE_URL)),
-  embeddedApiBaseUrl: trimTrailingSlash(DEFAULT_EMBEDDED_API_BASE_URL),
   worksApiBaseUrl: trimTrailingSlash(readEnvValue(import.meta.env.VITE_WORKS_API_BASE_URL, DEFAULT_WORKS_API_BASE_URL)),
   worksApiToken: readEnvValue(import.meta.env.VITE_WORKS_API_TOKEN),
   appName: readEnvValue(import.meta.env.VITE_APP_NAME, DEFAULT_APP_NAME) || DEFAULT_APP_NAME,

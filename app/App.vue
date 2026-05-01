@@ -1,25 +1,19 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import LoginView from "./components/LoginView.vue";
-import PublishVerificationDialog from "./components/PublishVerificationDialog.vue";
 import SidebarNav from "./components/SidebarNav.vue";
 import AccountTable from "./components/AccountTable.vue";
 import RecordsTable from "./components/RecordsTable.vue";
 // import WorksPlaceholder from "./components/WorksPlaceholder.vue";
-import { cancelManualVerification, fetchPendingManualVerifications, submitManualVerificationCode } from "./api/subtasks";
 import { fetchUserProfile, loginByPhone, logout as apiLogout, refreshToken } from "./api/auth";
 import { clearSessionTokens, getAccessToken, getRefreshToken, setAccessToken, setRefreshToken } from "./config";
-import type { LoginForm, ManualVerificationRequest, MenuKey, User } from "./types";
+import type { LoginForm, MenuKey, User } from "./types";
 import Work from "./components/Work.vue";
 
 const activeMenu = ref<MenuKey>("accounts");
 const loggedIn = ref(false);
 const user = ref<User | null>(null);
 const loginError = ref("");
-const verificationRequest = ref<ManualVerificationRequest | null>(null);
-const verificationSubmitting = ref(false);
-const verificationErrorMessage = ref("");
-let verificationPollTimer: number | null = null;
 let tokenRefreshTimer: number | null = null;
 
 const currentView = computed(() => {
@@ -75,75 +69,15 @@ const logout = async () => {
   stopTokenRefresh();
 };
 
-const stopVerificationPolling = () => {
-  if (verificationPollTimer !== null) {
-    window.clearInterval(verificationPollTimer);
-    verificationPollTimer = null;
-  }
-};
-
 const pollVerificationRequests = async () => {
-  if (!loggedIn.value || verificationSubmitting.value) {
-    return;
-  }
-
-  try {
-    const requests = await fetchPendingManualVerifications();
-    verificationRequest.value = requests[0] || null;
-    if (!requests.length) {
-      verificationErrorMessage.value = "";
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "验证码请求加载失败";
-    if (message.includes("404") || message.includes("Not Found")) {
-      console.warn("[verification-poll] 后端未实现该接口，暂停轮询");
-      stopVerificationPolling();
-      return;
-    }
-    verificationErrorMessage.value = message;
-  }
+  void loggedIn.value;
 };
 
 const startVerificationPolling = () => {
-  stopVerificationPolling();
   void pollVerificationRequests();
-  verificationPollTimer = window.setInterval(() => {
-    void pollVerificationRequests();
-  }, 30000);
 };
 
-const handleVerificationSubmit = async (code: string) => {
-  if (!verificationRequest.value) {
-    return;
-  }
-
-  verificationSubmitting.value = true;
-  verificationErrorMessage.value = "";
-  try {
-    await submitManualVerificationCode(verificationRequest.value.requestId, code);
-    verificationRequest.value = null;
-  } catch (error) {
-    verificationErrorMessage.value = error instanceof Error ? error.message : "验证码提交失败";
-  } finally {
-    verificationSubmitting.value = false;
-  }
-};
-
-const handleVerificationCancel = async () => {
-  if (!verificationRequest.value) {
-    return;
-  }
-
-  verificationSubmitting.value = true;
-  verificationErrorMessage.value = "";
-  try {
-    await cancelManualVerification(verificationRequest.value.requestId);
-    verificationRequest.value = null;
-  } catch (error) {
-    verificationErrorMessage.value = error instanceof Error ? error.message : "验证码取消失败";
-  } finally {
-    verificationSubmitting.value = false;
-  }
+const stopVerificationPolling = () => {
 };
 
 const refreshAccessToken = async () => {
@@ -209,14 +143,5 @@ onBeforeUnmount(() => {
         <component :is="currentView" />
       </section>
     </div>
-
-    <PublishVerificationDialog
-      :visible="Boolean(verificationRequest)"
-      :request="verificationRequest"
-      :submitting="verificationSubmitting"
-      :error-message="verificationErrorMessage"
-      @submit="handleVerificationSubmit"
-      @cancel="handleVerificationCancel"
-    />
   </main>
 </template>

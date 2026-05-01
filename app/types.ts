@@ -38,37 +38,6 @@ export interface PlatformItem {
   label: string;
 }
 
-export interface PublishRecord {
-  id: string;
-  ulid?: string;
-  platform: string;
-  platformShort: string;
-  accountName: string;
-  title: string;
-  status: string;
-  scheduledAt: string;
-  link: string;
-}
-
-export interface ManualVerificationRequest {
-  requestId: string;
-  platform: string;
-  subtaskId?: string | null;
-  subtaskUlid?: string | null;
-  accountUlid?: string | null;
-  accountName?: string | null;
-  title?: string | null;
-  prompt: string;
-  codeLength: number;
-  status: string;
-  createdAt: string;
-  expiresAt: string;
-  submittedAt?: string | null;
-  consumedAt?: string | null;
-  cancelledAt?: string | null;
-  error?: string | null;
-}
-
 export type WorkStatus = "生成中" | "已完成" | "生成失败";
 
 export interface WorkItem {

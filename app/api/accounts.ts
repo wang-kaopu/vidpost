@@ -1,5 +1,5 @@
-import { buildEmbeddedApiUrl, buildWorksApiUrl } from "@/config";
-import { authFetch, getWorksAuthHeaders } from "./request";
+import { buildWorksApiUrl } from "@/config";
+import { getWorksAuthHeaders } from "./request";
 import type { AccountItem } from "@/types";
 
 interface ApiEnvelope<T> {
@@ -143,22 +143,6 @@ export async function fetchAccounts(options?: FetchAccountsOptions): Promise<Acc
   return data.list.map(normalizeAccount);
 }
 
-export async function createAccount(platform: string, options?: { autoLogin?: boolean }): Promise<AccountItem> {
-  const response = await authFetch(buildEmbeddedApiUrl("/api/v1/accounts"), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ platform, auto_login: options?.autoLogin }),
-  });
-  if (!response.ok) {
-    throw new Error(`新增账号请求失败: HTTP ${response.status}`);
-  }
-
-  const payload = (await response.json()) as ApiEnvelope<BackendAccount>;
-  return normalizeAccount(assertSuccess(payload, "新增账号响应格式无效"));
-}
-
 export async function renameAccount(accountId: string, nickname: string): Promise<AccountItem> {
   return updateAccount(accountId, { nickname });
 }
@@ -199,18 +183,6 @@ export async function removeAccount(accountId: string): Promise<void> {
 
   const payload = (await response.json()) as ApiEnvelope<unknown>;
   assertSuccess(payload, "账号删除响应格式无效");
-}
-
-export async function pingAccount(accountId: string): Promise<AccountItem> {
-  const response = await authFetch(buildEmbeddedApiUrl(`/api/v1/accounts/${accountId}/ping`), {
-    method: "POST",
-  });
-  if (!response.ok) {
-    throw new Error(`账号检测请求失败: HTTP ${response.status}`);
-  }
-
-  const payload = (await response.json()) as ApiEnvelope<BackendAccount>;
-  return normalizeAccount(assertSuccess(payload, "账号检测响应格式无效"));
 }
 
 export async function setAccountStatus(accountId: string, status: "login_success" | "login_fail"): Promise<AccountItem> {

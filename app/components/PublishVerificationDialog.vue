@@ -1,12 +1,30 @@
 <script setup lang="ts">
+// 空实现
 import { computed, ref, watch } from "vue";
 
-import type { ManualVerificationRequest } from "@/types";
+interface VerificationRequest {
+  requestId: string;
+  platform: string;
+  subtaskId?: string | null;
+  subtaskUlid?: string | null;
+  accountUlid?: string | null;
+  accountName?: string | null;
+  title?: string | null;
+  prompt: string;
+  codeLength: number;
+  status: string;
+  createdAt: string;
+  expiresAt: string;
+  submittedAt?: string | null;
+  consumedAt?: string | null;
+  cancelledAt?: string | null;
+  error?: string | null;
+}
 
 const props = withDefaults(
   defineProps<{
     visible: boolean;
-    request: ManualVerificationRequest | null;
+    request: VerificationRequest | null;
     submitting?: boolean;
     errorMessage?: string;
   }>(),

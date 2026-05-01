@@ -2,7 +2,6 @@ import { frontendEnv } from "./env";
 
 export interface FrontendRuntimeConfig {
   apiBaseUrl: string;
-  embeddedApiBaseUrl: string;
   worksApiBaseUrl: string;
   appName: string;
   isMockMode: boolean;
@@ -10,7 +9,6 @@ export interface FrontendRuntimeConfig {
 
 export const appConfig: FrontendRuntimeConfig = {
   apiBaseUrl: frontendEnv.apiBaseUrl,
-  embeddedApiBaseUrl: frontendEnv.embeddedApiBaseUrl,
   worksApiBaseUrl: frontendEnv.worksApiBaseUrl,
   appName: frontendEnv.appName,
   isMockMode: frontendEnv.isMockMode,
@@ -22,10 +20,6 @@ function normalizePath(path: string): string {
 
 export function buildApiUrl(path: string): string {
   return `${appConfig.apiBaseUrl}${normalizePath(path)}`;
-}
-
-export function buildEmbeddedApiUrl(path: string): string {
-  return `${appConfig.embeddedApiBaseUrl}${normalizePath(path)}`;
 }
 
 export function buildWorksApiUrl(path: string): string {
