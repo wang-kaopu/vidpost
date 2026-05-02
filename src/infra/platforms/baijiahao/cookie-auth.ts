@@ -12,6 +12,7 @@ export async function cookieAuth(accountFile: string): Promise<boolean> {
       accountFile,
       platform: "baijiahao",
       targetUrl: BAIJIAHAO_PROBE_URL,
+      settleMs: 6_000,
     },
     async ({ finalUrl, html, title }) => {
       const pageText = `${title}\n${html}`;
@@ -19,8 +20,17 @@ export async function cookieAuth(accountFile: string): Promise<boolean> {
       const hasSuccessHint = BAIJIAHAO_SUCCESS_HINTS.some((hint) => pageText.includes(hint));
       const hasLoginHint = BAIJIAHAO_LOGIN_HINTS.some((hint) => pageText.includes(hint));
       const inBuilderArea = normalizedUrl.includes("baijiahao.baidu.com/builder/");
-      const onLoginPage = normalizedUrl.includes("/login") || normalizedUrl.includes("bjh/login") || hasLoginHint;
-      return inBuilderArea && !onLoginPage && hasSuccessHint;
+      const onLoginUrl = normalizedUrl.includes("/login") || normalizedUrl.includes("bjh/login");
+
+      if (inBuilderArea && hasSuccessHint) {
+        return true;
+      }
+
+      if (onLoginUrl) {
+        return false;
+      }
+
+      return !hasLoginHint && hasSuccessHint;
     },
   );
 }

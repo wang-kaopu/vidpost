@@ -382,6 +382,71 @@ async function waitForPublishEditorReady(page: Page): Promise<void> {
 }
 
 // 选择百家号定时发布弹窗里的候选值。
+async function collectRenderedScheduleOptionTexts(options: Locator): Promise<string[]> {
+  const optionCount = await options.count().catch(() => 0);
+  const optionTexts: string[] = [];
+  for (let index = 0; index < optionCount; index += 1) {
+    const text = String(await options.nth(index).innerText().catch(() => "")).trim();
+    if (text) {
+      optionTexts.push(text);
+    }
+  }
+  return optionTexts;
+}
+
+async function findRenderedScheduleOption(options: Locator, value: string): Promise<Locator | null> {
+  const optionCount = await options.count().catch(() => 0);
+  for (let index = 0; index < optionCount; index += 1) {
+    const candidate = options.nth(index);
+    const text = String(await candidate.innerText().catch(() => "")).trim();
+    if (text === value) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+async function findScheduleOptionByScrolling(page: Page, options: Locator, value: string): Promise<Locator | null> {
+  let selected = await findRenderedScheduleOption(options, value);
+  if (selected) {
+    return selected;
+  }
+
+  const scrollContainer = page.locator("div.rc-virtual-list:visible .rc-virtual-list-holder, div.rc-virtual-list-holder:visible").last();
+  if (!(await scrollContainer.count().catch(() => 0))) {
+    return null;
+  }
+
+  const metrics = await scrollContainer.evaluate((node) => ({
+    scrollHeight: (node as HTMLElement).scrollHeight,
+    clientHeight: (node as HTMLElement).clientHeight,
+  })).catch(() => null);
+  if (!metrics || metrics.scrollHeight <= metrics.clientHeight) {
+    return null;
+  }
+
+  const step = Math.max(40, Math.floor(metrics.clientHeight * 0.8));
+  const maxScrollTop = Math.max(0, metrics.scrollHeight - metrics.clientHeight);
+
+  for (let scrollTop = 0; scrollTop <= maxScrollTop; scrollTop += step) {
+    await scrollContainer.evaluate((node, top) => {
+      (node as HTMLElement).scrollTop = Number(top);
+    }, scrollTop).catch(() => undefined);
+    await page.waitForTimeout(150);
+
+    selected = await findRenderedScheduleOption(options, value);
+    if (selected) {
+      return selected;
+    }
+  }
+
+  await scrollContainer.evaluate((node) => {
+    (node as HTMLElement).scrollTop = 0;
+  }).catch(() => undefined);
+  await page.waitForTimeout(150);
+  return null;
+}
+
 async function selectScheduleDropdownValue(page: Page, dialog: Locator, dropdownIndex: number, value: string): Promise<void> {
   const dropdowns = dialog.locator("div.select-wrap:visible");
   const count = await dropdowns.count().catch(() => 0);
@@ -395,12 +460,12 @@ async function selectScheduleDropdownValue(page: Page, dialog: Locator, dropdown
   await page.waitForTimeout(500);
 
   const options = page.locator("div.rc-virtual-list:visible div.cheetah-select-item-option, div.rc-virtual-list:visible div.cheetah-select-item");
-  let selected = page.getByText(value, { exact: true }).first();
-  if (!(await selected.count().catch(() => 0))) {
-    selected = options.getByText(value, { exact: true }).first();
-  }
+  const optionTexts = await collectRenderedScheduleOptionTexts(options);
+  console.info(`[baijiahao:schedule] dropdownIndex=${dropdownIndex} target=${value} options=${JSON.stringify(optionTexts.slice(0, 80))}`);
 
-  if (!(await selected.count().catch(() => 0)) && dropdownIndex === 2) {
+  let selected = await findScheduleOptionByScrolling(page, options, value);
+
+  if (!selected && dropdownIndex === 2) {
     const targetMatch = value.match(/(\d+)/);
     const targetMinute = targetMatch ? Number(targetMatch[1]) : Number.NaN;
     const optionCount = await options.count().catch(() => 0);
@@ -430,7 +495,7 @@ async function selectScheduleDropdownValue(page: Page, dialog: Locator, dropdown
     }
   }
 
-  if (!(await selected.count().catch(() => 0))) {
+  if (!selected) {
     throw new Error(`未找到定时发布选项: ${value}`);
   }
 
@@ -507,6 +572,22 @@ async function confirmSchedulePublishDialog(page: Page): Promise<void> {
 function parseScheduledDate(value: string): Date | null {
   const parsed = parseScheduledTimeInput("百家号", value);
   return parsed.date;
+}
+
+function padBaijiahaoDay(value: number): string {
+  return String(value).padStart(2, "0");
+}
+
+export function formatBaijiahaoScheduleDateOption(date: Date): string {
+  return `${date.getMonth() + 1}月${padBaijiahaoDay(date.getDate())}日`;
+}
+
+export function formatBaijiahaoScheduleHourOption(date: Date): string {
+  return `${date.getHours()}点`;
+}
+
+export function formatBaijiahaoScheduleMinuteOption(date: Date): string {
+  return `${date.getMinutes()}分`;
 }
 
 export function buildBaijiahaoDescriptionValue(title: string, description: string): string {
@@ -717,9 +798,9 @@ async function uploadOnce(payload: BaijiahaoUploadPayload, attempt: number, maxA
     const scheduledDate = parseScheduledDate(payload.scheduledAt || "");
     if (scheduledDate) {
       const dialog = await openSchedulePublishDialog(page);
-      await selectScheduleDropdownValue(page, dialog, 0, `${scheduledDate.getMonth() + 1}月${scheduledDate.getDate()}日`);
-      await selectScheduleDropdownValue(page, dialog, 1, `${scheduledDate.getHours()}点`);
-      await selectScheduleDropdownValue(page, dialog, 2, `${scheduledDate.getMinutes()}分`);
+      await selectScheduleDropdownValue(page, dialog, 0, formatBaijiahaoScheduleDateOption(scheduledDate));
+      await selectScheduleDropdownValue(page, dialog, 1, formatBaijiahaoScheduleHourOption(scheduledDate));
+      await selectScheduleDropdownValue(page, dialog, 2, formatBaijiahaoScheduleMinuteOption(scheduledDate));
       await confirmSchedulePublishDialog(page);
     } else {
       await clickPublishButtonWithRetry(page);

@@ -43,3 +43,22 @@ test('normalizeBaijiahaoScheduledAt rejects non-standard schedule formats', asyn
     /scheduledAt 格式错误，应为字符串 "0" 或 YYYY-MM-DD HH:mm/,
   )
 })
+
+test('baijiahao schedule option format matches panel text shape', async () => {
+  const {
+    formatBaijiahaoScheduleDateOption,
+    formatBaijiahaoScheduleHourOption,
+    formatBaijiahaoScheduleMinuteOption,
+  } = await loadPublishModule()
+
+  const earlyMorning = new Date(2026, 4, 3, 0, 3, 0, 0)
+  const lateMorning = new Date(2026, 9, 3, 10, 17, 0, 0)
+
+  assert.equal(formatBaijiahaoScheduleDateOption(earlyMorning), '5月03日')
+  assert.equal(formatBaijiahaoScheduleHourOption(earlyMorning), '0点')
+  assert.equal(formatBaijiahaoScheduleMinuteOption(earlyMorning), '3分')
+
+  assert.equal(formatBaijiahaoScheduleDateOption(lateMorning), '10月03日')
+  assert.equal(formatBaijiahaoScheduleHourOption(lateMorning), '10点')
+  assert.equal(formatBaijiahaoScheduleMinuteOption(lateMorning), '17分')
+})

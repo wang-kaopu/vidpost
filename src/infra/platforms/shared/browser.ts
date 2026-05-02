@@ -111,8 +111,26 @@ export async function probePlatformLogin(
     page.setDefaultNavigationTimeout(timeoutMs);
 
     await page.goto(options.targetUrl, { waitUntil: "domcontentloaded", timeout: timeoutMs });
-    const snapshot = await collectProbeSnapshot(page, settleMs);
-    return await judge({ page, ...snapshot });
+    await page.waitForLoadState("domcontentloaded", { timeout: Math.min(timeoutMs, 10_000) }).catch(() => undefined);
+    await page.waitForLoadState("load", { timeout: Math.min(timeoutMs, 10_000) }).catch(() => undefined);
+    await page.waitForLoadState("networkidle", { timeout: Math.min(timeoutMs, 10_000) }).catch(() => undefined);
+
+    const startedAt = Date.now();
+    let lastSnapshot = await collectProbeSnapshot(page, Math.min(settleMs, 1_500));
+    if (await judge({ page, ...lastSnapshot })) {
+      return true;
+    }
+
+    while (Date.now() - startedAt < settleMs) {
+      await sleep(500);
+      await page.waitForLoadState("networkidle", { timeout: 1_500 }).catch(() => undefined);
+      lastSnapshot = await collectProbeSnapshot(page, 300);
+      if (await judge({ page, ...lastSnapshot })) {
+        return true;
+      }
+    }
+
+    return false;
   } catch (error) {
     if (error instanceof Error && /Timeout/i.test(error.message)) {
       throw new PlatformTimeoutError(options.platform, "probe-login", timeoutMs);
