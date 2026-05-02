@@ -2,7 +2,10 @@
 vite启动：
 `
 cd app
-pnpm dev
+`
+
+`
+pnpm run dev
 `
 
 electron启动：
