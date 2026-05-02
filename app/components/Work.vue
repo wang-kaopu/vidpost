@@ -12,6 +12,7 @@ import { mockWorks } from "@/mock";
 import PlatformPickerDialog from "./PlatformPickerDialog.vue";
 import PublishPlanDialog from "./PublishPlanDialog.vue";
 import type { AccountItem, WorkItem } from "@/types";
+import { useNotificationCenter } from "@/notifications";
 
 type SelectedWorkRow = {
   id: string;
@@ -45,6 +46,7 @@ type PublishPlanDraft = {
 };
 
 const IMMEDIATE_PUBLISH_VALUE = "0";
+const SCHEDULED_AT_PATTERN = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/;
 
 const works = ref<WorkItem[]>([]);
 const loading = ref(false);
@@ -97,7 +99,7 @@ const publishPlatformAccountSummary = ref("");
 const publishPlanDialogVisible = ref(false);
 const publishPlanDrafts = ref<Record<string, PublishPlanDraft>>({});
 const publishPlanSubmitting = ref(false);
-const publishPlanErrorMessage = ref("");
+const notificationCenter = useNotificationCenter();
 
 const selectedCount = computed(() => selectedWorkIds.value.size);
 const selectedWorks = computed<SelectedWorkRow[]>(() =>
@@ -221,7 +223,16 @@ const openPublishPlatformAccountDialog = async (): Promise<void> => {
       } as AccountItem;
     });
   } catch (error) {
-    publishPlatformAccountErrorMessage.value = error instanceof Error ? error.message : "发布平台账号列表加载失败";
+    const messageText = error instanceof Error ? error.message : "发布平台账号列表加载失败";
+    publishPlatformAccountErrorMessage.value = "";
+    notificationCenter.push({
+      title: "发布账号加载失败",
+      message: messageText,
+      source: "发布计划",
+      tone: "error",
+      unread: true,
+      timestamp: "刚刚",
+    });
     publishPlatformAccounts.value = [];
   } finally {
     publishPlatformAccountLoading.value = false;
@@ -235,7 +246,6 @@ const closePublishPlatformAccountDialog = (): void => {
 
 const closePublishPlanDialog = (): void => {
   publishPlanDialogVisible.value = false;
-  publishPlanErrorMessage.value = "";
 };
 
 const handlePublishPlatformAccountConfirm = (rowAccountSelections: Record<string, string[]>): void => {
@@ -286,11 +296,78 @@ const handlePublishPlanApplyAll = (payload: { title: string; summary: string; sc
   publishPlanDrafts.value = nextDrafts;
 };
 
+const parseScheduledAtValue = (value: string): Date | null => {
+  const normalized = String(value || "").trim();
+  const matched = normalized.match(SCHEDULED_AT_PATTERN);
+  if (!matched) {
+    return null;
+  }
+
+  const [, yearText, monthText, dayText, hourText, minuteText] = matched;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  const date = new Date(year, month - 1, day, hour, minute, 0, 0);
+
+  if (
+    Number.isNaN(date.getTime())
+    || date.getFullYear() !== year
+    || date.getMonth() !== month - 1
+    || date.getDate() !== day
+    || date.getHours() !== hour
+    || date.getMinutes() !== minute
+  ) {
+    return null;
+  }
+
+  return date;
+};
+
+const buildPublishTaskScheduleValidationError = (task: {
+  platform: string;
+  platformLabel: string;
+  accountName: string;
+  title: string;
+  scheduledAt: string;
+}): string | null => {
+  const normalizedPlatform = String(task.platform || "").trim().toLowerCase();
+  const normalizedScheduledAt = String(task.scheduledAt || "").trim();
+  const taskLabel = `${task.platformLabel}账号「${task.accountName}」`;
+
+  if (normalizedPlatform === "sohu") {
+    if (normalizedScheduledAt !== IMMEDIATE_PUBLISH_VALUE) {
+      return `${taskLabel} 暂不支持定时发布，请将《${task.title}》的发布时间设为立即发布`;
+    }
+    return null;
+  }
+
+  if (normalizedScheduledAt === IMMEDIATE_PUBLISH_VALUE) {
+    return null;
+  }
+
+  const scheduledDate = parseScheduledAtValue(normalizedScheduledAt);
+  if (!scheduledDate) {
+    return `${taskLabel} 的发布时间格式错误，应为字符串 "0" 或 YYYY-MM-DD HH:mm`;
+  }
+
+  const now = Date.now();
+  const minAllowed = now + 2 * 60 * 60 * 1000;
+  const maxAllowed = now + 7 * 24 * 60 * 60 * 1000;
+  const scheduledMs = scheduledDate.getTime();
+
+  if (scheduledMs < minAllowed || scheduledMs > maxAllowed) {
+    return `${taskLabel} 的发布时间需在当前时间 2 小时后且 7 天内`;
+  }
+
+  return null;
+};
+
 const resetPublishPlanState = (): void => {
   publishPlanDialogVisible.value = false;
   publishPlatformAccountDialogVisible.value = false;
   publishPlanSubmitting.value = false;
-  publishPlanErrorMessage.value = "";
   publishWorkAccountSelections.value = {};
   publishPlanDrafts.value = {};
   publishPlatformAccountSummary.value = "";
@@ -300,7 +377,6 @@ const resetPublishPlanState = (): void => {
 
 const handlePublishPlanConfirm = async (): Promise<void> => {
   publishPlanSubmitting.value = true;
-  publishPlanErrorMessage.value = "";
 
   try {
     const publishApi = window.electronAPI?.publish;
@@ -323,6 +399,7 @@ const handlePublishPlanConfirm = async (): Promise<void> => {
         return {
           accountId: row.accountId,
           platform: row.platformKey,
+          platformLabel: group.platform,
           title: row.title,
           workId: row.workId,
           introduction: row.summary,
@@ -336,12 +413,26 @@ const handlePublishPlanConfirm = async (): Promise<void> => {
     );
 
     for (const task of publishTasks) {
+      const validationError = buildPublishTaskScheduleValidationError(task);
+      if (validationError) {
+        throw new Error(validationError);
+      }
+    }
+
+    for (const task of publishTasks) {
       publishApi(task);
     }
 
     resetPublishPlanState();
   } catch (error) {
-    publishPlanErrorMessage.value = error instanceof Error ? error.message : "发布失败";
+    notificationCenter.push({
+      title: "发布计划提交失败",
+      message: error instanceof Error ? error.message : "发布失败",
+      source: "发布计划",
+      tone: "error",
+      unread: true,
+      timestamp: "刚刚",
+    });
   } finally {
     publishPlanSubmitting.value = false;
   }
@@ -645,7 +736,7 @@ onBeforeUnmount(() => {
 
   <PublishPlanDialog :visible="publishPlanDialogVisible"
     :description="`已选中 ${selectedCount} 个视频，覆盖 ${publishPlanGroups.length} 个发布平台，共 ${publishPlanCount} 条计划`"
-    :error-message="publishPlanErrorMessage" :submitting="publishPlanSubmitting" :groups="publishPlanGroups"
+    :submitting="publishPlanSubmitting" :groups="publishPlanGroups"
     @close="closePublishPlanDialog" @remove="handlePublishPlanRemove" @update-row-field="handlePublishPlanFieldUpdate"
     @apply-all="handlePublishPlanApplyAll" @confirm="handlePublishPlanConfirm" />
 

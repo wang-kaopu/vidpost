@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, provide, ref } from "vue";
 import LoginView from "./components/LoginView.vue";
 import SidebarNav from "./components/SidebarNav.vue";
 import AccountTable from "./components/AccountTable.vue";
@@ -9,12 +9,15 @@ import { fetchUserProfile, loginByPhone, logout as apiLogout, refreshToken } fro
 import { clearSessionTokens, getAccessToken, getRefreshToken, setAccessToken, setRefreshToken } from "./config";
 import type { LoginForm, MenuKey, User } from "./types";
 import Work from "./components/Work.vue";
+import NotificationCenter from "./components/NotificationCenter.vue";
+import { createNotificationCenter, notificationCenterKey } from "./notifications";
 
 const activeMenu = ref<MenuKey>("accounts");
 const loggedIn = ref(false);
 const user = ref<User | null>(null);
 const loginError = ref("");
 let tokenRefreshTimer: number | null = null;
+const notificationCenter = createNotificationCenter();
 
 const currentView = computed(() => {
   if (activeMenu.value === "accounts") {
@@ -80,6 +83,20 @@ const startVerificationPolling = () => {
 const stopVerificationPolling = () => {
 };
 
+const dismissNotification = (notificationId: string) => {
+  notificationCenter.dismiss(notificationId);
+};
+
+const clearNotifications = () => {
+  notificationCenter.clear();
+};
+
+const handleNotificationAction = (notificationId: string) => {
+  notificationCenter.markRead(notificationId);
+};
+
+provide(notificationCenterKey, notificationCenter);
+
 const refreshAccessToken = async () => {
   const refreshTokenValue = getRefreshToken();
   if (!refreshTokenValue) {
@@ -142,6 +159,15 @@ onBeforeUnmount(() => {
         </header>
         <component :is="currentView" />
       </section>
+      <NotificationCenter
+        :items="notificationCenter.items.value"
+        title="系统通知"
+        empty-text="新的发布结果会显示在这里"
+        :default-collapsed="true"
+        @dismiss="dismissNotification"
+        @clear="clearNotifications"
+        @action="handleNotificationAction($event.id)"
+      />
     </div>
   </main>
 </template>
