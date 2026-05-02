@@ -24,7 +24,7 @@ const props = withDefaults(defineProps<{
   title: "通知",
   emptyText: "当前没有新的通知",
   defaultCollapsed: false,
-  maxVisible: 4,
+  maxVisible: 0,
 });
 
 const emit = defineEmits<{
@@ -56,7 +56,11 @@ watch(
   },
 );
 
-const visibleItems = computed(() => props.items.slice(0, props.maxVisible));
+const visibleItems = computed(() => (
+  props.maxVisible > 0
+    ? props.items.slice(0, props.maxVisible)
+    : props.items
+));
 const unreadCount = computed(() => props.items.filter((item) => item.unread).length);
 const latestItem = computed(() => props.items[0] ?? null);
 const collapsedSummary = computed(() => {

@@ -231,7 +231,6 @@ const openPublishPlatformAccountDialog = async (): Promise<void> => {
       source: "发布计划",
       tone: "error",
       unread: true,
-      timestamp: "刚刚",
     });
     publishPlatformAccounts.value = [];
   } finally {
@@ -431,7 +430,6 @@ const handlePublishPlanConfirm = async (): Promise<void> => {
       source: "发布计划",
       tone: "error",
       unread: true,
-      timestamp: "刚刚",
     });
   } finally {
     publishPlanSubmitting.value = false;

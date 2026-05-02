@@ -130,29 +130,35 @@ watch(globalTimedPublish, (enabled) => {
                   @input="globalTitle = ($event.target as HTMLInputElement).value"
                 />
               </label>
-              <div class="publish-plan-timing-block">
-                <label class="publish-plan-switch">
-                  <span>定时发布</span>
+              <section class="publish-plan-timing-card" :class="{ active: globalTimedPublish }">
+                <div class="publish-plan-timing-card-header">
+                  <div class="publish-plan-timing-copy">
+                    <span class="publish-plan-timing-title">定时发布</span>
+                    <span class="publish-plan-timing-hint">
+                      {{ globalTimedPublish ? "为所有计划统一设置发布时间" : "关闭后默认立即发布" }}
+                    </span>
+                  </div>
                   <button
                     class="publish-plan-switch-control"
                     :class="{ active: globalTimedPublish }"
                     type="button"
+                    :aria-pressed="globalTimedPublish"
                     @click="globalTimedPublish = !globalTimedPublish"
                   >
                     <span />
                   </button>
-                </label>
+                </div>
                 <label class="publish-plan-field publish-plan-field--schedule">
-                  <!-- <span>发布时间</span> -->
-                    <input
-                      :value="globalScheduleTime"
-                      type="text"
-                      placeholder="YYYY-MM-DD HH:mm"
-                      :disabled="!globalTimedPublish"
-                      @input="globalScheduleTime = ($event.target as HTMLInputElement).value"
-                    />
+                  <span>发布时间</span>
+                  <input
+                    :value="globalScheduleTime"
+                    type="text"
+                    placeholder="YYYY-MM-DD HH:mm"
+                    :disabled="!globalTimedPublish"
+                    @input="globalScheduleTime = ($event.target as HTMLInputElement).value"
+                  />
                 </label>
-              </div>
+              </section>
             </div>
             <label class="publish-plan-field publish-plan-field--summary">
               <span>简介</span>
@@ -217,24 +223,33 @@ watch(globalTimedPublish, (enabled) => {
                   />
                 </td>
                 <td>
-                  <div class="publish-plan-table-timing">
-                    <button
-                      class="publish-plan-switch-control"
-                      :class="{ active: isRowTimedPublishEnabled(row.scheduledAt) }"
-                      type="button"
-                      @click.stop="toggleRowTimedPublish(row)"
-                    >
-                      <span />
-                    </button>
+                  <div class="publish-plan-table-timing" :class="{ active: isRowTimedPublishEnabled(row.scheduledAt) }">
+                    <div class="publish-plan-table-timing-head">
+                      <button
+                        class="publish-plan-switch-control"
+                        :class="{ active: isRowTimedPublishEnabled(row.scheduledAt) }"
+                        type="button"
+                        :aria-pressed="isRowTimedPublishEnabled(row.scheduledAt)"
+                        @click.stop="toggleRowTimedPublish(row)"
+                      >
+                        <span />
+                      </button>
+                      <span
+                        class="publish-plan-table-timing-status"
+                        :class="{ active: isRowTimedPublishEnabled(row.scheduledAt) }"
+                      >
+                        {{ getScheduledAtDisplayText(row.scheduledAt) }}
+                      </span>
+                    </div>
                     <input
                       v-if="isRowTimedPublishEnabled(row.scheduledAt)"
-                      class="publish-plan-table-input"
+                      class="publish-plan-table-input publish-plan-table-schedule-input"
                       :value="row.scheduledAt"
                       type="text"
                       placeholder="YYYY-MM-DD HH:mm"
                       @input="emit('update-row-field', { rowId: row.id, field: 'scheduledAt', value: ($event.target as HTMLInputElement).value })"
                     />
-                    <span v-else class="publish-plan-immediate-text">{{ getScheduledAtDisplayText(row.scheduledAt) }}</span>
+                    <span v-else class="publish-plan-immediate-text">开启后可单独设置时间</span>
                   </div>
                 </td>
                 <td>

@@ -16,6 +16,16 @@ export const notificationCenterKey: InjectionKey<NotificationCenterApi> = Symbol
 const createNotificationId = (): string =>
   `notification-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
+const formatNotificationTimestamp = (value: Date): string => {
+  const year = value.getFullYear();
+  const month = `${value.getMonth() + 1}`.padStart(2, "0");
+  const day = `${value.getDate()}`.padStart(2, "0");
+  const hour = `${value.getHours()}`.padStart(2, "0");
+  const minute = `${value.getMinutes()}`.padStart(2, "0");
+  const second = `${value.getSeconds()}`.padStart(2, "0");
+  return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+};
+
 export const createNotificationCenter = (
   initialItems: NotificationCenterItem[] = [],
 ): NotificationCenterApi => {
@@ -27,6 +37,7 @@ export const createNotificationCenter = (
       {
         ...item,
         id: notificationId,
+        timestamp: formatNotificationTimestamp(new Date()),
       },
       ...items.value,
     ];
