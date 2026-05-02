@@ -5,7 +5,7 @@ import type { Locator, Page } from "playwright";
 import type { PlatformUploadPayload, PlatformUploadResult } from "../contracts.ts";
 import { createContextFromAccountFile } from "../shared/browser.ts";
 import { clickWithDomFallback, findFileInputAcrossScopes, pickFileWithChooser } from "../shared/browser/page-helpers.ts";
-import { buildSuccessOutcome, MAX_UPLOAD_ATTEMPTS, normalizeUploadAttemptError, runUploadAttemptWithTimeout, UPLOAD_ATTEMPT_TIMEOUT_MS, waitForCondition, withUploadRetry } from "../shared/publish/index.ts";
+import { buildSuccessOutcome, MAX_UPLOAD_ATTEMPTS, normalizeUploadAttemptError, parseScheduledTimeInput, runUploadAttemptWithTimeout, UPLOAD_ATTEMPT_TIMEOUT_MS, waitForCondition, withUploadRetry } from "../shared/publish/index.ts";
 import { saveContextStorageState } from "../shared/session/storage-state.ts";
 import { cookieAuth } from "./cookie-auth.ts";
 
@@ -142,6 +142,9 @@ const BILIBILI_PUBLISH_BUTTON_SELECTORS = [
   "[role='button']:has-text('立即投稿')",
   "[role='button']:has-text('点击投稿')",
 ];
+const BILIBILI_SCHEDULE_TOGGLE_SELECTOR = "div.form-item:nth-child(8) > div:nth-child(1) > div:nth-child(2) > div:nth-child(1)";
+const BILIBILI_SCHEDULE_DATE_WRAPPER_SELECTOR = "div.date-picker-date-wrp:nth-child(2)";
+const BILIBILI_SCHEDULE_TIME_WRAPPER_SELECTOR = "div.date-picker-date-wrp:nth-child(3)";
 
 type BilibiliUploadPayload = PlatformUploadPayload & {
   accountFile: string;
@@ -167,7 +170,7 @@ function parseUploadPayload(payload: PlatformUploadPayload): BilibiliUploadPaylo
   const videoPath = String(payload.videoPath || payload.filePath || "").trim();
   const introduction = String(payload.introduction || payload.description || title).trim();
   const coverPath = String(payload.coverPath || payload.thumbnailPath || "").trim();
-  const scheduledAt = String(payload.scheduledAt || payload.publishDate || "").trim();
+  const scheduledAt = parseScheduledTimeInput("Bilibili", String(payload.scheduledAt || payload.publishDate || "").trim()).normalized;
   const timeoutMs = typeof payload.timeoutMs === "number" && Number.isFinite(payload.timeoutMs) ? payload.timeoutMs : UPLOAD_ATTEMPT_TIMEOUT_MS;
   const tags = Array.isArray(payload.tags)
     ? payload.tags.map((item) => String(item).trim()).filter(Boolean)
@@ -194,6 +197,42 @@ function parseUploadPayload(payload: PlatformUploadPayload): BilibiliUploadPaylo
     scheduledAt,
     tags,
     timeoutMs,
+  };
+}
+
+export function splitBilibiliScheduledAtForTest(value: string | null | undefined): { normalized: string; datePart: string; timePart: string } {
+  const parsed = parseScheduledTimeInput("Bilibili", value);
+  if (!parsed.normalized) {
+    return { normalized: "", datePart: "", timePart: "" };
+  }
+
+  return {
+    normalized: parsed.normalized,
+    datePart: parsed.normalized.slice(0, 10),
+    timePart: parsed.normalized.slice(11, 16),
+  };
+}
+
+function parseBilibiliScheduledParts(value: string | null | undefined): {
+  normalized: string;
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+} | null {
+  const { normalized } = splitBilibiliScheduledAtForTest(value);
+  if (!normalized) {
+    return null;
+  }
+
+  return {
+    normalized,
+    year: Number(normalized.slice(0, 4)),
+    month: Number(normalized.slice(5, 7)),
+    day: Number(normalized.slice(8, 10)),
+    hour: Number(normalized.slice(11, 13)),
+    minute: Number(normalized.slice(14, 16)),
   };
 }
 
@@ -760,6 +799,262 @@ async function setTags(page: Page, tags: string[]): Promise<void> {
   }
 }
 
+async function openBilibiliScheduleWrapper(page: Page, wrapperSelector: string, label: string): Promise<void> {
+  const wrapper = page.locator(wrapperSelector).first();
+  if (!(await wrapper.count().catch(() => 0))) {
+    throw new Error(`未找到 Bilibili ${label}控件`);
+  }
+
+  await wrapper.scrollIntoViewIfNeeded().catch(() => undefined);
+  const clicked = await clickWithDomFallback(wrapper, { timeoutMs: 5_000, force: true });
+  if (!clicked) {
+    throw new Error(`Bilibili ${label}控件点击失败`);
+  }
+  await page.waitForTimeout(400);
+}
+
+async function selectBilibiliDateByCalendar(
+  page: Page,
+  target: { year: number; month: number; day: number },
+): Promise<void> {
+  const result = await page.evaluate(async ({ year, month, day }) => {
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    const normalize = (value: string | null | undefined) => String(value || "").replace(/\s+/g, " ").trim();
+    const isVisible = (node: Element | null): node is HTMLElement => {
+      if (!(node instanceof HTMLElement)) {
+        return false;
+      }
+      const style = window.getComputedStyle(node);
+      if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") {
+        return false;
+      }
+      const rect = node.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    };
+    const clickNode = (node: HTMLElement) => {
+      node.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+      node.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+      node.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    };
+    const findPanel = (): HTMLElement | null =>
+      (Array.from(document.querySelectorAll(".date-picker-container"))
+        .find((node) => isVisible(node)) as HTMLElement | undefined) || null;
+    const getHeader = (panel: HTMLElement): { year: number; month: number } | null => {
+      const title = panel.querySelector(".date-picker-nav-title");
+      const matched = normalize(title?.textContent).match(/(\d{4})年(\d{1,2})月/);
+      if (!matched) {
+        return null;
+      }
+      return {
+        year: Number(matched[1]),
+        month: Number(matched[2]),
+      };
+    };
+    const isDisabled = (node: Element | null): boolean => String((node as HTMLElement | null)?.className || "").includes("disabled");
+    const findDayCell = (panel: HTMLElement): HTMLElement | null => {
+      const dateWrap = panel.querySelector(".date-wrp");
+      if (!(dateWrap instanceof HTMLElement)) {
+        return null;
+      }
+      const matched = Array.from(dateWrap.querySelectorAll(".date-picker-body-item"))
+        .filter((node) => isVisible(node))
+        .map((node) => ({ node, text: normalize(node.textContent) }))
+        .filter(({ text, node }) => text === String(day) && !isDisabled(node))
+        .map((item) => item.node as HTMLElement);
+
+      return matched[0] || null;
+    };
+
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const panel = findPanel();
+      if (!panel) {
+        await sleep(200);
+        continue;
+      }
+
+      const header = getHeader(panel);
+      if (!header) {
+        await sleep(200);
+        continue;
+      }
+
+      if (header.year !== year || header.month !== month) {
+        const goNext = header.year < year || (header.year === year && header.month < month);
+        const control = panel.querySelector(goNext ? ".next-btn-month, .next-btn-day" : ".prev-btn-month, .prev-btn-day") as HTMLElement | null;
+        if (!control) {
+          return { ok: false, reason: `missing-month-control header=${header.year}-${header.month}` };
+        }
+        if (isDisabled(control)) {
+          return { ok: false, reason: `month-control-disabled header=${header.year}-${header.month}` };
+        }
+        clickNode(control);
+        await sleep(250);
+        continue;
+      }
+
+      const dayCell = findDayCell(panel);
+      if (!dayCell) {
+        return { ok: false, reason: `missing-day-cell day=${day}` };
+      }
+
+      clickNode(dayCell);
+      await sleep(250);
+      return { ok: true, reason: "selected-day" };
+    }
+
+    return { ok: false, reason: "calendar-panel-not-ready" };
+  }, target);
+
+  console.info(`[bilibili:schedule] date-select result=${JSON.stringify(result)}`);
+  if (!result?.ok) {
+    throw new Error(`Bilibili 定时日期选择失败: ${result?.reason || "unknown"}`);
+  }
+}
+
+async function selectBilibiliTimeByColumns(
+  page: Page,
+  target: { hour: number; minute: number },
+): Promise<void> {
+  const result = await page.evaluate(async ({ hour, minute }) => {
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    const normalize = (value: string | null | undefined) => String(value || "").replace(/\s+/g, " ").trim();
+    const isVisible = (node: Element | null): node is HTMLElement => {
+      if (!(node instanceof HTMLElement)) {
+        return false;
+      }
+      const style = window.getComputedStyle(node);
+      if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") {
+        return false;
+      }
+      const rect = node.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    };
+    const clickNode = (node: HTMLElement) => {
+      node.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+      node.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+      node.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    };
+    const findPanel = (): HTMLElement | null =>
+      (Array.from(document.querySelectorAll(".time-picker-body-wrp"))
+        .find((node) => isVisible(node)) as HTMLElement | undefined) || null;
+    const findColumns = (panel: HTMLElement): HTMLElement[] =>
+      Array.from(panel.querySelectorAll(".time-picker-panel-select-wrp"))
+        .filter((node) => isVisible(node))
+        .map((node) => node as HTMLElement)
+        .slice(0, 2);
+    const pickColumnValue = async (column: HTMLElement, targetText: string): Promise<boolean> => {
+      const items = Array.from(column.querySelectorAll(".time-picker-panel-select-item"))
+        .filter((node) => isVisible(node))
+        .map((node) => ({
+          node: node as HTMLElement,
+          text: normalize(node.textContent),
+          disabled: String((node as HTMLElement).className || "").includes("disabled"),
+        }))
+        .filter((item) => /^\d{1,2}$/.test(item.text));
+
+      const exact = items.find((item) => item.text === targetText && !item.disabled);
+      if (exact) {
+        clickNode(exact.node);
+        await sleep(150);
+        return true;
+      }
+
+      return false;
+    };
+
+    const panel = findPanel();
+    if (!panel) {
+      return { ok: false, reason: "time-panel-not-found" };
+    }
+
+    const columns = findColumns(panel);
+    if (columns.length < 2) {
+      return { ok: false, reason: `time-columns-missing count=${columns.length}` };
+    }
+
+    const hourPicked = await pickColumnValue(columns[0], String(hour).padStart(2, "0"));
+    if (!hourPicked) {
+      return { ok: false, reason: `hour-not-found target=${String(hour).padStart(2, "0")}` };
+    }
+
+    const minuteItems = Array.from(columns[1].querySelectorAll(".time-picker-panel-select-item"))
+      .filter((node) => isVisible(node))
+      .map((node) => ({
+        node: node as HTMLElement,
+        text: normalize(node.textContent),
+        disabled: String((node as HTMLElement).className || "").includes("disabled"),
+      }))
+      .filter((item) => /^\d{2}$/.test(item.text) && !item.disabled);
+    const targetMinuteText = String(minute).padStart(2, "0");
+    const exactMinute = minuteItems.find((item) => item.text === targetMinuteText);
+    if (exactMinute) {
+      clickNode(exactMinute.node);
+      await sleep(150);
+      return { ok: true, reason: "selected-time" };
+    }
+
+    let nearestMinute = minuteItems[0] || null;
+    let nearestDiff = Number.POSITIVE_INFINITY;
+    for (const item of minuteItems) {
+      const diff = Math.abs(Number(item.text) - minute);
+      if (diff < nearestDiff) {
+        nearestDiff = diff;
+        nearestMinute = item;
+      }
+    }
+    if (nearestMinute) {
+      clickNode(nearestMinute.node);
+      await sleep(150);
+      return { ok: true, reason: `selected-nearest-minute:${nearestMinute.text}` };
+    }
+
+    const minutePicked = await pickColumnValue(columns[1], targetMinuteText);
+    if (!minutePicked) {
+      return { ok: false, reason: `minute-not-found target=${targetMinuteText}` };
+    }
+
+    return { ok: true, reason: "selected-time" };
+  }, target);
+
+  console.info(`[bilibili:schedule] time-select result=${JSON.stringify(result)}`);
+  if (!result?.ok) {
+    throw new Error(`Bilibili 定时时间选择失败: ${result?.reason || "unknown"}`);
+  }
+}
+
+async function setScheduledPublish(page: Page, scheduledAt: string): Promise<void> {
+  const parts = parseBilibiliScheduledParts(scheduledAt);
+  if (!parts) {
+    return;
+  }
+
+  const toggle = page.locator(BILIBILI_SCHEDULE_TOGGLE_SELECTOR).first();
+  if (!(await toggle.count().catch(() => 0))) {
+    throw new Error("未找到 Bilibili 定时发布开关");
+  }
+
+  await toggle.scrollIntoViewIfNeeded().catch(() => undefined);
+  const toggleClicked = await clickWithDomFallback(toggle, { timeoutMs: 5_000, force: true });
+  if (!toggleClicked) {
+    throw new Error("Bilibili 定时发布开关点击失败");
+  }
+  await page.waitForTimeout(500);
+
+  await openBilibiliScheduleWrapper(page, BILIBILI_SCHEDULE_DATE_WRAPPER_SELECTOR, "定时日期");
+  await selectBilibiliDateByCalendar(page, {
+    year: parts.year,
+    month: parts.month,
+    day: parts.day,
+  });
+  await page.waitForTimeout(300);
+  await openBilibiliScheduleWrapper(page, BILIBILI_SCHEDULE_TIME_WRAPPER_SELECTOR, "定时时间");
+  await selectBilibiliTimeByColumns(page, {
+    hour: parts.hour,
+    minute: parts.minute,
+  });
+  await page.waitForTimeout(500);
+}
+
 // 执行 Bilibili 实际上传发布步骤。
 async function uploadOnce(payload: BilibiliUploadPayload, attempt: number, maxAttempts: number): Promise<PlatformUploadResult> {
   const context = await createContextFromAccountFile(payload.accountFile);
@@ -780,7 +1075,7 @@ async function uploadOnce(payload: BilibiliUploadPayload, attempt: number, maxAt
     await setTags(page, payload.tags || []);
     await setThumbnail(page, payload.coverPath || "");
     if (payload.scheduledAt) {
-      console.warn(`[bilibili:upload] scheduledAt=${payload.scheduledAt} 已接收，但当前仍执行立即投稿流程`);
+      await setScheduledPublish(page, payload.scheduledAt);
     }
 
     await dismissUploadPopups(page);
