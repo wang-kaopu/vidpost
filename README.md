@@ -5,7 +5,7 @@ cd app
 `
 
 `
-pnpm run dev
+npm run dev
 `
 
 electron启动：
