@@ -14,6 +14,7 @@ import {
   createManualVerificationRequest,
   MAX_UPLOAD_ATTEMPTS,
   normalizeUploadAttemptError,
+  parseScheduledTimeInput,
   runUploadAttemptWithTimeout,
   UPLOAD_ATTEMPT_TIMEOUT_MS,
   waitForManualVerificationCode,
@@ -84,7 +85,7 @@ function parsePayload(payload: PlatformUploadPayload): DouyinUploadPayload {
   const videoPath = String(payload.videoPath || payload.filePath || "").trim();
   const introduction = String(payload.introduction || payload.description || title).trim();
   const coverPath = String(payload.coverPath || payload.thumbnailPath || "").trim();
-  const scheduledAt = String(payload.scheduledAt || payload.publishDate || "").trim();
+  const scheduledAt = parseScheduledTimeInput("抖音", String(payload.scheduledAt || payload.publishDate || "").trim()).normalized;
   const timeoutMs = typeof payload.timeoutMs === "number" && Number.isFinite(payload.timeoutMs)
     ? payload.timeoutMs
     : UPLOAD_ATTEMPT_TIMEOUT_MS;
@@ -114,6 +115,10 @@ function parsePayload(payload: PlatformUploadPayload): DouyinUploadPayload {
     timeoutMs,
     tags,
   };
+}
+
+export function normalizeDouyinScheduledAtForTest(value: string | null | undefined): string {
+  return parseScheduledTimeInput("抖音", value).normalized;
 }
 
 // 归一化抖音发布按钮文本，避免空白和换行干扰匹配。
@@ -444,26 +449,59 @@ async function fillTitleAndDescription(page: Page, title: string, description: s
 }
 
 async function setScheduleTime(page: Page, scheduledAt: string): Promise<void> {
-  if (!scheduledAt) {
+  const parsed = parseScheduledTimeInput("抖音", scheduledAt);
+  if (parsed.immediate || !parsed.normalized) {
     return;
   }
 
-  const trigger = await firstVisibleLocator(page, DOUYIN_SCHEDULE_TRIGGER_SELECTORS, 3_000);
-  if (!trigger) {
-    return;
+  const scheduleRowHtml = await page.evaluate(() => {
+    const normalize = (value: string | null | undefined) => String(value || "").replace(/\s+/g, " ").trim();
+    const candidates = Array.from(document.querySelectorAll("div, section, article"))
+      .filter((node) => {
+        const text = normalize(node.textContent);
+        return text.includes("发布时间") && text.includes("立即发布") && text.includes("定时发布");
+      })
+      .sort((left, right) => normalize(left.textContent).length - normalize(right.textContent).length);
+
+    const row = candidates[0] as HTMLElement | undefined;
+    if (!row) {
+      return "";
+    }
+
+    const labels = Array.from(row.querySelectorAll("label"));
+    const timedLabel = labels[1] as HTMLElement | undefined;
+    timedLabel?.click();
+    return row.outerHTML;
+  });
+
+  if (!scheduleRowHtml) {
+    console.info("[douyin:schedule] row-missing after cover flow");
+    throw new Error("未找到抖音定时发布按钮");
   }
 
-  await clickWithDomFallback(trigger, { timeoutMs: 3_000, force: true });
-  await page.waitForTimeout(500);
+  console.info(`[douyin:schedule] row-found html=${scheduleRowHtml.slice(0, 1200)}`);
+  await page.waitForTimeout(800);
 
-  const input = await firstVisibleLocator(page, DOUYIN_SCHEDULE_INPUT_SELECTORS, 3_000);
+  const input = await firstVisibleLocator(page, DOUYIN_SCHEDULE_INPUT_SELECTORS, 5_000);
   if (!input) {
+    const rowHtml = await page.evaluate(() => {
+      const normalize = (value: string | null | undefined) => String(value || "").replace(/\s+/g, " ").trim();
+      const candidates = Array.from(document.querySelectorAll("div, section, article"))
+        .filter((node) => {
+          const text = normalize(node.textContent);
+          return text.includes("发布时间") && text.includes("立即发布") && text.includes("定时发布");
+        })
+        .sort((left, right) => normalize(left.textContent).length - normalize(right.textContent).length);
+      return (candidates[0] as HTMLElement | undefined)?.outerHTML || "";
+    });
+    console.info(`[douyin:schedule] input-missing rowHtml=${rowHtml.slice(0, 1200)}`);
     throw new Error("未找到抖音定时发布时间输入框");
   }
 
+  await input.scrollIntoViewIfNeeded().catch(() => undefined);
   await input.click({ force: true, timeout: 3_000 });
   await input.press(process.platform === "darwin" ? "Meta+A" : "Control+A").catch(() => undefined);
-  await page.keyboard.type(scheduledAt.replace("T", " ").slice(0, 16));
+  await page.keyboard.type(parsed.normalized);
   await page.keyboard.press("Enter");
 }
 

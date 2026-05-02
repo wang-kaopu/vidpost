@@ -108,12 +108,16 @@ export const DOUYIN_COVER_DISMISS_SELECTORS = [
 ] as const;
 
 export const DOUYIN_SCHEDULE_TRIGGER_SELECTORS = [
+  ".row-suTOx_:has-text('发布时间') label.one-line-pe7juM:nth-child(2)",
+  "label.one-line-pe7juM:nth-child(2)",
   "label[class^='radio']:has-text('定时发布')",
   "label:has-text('定时发布')",
   "div:has-text('定时发布')",
 ] as const;
 
 export const DOUYIN_SCHEDULE_INPUT_SELECTORS = [
+  ".row-suTOx_:has-text('发布时间') .semi-input-wrapper__with-suffix-icon > input:nth-child(1)",
+  ".semi-input-wrapper__with-suffix-icon > input:nth-child(1)",
   ".semi-input[placeholder='日期和时间']",
   "input[placeholder='日期和时间']",
 ] as const;

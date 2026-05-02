@@ -5,7 +5,7 @@ import type { Locator, Page } from "playwright";
 // import type { PlatformUploadPayload, PlatformUploadResult } from "../contracts.ts";
 import { createContextFromAccountFile } from "../shared/browser.ts";
 import { clickWithDomFallback, findFileInput, pickFileWithChooser } from "../shared/browser/page-helpers.ts";
-import { buildSuccessOutcome, MAX_UPLOAD_ATTEMPTS, normalizeUploadAttemptError, runUploadAttemptWithTimeout, UPLOAD_ATTEMPT_TIMEOUT_MS, waitForCondition, withUploadRetry } from "../shared/publish/index.ts";
+import { buildSuccessOutcome, MAX_UPLOAD_ATTEMPTS, normalizeUploadAttemptError, parseScheduledTimeInput, runUploadAttemptWithTimeout, UPLOAD_ATTEMPT_TIMEOUT_MS, waitForCondition, withUploadRetry } from "../shared/publish/index.ts";
 import { saveContextStorageState } from "../shared/session/storage-state.ts";
 import { cookieAuth } from "./cookie-auth.ts";
 
@@ -59,8 +59,6 @@ const BAIJIAHAO_SCHEDULE_CONFIRM_SELECTORS = [
 const BAIJIAHAO_PUBLISH_CLICK_RETRY_ATTEMPTS = 3;
 const BAIJIAHAO_PUBLISH_CLICK_RETRY_INTERVAL_MS = 3_000;
 const BAIJIAHAO_IMMEDIATE_PUBLISH_BUTTON_TEXTS = ["立即发布", "发布", "发表"] as const;
-const BAIJIAHAO_IMMEDIATE_PUBLISH_SENTINELS = new Set(["0", "current", "now", "immediate", "当前", "立即", "立即发布"]);
-
 type BaijiahaoUploadPayload = PlatformUploadPayload & {
   accountFile: string;
   title: string;
@@ -73,21 +71,16 @@ type BaijiahaoUploadPayload = PlatformUploadPayload & {
 };
 
 export function normalizeBaijiahaoScheduledAt(value: string | null | undefined, nowMs = Date.now()): string {
-  const normalized = String(value || "").trim();
-  if (!normalized) {
+  const parsed = parseScheduledTimeInput("百家号", value);
+  if (parsed.immediate || !parsed.date) {
     return "";
   }
 
-  if (BAIJIAHAO_IMMEDIATE_PUBLISH_SENTINELS.has(normalized.toLowerCase()) || BAIJIAHAO_IMMEDIATE_PUBLISH_SENTINELS.has(normalized)) {
+  if (parsed.date.getTime() <= nowMs + 60_000) {
     return "";
   }
 
-  const parsed = new Date(normalized.replace(/-/g, "/"));
-  if (!Number.isNaN(parsed.getTime()) && parsed.getTime() <= nowMs + 60_000) {
-    return "";
-  }
-
-  return normalized;
+  return parsed.normalized;
 }
 
 export function pickBaijiahaoImmediatePublishButtonCandidate<T extends { text: string; visible: boolean }>(candidates: T[]): T | null {
@@ -512,13 +505,8 @@ async function confirmSchedulePublishDialog(page: Page): Promise<void> {
 
 // 将 scheduledAt 转成可读日期。
 function parseScheduledDate(value: string): Date | null {
-  const normalized = String(value || "").trim();
-  if (!normalized) {
-    return null;
-  }
-
-  const parsed = new Date(normalized.replace(/-/g, "/"));
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+  const parsed = parseScheduledTimeInput("百家号", value);
+  return parsed.date;
 }
 
 export function buildBaijiahaoDescriptionValue(title: string, description: string): string {

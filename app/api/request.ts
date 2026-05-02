@@ -15,7 +15,11 @@ function formatAuthToken(token: string | null): string | null {
 }
 
 function normalizeQueryScalar(value: QueryScalar): string | null {
-  return value == null ? null : String(value).trim();
+  if (value == null) {
+    return null;
+  }
+  const normalized = String(value).trim();
+  return normalized || null;
 }
 
 function normalizeQueryArray(values: Array<string | number | boolean | null | undefined>): string | null {

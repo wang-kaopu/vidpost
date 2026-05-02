@@ -6,15 +6,30 @@ const { createTaskPageModel } = require('../page-model/task-page-model.cjs')
 const { PublishAssetCache } = require('./publish-asset-cache.cjs')
 const publishAssetCache = new PublishAssetCache()
 
-const IMMEDIATE_PUBLISH_SENTINELS = new Set([
-    '0',
-    'current',
-    'now',
-    'immediate',
-    '当前',
-    '立即',
-    '立即发布',
-])
+const IMMEDIATE_PUBLISH_VALUE = '0'
+const SCHEDULED_AT_PATTERN = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/
+
+function isValidScheduledAt(normalized) {
+    const matched = normalized.match(SCHEDULED_AT_PATTERN)
+    if (!matched) {
+        return false
+    }
+
+    const [, yearText, monthText, dayText, hourText, minuteText] = matched
+    const year = Number(yearText)
+    const month = Number(monthText)
+    const day = Number(dayText)
+    const hour = Number(hourText)
+    const minute = Number(minuteText)
+    const date = new Date(year, month - 1, day, hour, minute, 0, 0)
+
+    return !Number.isNaN(date.getTime())
+        && date.getFullYear() === year
+        && date.getMonth() === month - 1
+        && date.getDate() === day
+        && date.getHours() === hour
+        && date.getMinutes() === minute
+}
 
 function normalizeScheduledAt(value) {
     const normalized = String(value ?? '').trim()
@@ -22,8 +37,12 @@ function normalizeScheduledAt(value) {
         return ''
     }
 
-    if (IMMEDIATE_PUBLISH_SENTINELS.has(normalized) || IMMEDIATE_PUBLISH_SENTINELS.has(normalized.toLowerCase())) {
+    if (normalized === IMMEDIATE_PUBLISH_VALUE) {
         return ''
+    }
+
+    if (!isValidScheduledAt(normalized)) {
+        throw new Error('scheduledAt 格式错误，应为字符串 "0" 或 YYYY-MM-DD HH:mm')
     }
 
     return normalized

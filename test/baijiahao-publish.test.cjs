@@ -22,3 +22,24 @@ test('buildBaijiahaoDescriptionValue keeps single title when copy is empty or du
   assert.equal(buildBaijiahaoDescriptionValue('olivia', ''), 'olivia')
   assert.equal(buildBaijiahaoDescriptionValue('olivia', 'olivia'), 'olivia')
 })
+
+test('normalizeBaijiahaoScheduledAt treats "0" as immediate publish', async () => {
+  const { normalizeBaijiahaoScheduledAt } = await loadPublishModule()
+
+  assert.equal(normalizeBaijiahaoScheduledAt('0'), '')
+})
+
+test('normalizeBaijiahaoScheduledAt keeps valid YYYY-MM-DD HH:mm input', async () => {
+  const { normalizeBaijiahaoScheduledAt } = await loadPublishModule()
+
+  assert.equal(normalizeBaijiahaoScheduledAt('2026-05-01 12:30', new Date('2026-05-01T10:00:00').getTime()), '2026-05-01 12:30')
+})
+
+test('normalizeBaijiahaoScheduledAt rejects non-standard schedule formats', async () => {
+  const { normalizeBaijiahaoScheduledAt } = await loadPublishModule()
+
+  assert.throws(
+    () => normalizeBaijiahaoScheduledAt('2026/05/01 12:30'),
+    /scheduledAt 格式错误，应为字符串 "0" 或 YYYY-MM-DD HH:mm/,
+  )
+})

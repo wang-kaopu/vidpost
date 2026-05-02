@@ -144,13 +144,13 @@ watch(globalTimedPublish, (enabled) => {
                 </label>
                 <label class="publish-plan-field publish-plan-field--schedule">
                   <!-- <span>发布时间</span> -->
-                  <input
-                    :value="globalScheduleTime"
-                    type="text"
-                    placeholder="时间"
-                    :disabled="!globalTimedPublish"
-                    @input="globalScheduleTime = ($event.target as HTMLInputElement).value"
-                  />
+                    <input
+                      :value="globalScheduleTime"
+                      type="text"
+                      placeholder="YYYY-MM-DD HH:mm"
+                      :disabled="!globalTimedPublish"
+                      @input="globalScheduleTime = ($event.target as HTMLInputElement).value"
+                    />
                 </label>
               </div>
             </div>
@@ -231,7 +231,7 @@ watch(globalTimedPublish, (enabled) => {
                       class="publish-plan-table-input"
                       :value="row.scheduledAt"
                       type="text"
-                      placeholder="时间"
+                      placeholder="YYYY-MM-DD HH:mm"
                       @input="emit('update-row-field', { rowId: row.id, field: 'scheduledAt', value: ($event.target as HTMLInputElement).value })"
                     />
                     <span v-else class="publish-plan-immediate-text">{{ getScheduledAtDisplayText(row.scheduledAt) }}</span>
