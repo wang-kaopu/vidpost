@@ -1,4 +1,5 @@
 import { type BrowserContext, type Page } from "playwright";
+import { type PlaywrightHeadlessScenario } from "./browser/headless-config.js";
 export declare const DEFAULT_BROWSER_TIMEOUT_MS = 180000;
 export interface PlatformProbeResult {
     finalUrl: string;
@@ -10,7 +11,7 @@ export interface PlatformProbeOptions {
     platform: string;
     targetUrl: string;
     timeoutMs?: number;
-    headless?: boolean;
+    headlessMode?: PlaywrightHeadlessScenario;
     settleMs?: number;
 }
 export interface PlatformProbeJudgeInput extends PlatformProbeResult {
@@ -22,7 +23,7 @@ export interface WebContentsLoadingLike {
     isLoading(): boolean;
 }
 export declare function waitForWebContentsIdle(webContents: WebContentsLoadingLike, idleMs: number, timeoutMs: number): Promise<void>;
-export declare function resolvePlatformHeadlessMode(): boolean;
-export declare function createContextFromAccountFile(accountFile: string, headless?: boolean): Promise<BrowserContext>;
+export declare function resolvePlaywrightHeadlessMode(scenario?: PlaywrightHeadlessScenario): boolean;
+export declare function createContextFromAccountFile(accountFile: string, headlessMode?: PlaywrightHeadlessScenario): Promise<BrowserContext>;
 export declare function collectProbeSnapshot(page: Page, settleMs: number): Promise<PlatformProbeResult>;
 export declare function probePlatformLogin(options: PlatformProbeOptions, judge: (input: PlatformProbeJudgeInput) => Promise<boolean>): Promise<boolean>;

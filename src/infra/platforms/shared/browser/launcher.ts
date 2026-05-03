@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { chromium, type Browser, type BrowserContext, type BrowserContextOptions, type BrowserType, type LaunchOptions, type Page } from "playwright";
+import { resolvePlaywrightHeadlessMode, type PlaywrightHeadlessScenario } from "./headless-config.js";
 
 const ENV_BROWSER_PATH_KEYS = [
   "PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH",
@@ -112,15 +113,6 @@ export async function resolveLocalBrowserPath(configuredPath?: string | null): P
   return null;
 }
 
-export function resolvePlatformHeadlessMode(defaultValue = false): boolean {
-  const rawValue = String(process.env.MATRIX_PLATFORM_PING_HEADLESS || process.env.PLAYWRIGHT_HEADLESS || "").trim().toLowerCase();
-  if (!rawValue) {
-    return defaultValue;
-  }
-
-  return !(rawValue === "0" || rawValue === "false" || rawValue === "no");
-}
-
 export async function launchChromiumBrowser(
   browserType: BrowserType,
   options: LaunchOptions & { configuredExecutablePath?: string | null } = {},
@@ -151,11 +143,11 @@ export async function createBrowserSession(options: {
   accountFile?: string;
   configuredExecutablePath?: string | null;
   contextOptions?: BrowserContextOptions;
-  headless?: boolean;
+  headlessMode?: PlaywrightHeadlessScenario;
   launchOptions?: Omit<LaunchOptions, "headless" | "executablePath">;
 } = {}): Promise<BrowserSession> {
   const browser = await launchChromiumBrowser(chromium, {
-    headless: options.headless ?? resolvePlatformHeadlessMode(false),
+    headless: resolvePlaywrightHeadlessMode(options.headlessMode),
     configuredExecutablePath: options.configuredExecutablePath,
     ...options.launchOptions,
   });

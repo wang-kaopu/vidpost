@@ -3,7 +3,8 @@ import { type BrowserContext, type BrowserContextOptions, type Page } from "play
 
 import { loadContextStorageState } from "./session/storage-state.ts";
 import { PlatformTimeoutError } from "./errors.ts";
-import { createBrowserSession, resolvePlatformHeadlessMode } from "./browser/launcher.ts";
+import { createBrowserSession } from "./browser/launcher.ts";
+import { resolvePlaywrightHeadlessMode, type PlaywrightHeadlessScenario } from "./browser/headless-config.js";
 import { sleep } from "./browser/page-helpers.ts";
 
 // 平台浏览器操作的默认超时时间。
@@ -22,7 +23,7 @@ export interface PlatformProbeOptions {
   platform: string;
   targetUrl: string;
   timeoutMs?: number;
-  headless?: boolean;
+  headlessMode?: PlaywrightHeadlessScenario;
   settleMs?: number;
 }
 
@@ -73,9 +74,12 @@ export async function waitForWebContentsIdle(
 }
 
 // 基于账号文件创建 Playwright context。
-export async function createContextFromAccountFile(accountFile: string, headless = resolvePlatformHeadlessMode()): Promise<BrowserContext> {
+export async function createContextFromAccountFile(
+  accountFile: string,
+  headlessMode: PlaywrightHeadlessScenario = "default",
+): Promise<BrowserContext> {
   const contextOptions: BrowserContextOptions = await loadContextStorageState(accountFile);
-  const session = await createBrowserSession({ accountFile, contextOptions, headless });
+  const session = await createBrowserSession({ accountFile, contextOptions, headlessMode });
 
   try {
     return session.context;
@@ -102,7 +106,7 @@ export async function probePlatformLogin(
 ): Promise<boolean> {
   const timeoutMs = options.timeoutMs ?? DEFAULT_BROWSER_TIMEOUT_MS;
   const settleMs = options.settleMs ?? 1_500;
-  const context = await createContextFromAccountFile(options.accountFile, options.headless);
+  const context = await createContextFromAccountFile(options.accountFile, options.headlessMode ?? "probe");
   const browser = context.browser();
 
   try {
@@ -142,4 +146,4 @@ export async function probePlatformLogin(
   }
 }
 
-export { createBrowserSession, resolvePlatformHeadlessMode, sleep };
+export { createBrowserSession, resolvePlaywrightHeadlessMode, sleep };

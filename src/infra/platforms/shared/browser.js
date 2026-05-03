@@ -3,7 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.sleep = exports.DEFAULT_BROWSER_TIMEOUT_MS = void 0;
 exports.parsePositiveInt = parsePositiveInt;
 exports.waitForWebContentsIdle = waitForWebContentsIdle;
-exports.resolvePlatformHeadlessMode = resolvePlatformHeadlessMode;
+exports.resolvePlaywrightHeadlessMode = resolvePlaywrightHeadlessMode;
 exports.createContextFromAccountFile = createContextFromAccountFile;
 exports.collectProbeSnapshot = collectProbeSnapshot;
 exports.probePlatformLogin = probePlatformLogin;
@@ -11,6 +11,7 @@ exports.probePlatformLogin = probePlatformLogin;
 const playwright_1 = require("playwright");
 const session_1 = require("./session");
 const errors_1 = require("./errors");
+const headless_config_js_1 = require("./browser/headless-config.js");
 // 平台浏览器操作的默认超时时间。
 exports.DEFAULT_BROWSER_TIMEOUT_MS = 180000;
 // 把字符串解析成正整数。
@@ -41,26 +42,20 @@ async function waitForWebContentsIdle(webContents, idleMs, timeoutMs) {
     }
     throw new Error(`页面未在 ${timeoutMs}ms 内稳定`);
 }
-// 从环境变量解析平台浏览器是否启用无头模式。
-function resolvePlatformHeadlessMode() {
-    const rawValue = String(process.env.MATRIX_PLATFORM_PING_HEADLESS || process.env.PLAYWRIGHT_HEADLESS || "").trim().toLowerCase();
-    if (!rawValue) {
-        return false;
-    }
-    return !(rawValue === "0" || rawValue === "false" || rawValue === "no");
+// 从共享配置文件解析平台浏览器是否启用无头模式。
+function resolvePlaywrightHeadlessMode(scenario) {
+    return (0, headless_config_js_1.resolvePlaywrightHeadlessMode)(scenario);
 }
 // 基于账号文件创建 Playwright context。
-async function createContextFromAccountFile(accountFile, headless = resolvePlatformHeadlessMode()) {
+async function createContextFromAccountFile(accountFile, headlessMode = "default") {
     const storageState = await (0, session_1.readStorageState)(accountFile);
-    const browser = await playwright_1.chromium.launch({ headless });
-    const contextOptions = storageState
-        ? { storageState: storageState }
-        : {};
+    const browser = await playwright_1.chromium.launch({ headless: resolvePlaywrightHeadlessMode(headlessMode) });
+    const contextOptions = storageState ? { storageState: storageState } : {};
     try {
         return await browser.newContext(contextOptions);
     }
     catch (error) {
-        await browser.close();
+        await browser.close().catch(() => undefined);
         throw error;
     }
 }
@@ -77,7 +72,7 @@ async function collectProbeSnapshot(page, settleMs) {
 async function probePlatformLogin(options, judge) {
     const timeoutMs = options.timeoutMs ?? exports.DEFAULT_BROWSER_TIMEOUT_MS;
     const settleMs = options.settleMs ?? 1500;
-    const context = await createContextFromAccountFile(options.accountFile, options.headless);
+    const context = await createContextFromAccountFile(options.accountFile, options.headlessMode ?? "probe");
     const browser = context.browser();
     try {
         const page = await context.newPage();

@@ -1083,7 +1083,7 @@ async function uploadOnce(payload: DouyinUploadPayload, attempt: number): Promis
   const session = await createBrowserSession({
     accountFile: payload.accountFile,
     contextOptions: buildDouyinUploadContextOptions(contextOptions),
-    headless: false,
+    headlessMode: "publish:douyin",
     launchOptions: {
       args: ["--start-maximized"],
     },

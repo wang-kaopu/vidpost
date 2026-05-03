@@ -511,7 +511,7 @@ async function captureInitialPageDiagnostics(page: Page): Promise<void> {
 
 async function uploadOnce(payload: SohuUploadPayload): Promise<PlatformUploadResult> {
   const contextOptions = await loadContextStorageState(payload.accountFile);
-  const session = await createBrowserSession({ contextOptions, headless: false });
+  const session = await createBrowserSession({ contextOptions, headlessMode: "publish:sohu" });
 
   try {
     await session.page.setViewportSize({ width: 1440, height: 900 });
