@@ -10,6 +10,12 @@ module.exports = {
     ignore: (targetPath) => isPackagedPathIgnored(targetPath, __dirname),
     junk: true,
     prune: true,
+    protocols: [
+      {
+        name: 'Agenthunt Deep Link',
+        schemes: ['agenthunt'],
+      },
+    ],
     asarUnpack: [
       path.join('node_modules', 'playwright', '**'),
       path.join('node_modules', 'playwright-core', '**'),

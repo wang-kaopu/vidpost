@@ -38,6 +38,9 @@ export function parseAgenthuntUrl(rawUrl: string): LaunchIntent | null {
   try {
     const parsed = new URL(candidate);
     const page = PAGE_BY_PATHNAME[normalizePathname(parsed.pathname)];
+    if (!page) {
+      return null;
+    }
 
     return { page };
   } catch {
@@ -75,6 +78,7 @@ export function resolveProtocolClientRegistration(
   }
 
   return {
+    path: process.execPath,
     args: [entrypoint],
   };
 }

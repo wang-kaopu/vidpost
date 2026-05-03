@@ -5,8 +5,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   login: (platform) => ipcRenderer.send('login', platform),
   publish: (payload) => ipcRenderer.send('publish', payload),
   ping: (payload) => ipcRenderer.send('ping', payload),
+  getLaunchIntent: () => ipcRenderer.invoke('agenthunt:get-launch-intent'),
   onLaunchIntent: (handler) => {
-    ipcRenderer.on('agenthunt:launch-intent', (_event, payload) => handler(payload))
+    const listener = (_event, payload) => handler(payload)
+    ipcRenderer.on('agenthunt:launch-intent', listener)
+    return () => {
+      ipcRenderer.removeListener('agenthunt:launch-intent', listener)
+    }
   },
   syncTaskStateBg: () => ipcRenderer.send('sync-task-state-bg'),
 })

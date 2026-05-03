@@ -6,6 +6,7 @@ const {
   isPackagedPathIgnored,
   normalizeRelativeAppPath,
 } = require('../scripts/forge-packaging.cjs')
+const forgeConfig = require('../forge.config.js')
 
 const projectRoot = path.resolve(__dirname, '..')
 
@@ -53,4 +54,13 @@ test('packaging ignore rules drop non-runtime assets and keep renderer build out
   )
   assert.equal(isPackagedPathIgnored(resolveProjectPath('node_modules', 'playwright', 'index.js'), projectRoot), false)
   assert.equal(isPackagedPathIgnored(resolveProjectPath('main.cjs'), projectRoot), false)
+})
+
+test('forge packager declares the agenthunt custom protocol', () => {
+  assert.deepEqual(forgeConfig.packagerConfig.protocols, [
+    {
+      name: 'Agenthunt Deep Link',
+      schemes: ['agenthunt'],
+    },
+  ])
 })
