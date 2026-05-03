@@ -76,7 +76,7 @@ function handleProtocolUrl(rawUrl) {
 }
 
 // 单例锁，确保把 URL 交给现有窗口，而不是打开新窗口
-getSingletonLock(() => mainWindow, extractProtocolUrlFromCommandLine, handleProtocolUrl)
+const hasSingletonLock = getSingletonLock(() => mainWindow, extractProtocolUrlFromCommandLine, handleProtocolUrl)
 
 
 // 创建主窗口
@@ -121,45 +121,47 @@ const createWindow = () => {
   return mainWindow
 }
 
-// 应用准备就绪后注册 IPC 监听器并创建窗口
-app.whenReady().then(() => {
-  // 启动 SSE 服务器
-  startSseServer()
+if (hasSingletonLock) {
+  // 应用准备就绪后注册 IPC 监听器并创建窗口
+  app.whenReady().then(() => {
+    // 启动 SSE 服务器
+    startSseServer()
 
-  // 注册 IPC 监听器和处理器
-  registerIpcListener('login', login)
-  registerIpcListener('publish', publish)
-  registerIpcListener('ping', ping)
-  registerIpcListener('sync-task-state-bg', syncTaskStateBg)
-  registerIpcHandler('agenthunt:get-launch-intent', () => pendingLaunchIntent)
+    // 注册 IPC 监听器和处理器
+    registerIpcListener('login', login)
+    registerIpcListener('publish', publish)
+    registerIpcListener('ping', ping)
+    registerIpcListener('sync-task-state-bg', syncTaskStateBg)
+    registerIpcHandler('agenthunt:get-launch-intent', () => pendingLaunchIntent)
 
-  // 注册自定义协议，优先使用 Electron 内置的注册方式
-  const registration = resolveProtocolClientRegistration(process.argv, process.defaultApp)
-  if (registration && !app.setAsDefaultProtocolClient(AGENTHUNT_PROTOCOL, registration.path, registration.args)) {
-    console.warn(`[deep-link] failed to register protocol client for ${AGENTHUNT_PROTOCOL}`)
-  }
+    // 注册自定义协议，优先使用 Electron 内置的注册方式
+    const registration = resolveProtocolClientRegistration(process.argv, process.defaultApp)
+    if (registration && !app.setAsDefaultProtocolClient(AGENTHUNT_PROTOCOL, registration.path, registration.args)) {
+      console.warn(`[deep-link] failed to register protocol client for ${AGENTHUNT_PROTOCOL}`)
+    }
 
-  // 处理可能的初始协议 URL（例如在 macOS 上通过 `open` 命令启动应用时）
-  const initialProtocolUrl = extractProtocolUrlFromCommandLine(process.argv)
-  if (initialProtocolUrl) {
-    handleProtocolUrl(initialProtocolUrl)
-  }
+    // 处理可能的初始协议 URL（例如在 macOS 上通过 `open` 命令启动应用时）
+    const initialProtocolUrl = extractProtocolUrlFromCommandLine(process.argv)
+    if (initialProtocolUrl) {
+      handleProtocolUrl(initialProtocolUrl)
+    }
 
-  // 创建主窗口
-  createWindow()
-})
+    // 创建主窗口
+    createWindow()
+  })
 
-app.on('open-url', (event, url) => {
-  event.preventDefault()
-  handleProtocolUrl(url)
-})
+  app.on('open-url', (event, url) => {
+    event.preventDefault()
+    handleProtocolUrl(url)
+  })
 
-app.on('before-quit', () => {
-  stopSseServer()
-})
+  app.on('before-quit', () => {
+    stopSseServer()
+  })
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit()
-  }
-})
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') {
+      app.quit()
+    }
+  })
+}
