@@ -35,3 +35,5 @@ src/script/bilibili-video-state-success copy.cjs
 
 
 app/.DS_Store
+
+out/

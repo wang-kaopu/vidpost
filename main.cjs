@@ -58,7 +58,7 @@ getSingletonLock(() => mainWindow, extractProtocolUrlFromCommandLine, handleProt
 // 创建主窗口
 const createWindow = () => {
   const devServerUrl = 'http://localhost:5173'
-  const builtAppPath = path.join(__dirname, 'app', 'index.html')
+  const builtAppPath = path.join(__dirname, 'app', 'dist', 'index.html')
 
   // 创建浏览器窗口
   mainWindow = new BrowserWindow({
