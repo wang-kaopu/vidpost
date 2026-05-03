@@ -16,7 +16,9 @@ const activeMenu = ref<MenuKey>("accounts");
 const loggedIn = ref(false);
 const user = ref<User | null>(null);
 const loginError = ref("");
+const pendingLaunchMenu = ref<MenuKey | null>(null);
 let tokenRefreshTimer: number | null = null;
+let removeLaunchIntentListener: (() => void) | null = null;
 const notificationCenter = createNotificationCenter();
 
 const currentView = computed(() => {
@@ -26,11 +28,34 @@ const currentView = computed(() => {
   if (activeMenu.value === "records") {
     return RecordsTable;
   }
-  if (activeMenu.value === "works2") {
+  if (activeMenu.value === "works") {
     return Work;
   }
   // return WorksPlaceholder;
 });
+
+const mapLaunchIntentToMenu = (intent: LaunchIntent): MenuKey => intent.page;
+
+const applyLaunchIntent = (intent: LaunchIntent | null) => {
+  if (!intent) {
+    return;
+  }
+  const nextMenu = mapLaunchIntentToMenu(intent);
+  if (!loggedIn.value) {
+    pendingLaunchMenu.value = nextMenu;
+    return;
+  }
+  activeMenu.value = nextMenu;
+  pendingLaunchMenu.value = null;
+};
+
+const consumePendingLaunchMenu = () => {
+  if (!pendingLaunchMenu.value) {
+    return;
+  }
+  activeMenu.value = pendingLaunchMenu.value;
+  pendingLaunchMenu.value = null;
+};
 
 const loadUserProfile = async () => {
   try {
@@ -54,6 +79,7 @@ const login = async (payload: LoginForm) => {
     loggedIn.value = true;
     startVerificationPolling();
     startTokenRefresh();
+    consumePendingLaunchMenu();
   } catch (error) {
     loginError.value = error instanceof Error ? error.message : "登录失败";
   }
@@ -125,6 +151,13 @@ const stopTokenRefresh = () => {
 };
 
 onMounted(async () => {
+  removeLaunchIntentListener = window.electronAPI?.onLaunchIntent((intent) => {
+    applyLaunchIntent(intent);
+  }) ?? null;
+
+  const initialLaunchIntent = await window.electronAPI?.getLaunchIntent?.();
+  applyLaunchIntent(initialLaunchIntent ?? null);
+
   const token = getAccessToken();
   if (token) {
     try {
@@ -132,6 +165,7 @@ onMounted(async () => {
       loggedIn.value = true;
       startVerificationPolling();
       startTokenRefresh();
+      consumePendingLaunchMenu();
     } catch {
       clearSessionTokens();
       loggedIn.value = false;
@@ -140,6 +174,8 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  removeLaunchIntentListener?.();
+  removeLaunchIntentListener = null;
   stopVerificationPolling();
   stopTokenRefresh();
 });
@@ -152,7 +188,7 @@ onBeforeUnmount(() => {
     <div v-else class="workspace">
       <SidebarNav :active="activeMenu" :user="user" @select="activeMenu = $event" @logout="logout" />
       <section class="content-area">
-        <header v-if="activeMenu !== 'accounts' && activeMenu !== 'records' && activeMenu !== 'works2'" class="workspace-header">
+        <header v-if="activeMenu !== 'accounts' && activeMenu !== 'records' && activeMenu !== 'works'" class="workspace-header">
           <div>
             <h1>作品</h1>
           </div>

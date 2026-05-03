@@ -1,4 +1,4 @@
-export type MenuKey = "accounts" | "works" | "works2" | "records";
+export type MenuKey = "accounts" | "works" | "records";
 
 export interface LoginForm {
   phone: string;

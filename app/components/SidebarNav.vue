@@ -15,8 +15,7 @@ const emit = defineEmits<{
 
 const menus: Array<{ key: MenuKey; label: string; icon: "accounts" | "works" | "records" }> = [
   { key: "accounts", label: "账号管理", icon: "accounts" },
-  // { key: "works", label: "作品", icon: "works" },
-  { key: "works2", label: "作品", icon: "works" },
+  { key: "works", label: "作品", icon: "works" },
   { key: "records", label: "发布记录", icon: "records" },
 ];
 

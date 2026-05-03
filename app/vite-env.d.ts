@@ -52,7 +52,8 @@ interface ElectronAPI {
   login: (platform: string) => void;
   publish: (payload: unknown) => void;
   ping: (payload: unknown) => void;
-  onLaunchIntent: (handler: (payload: LaunchIntent) => void) => void;
+  getLaunchIntent: () => Promise<LaunchIntent | null>;
+  onLaunchIntent: (handler: (payload: LaunchIntent) => void) => () => void;
   syncTaskStateBg: () => void;
 }
 
