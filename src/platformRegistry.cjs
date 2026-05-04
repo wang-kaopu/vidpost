@@ -16,6 +16,12 @@ const { upload: douyinUpload } = require('./infra/platforms/douyin/publish.ts')
 const { upload: bilibiliUpload } = require('./infra/platforms/bilibili/publish.ts')
 const { upload: sohuUpload } = require('./infra/platforms/sohu/publish.ts')
 
+// 引入发布记录状态追踪函数
+const { fetchPublishedState: baijiahaoFetchPublishedState } = require('./infra/platforms/baijiahao/record-status.ts')
+const { fetchPublishedState: douyinFetchPublishedState } = require('./infra/platforms/douyin/record-status.ts')
+const { fetchPublishedState: bilibiliFetchPublishedState } = require('./infra/platforms/bilibili/record-status.ts')
+const { fetchPublishedState: sohuFetchPublishedState } = require('./infra/platforms/sohu/record-status.ts')
+
 // 引入昵称抓取函数
 const { syncBaijiahaoNickname } = require('./infra/platforms/baijiahao/nickname.ts')
 const { syncDouyinNickname } = require('./infra/platforms/douyin/nickname.ts')
@@ -29,24 +35,28 @@ const platformRegistry = {
         ping: bilibiliCookieAuth,
         upload: bilibiliUpload,
         syncNickname: syncBilibiliNickname,
+        fetchPublishedState: bilibiliFetchPublishedState,
     },
     "douyin": {
         login: runDouyinLogin,
         ping: douyinCookieAuth,
         upload: douyinUpload,
         syncNickname: syncDouyinNickname,
+        fetchPublishedState: douyinFetchPublishedState,
     },
     "baijiahao": {
         login: runBaijiahaoLogin,
         ping: baijiahaoCookieAuth,
         upload: baijiahaoUpload,
         syncNickname: syncBaijiahaoNickname,
+        fetchPublishedState: baijiahaoFetchPublishedState,
     },
     "sohu": {
         login: runSohuLogin,
         ping: sohuCookieAuth,
         upload: sohuUpload,
         syncNickname: syncSohuNickname,
+        fetchPublishedState: sohuFetchPublishedState,
     }
 }
 
