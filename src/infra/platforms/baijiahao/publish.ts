@@ -597,14 +597,11 @@ export function buildBaijiahaoDescriptionValue(title: string, description: strin
   if (!normalizedTitle) {
     return normalizedDescription;
   }
-  if (!normalizedDescription) {
-    return normalizedTitle;
-  }
-  if (normalizedDescription === normalizedTitle) {
+  if (!normalizedDescription || normalizedDescription === normalizedTitle) {
     return normalizedTitle;
   }
 
-  return `${normalizedTitle}\n\n${normalizedDescription}`;
+  return `${normalizedTitle}: ${normalizedDescription}`;
 }
 
 async function setBaijiahaoDescriptionContent(page: Page, selectors: readonly string[], value: string): Promise<boolean> {

@@ -7,12 +7,12 @@ async function loadPublishModule() {
   return import(pathToFileURL(path.resolve(__dirname, '../src/infra/platforms/baijiahao/publish.ts')).href)
 }
 
-test('buildBaijiahaoDescriptionValue prefixes title before copy with double newline', async () => {
+test('buildBaijiahaoDescriptionValue joins title and copy with colon', async () => {
   const { buildBaijiahaoDescriptionValue } = await loadPublishModule()
 
   assert.equal(
     buildBaijiahaoDescriptionValue('olivia', 'Olivia IG update'),
-    'olivia\n\nOlivia IG update',
+    'olivia:Olivia IG update',
   )
 })
 
