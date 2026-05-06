@@ -1,5 +1,5 @@
 /**
- * @typedef {'default' | 'probe' | 'publish:douyin' | 'publish:sohu' | 'script:baijiahao-video-state-success' | 'script:bilibili-video-state-success'} PlaywrightHeadlessScenario
+ * @typedef {'default' | 'probe' | 'publish:douyin' | 'publish:sohu' | 'record-status:douyin' | 'script:douyin-record-status' | 'script:baijiahao-video-state-success' | 'script:bilibili-video-state-success'} PlaywrightHeadlessScenario
  */
 
 /**
@@ -8,12 +8,14 @@
  * @type {Record<PlaywrightHeadlessScenario, boolean>}
  */
 export const PLAYWRIGHT_HEADLESS_CONFIG = {
-  default: true,
-  probe: true,
-  'publish:douyin': true,
-  'publish:sohu': true,
-  'script:baijiahao-video-state-success': true,
-  'script:bilibili-video-state-success': true,
+  default: false,
+  probe: false,
+  'publish:douyin': false,
+  'publish:sohu': false,
+  'record-status:douyin': false,
+  'script:douyin-record-status': false,
+  'script:baijiahao-video-state-success': false,
+  'script:bilibili-video-state-success': false,
 };
 
 /**

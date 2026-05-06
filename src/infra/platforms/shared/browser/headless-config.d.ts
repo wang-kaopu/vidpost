@@ -3,6 +3,8 @@ export type PlaywrightHeadlessScenario =
   | "probe"
   | "publish:douyin"
   | "publish:sohu"
+  | "record-status:douyin"
+  | "script:douyin-record-status"
   | "script:baijiahao-video-state-success"
   | "script:bilibili-video-state-success";
 

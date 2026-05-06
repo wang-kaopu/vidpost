@@ -34,8 +34,36 @@ apiClient.interceptors.request.use(async (config) => {
   const accessToken = await getAccessToken()
   config.headers = config.headers || {}
   config.headers.Authorization = accessToken
+  console.log('[apiClient][request]', {
+    method: config.method,
+    url: `${config.baseURL || ''}${config.url || ''}`,
+    params: config.params,
+    data: config.data,
+  })
   return config
 })
+
+apiClient.interceptors.response.use(
+  (response) => {
+    console.log('[apiClient][response]', {
+      method: response.config?.method,
+      url: `${response.config?.baseURL || ''}${response.config?.url || ''}`,
+      status: response.status,
+      data: response.data,
+    })
+    return response
+  },
+  (error) => {
+    console.log('[apiClient][response:error]', {
+      method: error.config?.method,
+      url: `${error.config?.baseURL || ''}${error.config?.url || ''}`,
+      status: error.response?.status,
+      data: error.response?.data,
+      message: error.message,
+    })
+    return Promise.reject(error)
+  },
+)
 
 module.exports = {
   apiClient,

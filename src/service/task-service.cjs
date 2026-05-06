@@ -1,5 +1,5 @@
 const { resolveAccountFilePath } = require('../service/account-service.cjs')
-const { createPublishTask, updatePublishTask } = require('../api/task-api.js')
+const { createPublishTask, updatePublishTask } = require('../api/task-api.cjs')
 
 const { createTaskPageModel } = require('../page-model/task-page-model.cjs')
 

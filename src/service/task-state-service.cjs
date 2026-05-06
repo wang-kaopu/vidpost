@@ -1,4 +1,4 @@
-const { listPublishTasks, updatePublishTask } = require('../api/task-api.js')
+const { listPublishTasks, updatePublishTask } = require('../api/task-api.cjs')
 const { platformRegistry } = require('../platformRegistry.cjs')
 
 const { resolveAccountFilePath } = require('./account-service.cjs')
@@ -158,6 +158,8 @@ async function syncSingleTaskState(task) {
         const nextStatus = normalizeString(fetchResult?.status) ?? REVIEWING_STATUS
         const nextLink = fetchResult?.link ?? task.link ?? null
 
+        console.log(`[syncTaskState] taskId=${taskId} platform=${platform} nextStatus=${nextStatus} link=${nextLink}`)
+
         await updatePublishTask(taskId, {
             status: nextStatus,
             link: nextLink,
@@ -271,4 +273,5 @@ module.exports = {
     syncTaskState,
     syncTaskStateBg,
     tryAcquireTaskStateSyncLock,
+    syncSingleTaskState
 }

@@ -63,7 +63,6 @@ async function listPublishTasks(input = {}) {
   }
 }
 
-
 module.exports = {
   createPublishTask,
   listPublishTasks,
