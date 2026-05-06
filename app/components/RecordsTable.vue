@@ -220,10 +220,10 @@ onMounted(() => {
         <button class="ghost-button compact" type="button" :disabled="exporting || !items.length" @click="handleExport">
           <span>{{ exporting ? "导出中..." : "导出发布记录" }}</span>
         </button>
-        <button class="blue-button" type="button">
+        <!-- <button class="blue-button" type="button">
           <AppIcon name="plus" :size="16" />
           <span>新建发布</span>
-        </button>
+        </button> -->
       </div>
     </header>
 
