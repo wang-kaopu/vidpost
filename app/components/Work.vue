@@ -640,12 +640,12 @@ onBeforeUnmount(() => {
       </div>
       <div class="filter-item">
         <label>视频类别</label>
-        <select v-model="filterType">
+        <select v-model="filterType" :class="{ 'is-placeholder': !filterType }">
           <option value="" disabled hidden>选择类别</option>
           <option v-for="opt in videoTypeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
         </select>
       </div>
-      <div class="filter-item">
+      <div class="filter-item filter-item--date">
         <label>生成时间</label>
         <div class="date-range">
           <input

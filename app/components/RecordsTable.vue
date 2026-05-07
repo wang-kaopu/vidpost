@@ -258,7 +258,7 @@ onMounted(() => {
       </div>
     </header>
 
-    <div class="filter-section filter-inline">
+    <div class="filter-section filter-inline records-filters">
       <div class="filter-item">
         <label>标题</label>
         <div class="filter-input-wrap">
@@ -268,19 +268,19 @@ onMounted(() => {
       </div>
       <div class="filter-item">
         <label>平台</label>
-        <select v-model="platformFilter">
+        <select v-model="platformFilter" :class="{ 'is-placeholder': !platformFilter }">
           <option value="" disabled hidden>选择平台</option>
           <option v-for="p in platformOptions" :key="p.key" :value="p.key">{{ p.label }}</option>
         </select>
       </div>
       <div class="filter-item">
         <label>视频类别</label>
-        <select v-model="categoryFilter">
+        <select v-model="categoryFilter" :class="{ 'is-placeholder': !categoryFilter }">
           <option value="" disabled hidden>选择类别</option>
           <option v-for="c in categoryOptions" :key="c.value" :value="c.value">{{ c.label }}</option>
         </select>
       </div>
-      <div class="filter-item">
+      <div class="filter-item filter-item--date records-filters-date">
         <label>预约发布时间</label>
         <div class="date-range">
           <input
@@ -300,7 +300,7 @@ onMounted(() => {
           />
         </div>
       </div>
-      <div class="filter-actions">
+      <div class="filter-actions records-filters-actions">
         <button class="search-btn" type="button" @click="loadRecords">
           <AppIcon name="search" :size="14" /> 搜索
         </button>

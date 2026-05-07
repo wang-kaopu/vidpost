@@ -401,7 +401,7 @@ onMounted(() => {
       <div class="panel-actions">
         <button class="green-button" type="button" :disabled="pingingAll" @click="handlePingAllAccounts">
           <AppIcon name="refresh" :size="18" />
-          <span>{{ pingingAll ? "检测中..." : "检测全部账号" }}</span>
+          <span>{{ pingingAll ? "检测中..." : "检测本页账号" }}</span>
         </button>
         <button class="blue-button" type="button" @click="openPlatformDialog">
           <AppIcon name="plus" :size="18" />
@@ -413,34 +413,40 @@ onMounted(() => {
     <div class="filter-section filter-inline account-filters">
       <div class="filter-item">
         <label>平台</label>
-        <select v-model="filterPlatform">
+        <select v-model="filterPlatform" :class="{ 'is-placeholder': !filterPlatform }">
           <option value="" disabled hidden>选择平台</option>
           <option v-for="p in platformOptions" :key="p.key" :value="p.key">{{ p.label }}</option>
         </select>
       </div>
       <div class="filter-item">
         <label>账号昵称</label>
-        <input v-model="filterNickname" type="text" placeholder="搜索账号昵称" />
+        <div class="filter-input-wrap">
+          <AppIcon class="filter-search-icon" name="search" :size="14" />
+          <input v-model="filterNickname" type="text" placeholder="搜索账号昵称" />
+        </div>
       </div>
       <div class="filter-item">
         <label>关联手机号</label>
-        <input v-model="filterPhone" type="text" placeholder="搜索手机号" />
+        <div class="filter-input-wrap">
+          <AppIcon class="filter-search-icon" name="search" :size="14" />
+          <input v-model="filterPhone" type="text" placeholder="搜索手机号" />
+        </div>
       </div>
-      <div class="filter-item">
+      <div class="filter-item account-filters-tag">
         <label>自定义标签</label>
-        <select v-model="filterTag">
+        <select v-model="filterTag" :class="{ 'is-placeholder': !filterTag }">
           <option value="" disabled hidden>选择标签</option>
           <option v-for="tag in tagOptions" :key="tag" :value="tag">{{ tag }}</option>
         </select>
       </div>
-      <div class="filter-item">
+      <div class="filter-item account-filters-status">
         <label>状态</label>
-        <select v-model="filterStatus">
+        <select v-model="filterStatus" :class="{ 'is-placeholder': !filterStatus }">
           <option value="" disabled hidden>选择状态</option>
           <option v-for="s in statusOptions" :key="s" :value="s">{{ statusLabelMap[s] || s }}</option>
         </select>
       </div>
-      <div class="filter-actions">
+      <div class="filter-actions account-filters-actions">
         <button class="search-btn" type="button" @click="handleSearch">
           <AppIcon name="search" :size="14" /> 搜索
         </button>
