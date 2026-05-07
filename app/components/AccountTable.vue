@@ -491,8 +491,16 @@ onMounted(() => {
           </td>
           <td>{{ item.nickname }}</td>
           <td>{{ item.id }}</td>
-          <td>{{ item.remarkName }}</td>
-          <td>{{ item.phoneNumber }}</td>
+          <td>
+            <span :class="{ 'cell-empty': item.remarkName === '--' }">
+              {{ item.remarkName === "--" ? "未设置" : item.remarkName }}
+            </span>
+          </td>
+          <td>
+            <span :class="{ 'cell-empty': item.phoneNumber === '--' }">
+              {{ item.phoneNumber === "--" ? "未设置" : item.phoneNumber }}
+            </span>
+          </td>
           <td>
             <div class="account-tags-cell">
               <span v-for="tag in item.tags" :key="tag" class="account-tag-chip">
