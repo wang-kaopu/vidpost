@@ -1,15 +1,17 @@
 {
-  "name": "rm-server",
-  "version": "1.0.0",
-  "description": "",
+  "name": "agenthunt",
+  "version": "0.9.0",
+  "description": "agenthunt",
+  "productName": "agenthunt",
+  "authors": "Kelvin", 
   "main": "main.cjs",
   "scripts": {
-    "build:renderer": "npm --prefix app run build",
+    "build:renderer": "pnpm --dir app run build",
     "test": "node --test",
     "start": "node ./scripts/start-electron.cjs",
-    "forge start": "electron-forge start",
-    "forge package": "npm run build:renderer && electron-forge package",
-    "forge make": "npm run build:renderer && electron-forge make"
+    "forge start": "pnpm exec electron-forge start",
+    "forge package": "pnpm run build:renderer && pnpm exec electron-forge package",
+    "forge make": "pnpm run build:renderer && pnpm exec electron-forge make"
   },
   "keywords": [],
   "author": "",
@@ -17,7 +19,8 @@
   "packageManager": "pnpm@10.33.0",
   "pnpm": {
     "onlyBuiltDependencies": [
-      "electron"
+      "electron",
+      "electron-winstaller"
     ]
   },
   "dependencies": {
