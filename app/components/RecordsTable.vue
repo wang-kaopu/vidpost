@@ -153,6 +153,21 @@ const resetFilters = () => {
   scheduledEnd.value = "";
 };
 
+const onDateFocus = (e: Event) => {
+  const el = e.target as HTMLInputElement;
+  el.type = "date";
+};
+
+const onDateBlurStart = (e: Event) => {
+  const el = e.target as HTMLInputElement;
+  if (!scheduledStart.value) el.type = "text";
+};
+
+const onDateBlurEnd = (e: Event) => {
+  const el = e.target as HTMLInputElement;
+  if (!scheduledEnd.value) el.type = "text";
+};
+
 const openLink = (url: string | null | undefined) => {
   if (!url) return;
   if (window.electronAPI) {
@@ -227,7 +242,7 @@ onMounted(() => {
       </div>
     </header>
 
-    <div class="filter-section">
+    <div class="filter-section filter-inline">
       <div class="filter-item">
         <label>标题</label>
         <div class="filter-input-wrap">
@@ -238,23 +253,35 @@ onMounted(() => {
       <div class="filter-item">
         <label>平台</label>
         <select v-model="platformFilter">
-          <option value="">选择平台</option>
+          <option value="" disabled hidden>选择平台</option>
           <option v-for="p in platformOptions" :key="p.key" :value="p.key">{{ p.label }}</option>
         </select>
       </div>
       <div class="filter-item">
         <label>视频类别</label>
         <select v-model="categoryFilter">
-          <optionƒ value="">选择类别</optionƒ>
+          <option value="" disabled hidden>选择类别</option>
           <option v-for="c in categoryOptions" :key="c.value" :value="c.value">{{ c.label }}</option>
         </select>
       </div>
       <div class="filter-item">
         <label>预约发布时间</label>
         <div class="date-range">
-          <input v-model="scheduledStart" type="date" placeholder="Start date" />
+          <input
+            v-model="scheduledStart"
+            :type="scheduledStart ? 'date' : 'text'"
+            placeholder="开始日期"
+            @focus="onDateFocus"
+            @blur="onDateBlurStart"
+          />
           <span>→</span>
-          <input v-model="scheduledEnd" type="date" placeholder="End date" />
+          <input
+            v-model="scheduledEnd"
+            :type="scheduledEnd ? 'date' : 'text'"
+            placeholder="结束日期"
+            @focus="onDateFocus"
+            @blur="onDateBlurEnd"
+          />
         </div>
       </div>
       <div class="filter-actions">

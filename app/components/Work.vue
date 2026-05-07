@@ -590,6 +590,21 @@ const handleReset = () => {
   void reloadWorks();
 };
 
+const onDateFocus = (e: Event) => {
+  const el = e.target as HTMLInputElement;
+  el.type = "date";
+};
+
+const onDateBlurStart = (e: Event) => {
+  const el = e.target as HTMLInputElement;
+  if (!filterDateStart.value) el.type = "text";
+};
+
+const onDateBlurEnd = (e: Event) => {
+  const el = e.target as HTMLInputElement;
+  if (!filterDateEnd.value) el.type = "text";
+};
+
 watch(
   () => worksList.value.length,
   async () => {
@@ -615,7 +630,7 @@ onBeforeUnmount(() => {
     </header>
 
     <!-- 筛选栏 -->
-    <div class="filter-section works-filter">
+    <div class="filter-section filter-inline works-filter">
       <div class="filter-item">
         <label>标题</label>
         <div class="filter-input-wrap">
@@ -626,16 +641,28 @@ onBeforeUnmount(() => {
       <div class="filter-item">
         <label>视频类别</label>
         <select v-model="filterType">
-          <option value="">选择类别</option>
+          <option value="" disabled hidden>选择类别</option>
           <option v-for="opt in videoTypeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
         </select>
       </div>
       <div class="filter-item">
         <label>生成时间</label>
         <div class="date-range">
-          <input v-model="filterDateStart" type="date" placeholder="Start date" />
+          <input
+            v-model="filterDateStart"
+            :type="filterDateStart ? 'date' : 'text'"
+            placeholder="开始日期"
+            @focus="onDateFocus"
+            @blur="onDateBlurStart"
+          />
           <span>→</span>
-          <input v-model="filterDateEnd" type="date" placeholder="End date" />
+          <input
+            v-model="filterDateEnd"
+            :type="filterDateEnd ? 'date' : 'text'"
+            placeholder="结束日期"
+            @focus="onDateFocus"
+            @blur="onDateBlurEnd"
+          />
         </div>
       </div>
       <div class="filter-actions">

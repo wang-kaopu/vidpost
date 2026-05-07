@@ -422,10 +422,72 @@ button {
   flex-shrink: 0;
 }
 
+/* Inline labels variant (used on records page) */
+.filter-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 32px;
+}
+
+.filter-inline .filter-item {
+  flex: 0 0 auto;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.filter-inline .filter-item label {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.filter-inline .filter-item > input,
+.filter-inline .filter-item > select,
+.filter-inline .filter-item > .filter-input-wrap {
+  width: 200px;
+  flex: none;
+}
+
+.filter-inline .filter-item > .date-range {
+  flex: 1;
+  min-width: 0;
+}
+
+.filter-inline .date-range input {
+  min-width: 0;
+}
+
 .filter-actions {
   display: flex;
   gap: 8px;
   align-items: flex-end;
+}
+
+.filter-inline .filter-actions {
+  align-items: center;
+  margin-left: auto;
+}
+
+/* Account filters: inline labels with 190px inputs */
+.account-filters .filter-item > input,
+.account-filters .filter-item > select {
+  width: 150px;
+  flex: none;
+}
+
+/* Works filters: inline labels with 150px inputs */
+.works-filter .filter-item > input,
+.works-filter .filter-item > select,
+.works-filter .filter-item > .filter-input-wrap {
+  width: 150px;
+  flex: none;
+}
+
+.works-filter .filter-item > .date-range {
+  width: 420px;
+  flex: none;
 }
 
 .search-btn {
@@ -1169,7 +1231,7 @@ button {
 }
 
 .publish-plan-dialog {
-  width: min(1180px, 100%);
+  width: min(1380px, 100%);
 }
 
 .publish-plan-shell {
@@ -1213,16 +1275,15 @@ button {
 
 .publish-plan-global-grid {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 14px;
-  align-items: end;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  align-items: stretch;
 }
 
-.publish-plan-global-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 24px;
-  align-items: start;
+.publish-plan-global-left {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
 .publish-plan-field {
@@ -1232,11 +1293,17 @@ button {
 }
 
 .publish-plan-field--title {
-  padding-right: 12px;
+  padding-right: 0;
 }
 
 .publish-plan-field--summary {
-  grid-column: 1 / -1;
+  height: 100%;
+}
+
+.publish-plan-field--summary textarea {
+  flex: 1;
+  min-height: 120px;
+  resize: none;
 }
 
 .publish-plan-field span,
@@ -1288,7 +1355,6 @@ button {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  min-height: 100%;
   padding: 14px 16px;
   border: 1px solid #d8e2ee;
   border-radius: 16px;
@@ -1411,11 +1477,24 @@ button {
 }
 
 .publish-plan-col-video-category {
-  width: 112px;
+  width: 120px;
 }
 
 .publish-plan-col-account-name {
-  width: 120px;
+  width: 140px;
+}
+
+.publish-plan-table td {
+  vertical-align: middle;
+}
+
+.publish-plan-text-cell {
+  display: block;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
 }
 
 .publish-plan-col-summary {
@@ -1423,7 +1502,7 @@ button {
 }
 
 .publish-plan-col-scheduled-at {
-  width: 228px;
+  width: 320px;
 }
 
 .publish-plan-col-actions {
@@ -1459,9 +1538,9 @@ button {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 10px;
+  gap: 8px;
   width: 100%;
-  padding: 10px 12px;
+  padding: 8px 10px;
   border: 1px solid #e1e8f0;
   border-radius: 14px;
   background: #f9fbfd;
@@ -1484,6 +1563,7 @@ button {
   font-size: 13px;
   font-weight: 600;
   line-height: 1.4;
+  white-space: nowrap;
 }
 
 .publish-plan-table-timing-status.active {
@@ -1498,6 +1578,7 @@ button {
   color: #98a4b3;
   font-size: 12px;
   line-height: 1.5;
+  white-space: nowrap;
 }
 
 .publish-plan-footer {
@@ -1725,13 +1806,22 @@ button {
     grid-template-columns: 1fr;
   }
 
-  .publish-plan-global-row {
-    grid-template-columns: 1fr;
+  .publish-plan-global-left {
     gap: 14px;
   }
 
   .publish-plan-field--title {
     padding-right: 0;
+  }
+
+  .publish-plan-field--summary {
+    height: auto;
+  }
+
+  .publish-plan-field--summary textarea {
+    flex: none;
+    min-height: 96px;
+    resize: vertical;
   }
 
   .publish-plan-timing-card {

@@ -388,11 +388,11 @@ onMounted(() => {
       </div>
     </header>
 
-    <div class="filter-section account-filters">
+    <div class="filter-section filter-inline account-filters">
       <div class="filter-item">
         <label>平台</label>
         <select v-model="filterPlatform">
-          <option value="">选择平台</option>
+          <option value="" disabled hidden>选择平台</option>
           <option v-for="p in platformOptions" :key="p.key" :value="p.key">{{ p.label }}</option>
         </select>
       </div>
@@ -407,14 +407,14 @@ onMounted(() => {
       <div class="filter-item">
         <label>自定义标签</label>
         <select v-model="filterTag">
-          <option value="">选择标签</option>
+          <option value="" disabled hidden>选择标签</option>
           <option v-for="tag in tagOptions" :key="tag" :value="tag">{{ tag }}</option>
         </select>
       </div>
       <div class="filter-item">
         <label>状态</label>
         <select v-model="filterStatus">
-          <option value="">选择状态</option>
+          <option value="" disabled hidden>选择状态</option>
           <option v-for="s in statusOptions" :key="s" :value="s">{{ statusLabelMap[s] || s }}</option>
         </select>
       </div>

@@ -64,6 +64,9 @@ const isRowTimedPublishEnabled = (scheduledAt: string): boolean => scheduledAt !
 const getScheduledAtDisplayText = (scheduledAt: string): string =>
   isRowTimedPublishEnabled(scheduledAt) ? scheduledAt : "立即发布";
 
+const toDatetimeLocal = (str: string): string => str.replace(" ", "T").slice(0, 16);
+const fromDatetimeLocal = (str: string): string => str.replace("T", " ");
+
 const toggleRowTimedPublish = (row: PublishPlanRow): void => {
   emit("update-row-field", {
     rowId: row.id,
@@ -120,7 +123,7 @@ watch(globalTimedPublish, (enabled) => {
           </div>
 
           <div class="publish-plan-global-grid">
-            <div class="publish-plan-global-row">
+            <div class="publish-plan-global-left">
               <label class="publish-plan-field publish-plan-field--title">
                 <span>标题</span>
                 <input
@@ -151,11 +154,10 @@ watch(globalTimedPublish, (enabled) => {
                 <label class="publish-plan-field publish-plan-field--schedule">
                   <span>发布时间</span>
                   <input
-                    :value="globalScheduleTime"
-                    type="text"
-                    placeholder="YYYY-MM-DD HH:mm"
+                    :value="toDatetimeLocal(globalScheduleTime)"
+                    type="datetime-local"
                     :disabled="!globalTimedPublish"
-                    @input="globalScheduleTime = ($event.target as HTMLInputElement).value"
+                    @input="globalScheduleTime = fromDatetimeLocal(($event.target as HTMLInputElement).value)"
                   />
                 </label>
               </section>
@@ -164,7 +166,6 @@ watch(globalTimedPublish, (enabled) => {
               <span>简介</span>
               <textarea
                 :value="globalSummary"
-                rows="3"
                 placeholder="简介"
                 @input="globalSummary = ($event.target as HTMLTextAreaElement).value"
               />
@@ -211,8 +212,12 @@ watch(globalTimedPublish, (enabled) => {
                     @input="emit('update-row-field', { rowId: row.id, field: 'title', value: ($event.target as HTMLInputElement).value })"
                   />
                 </td>
-                <td>{{ row.videoCategory }}</td>
-                <td>{{ row.accountName }}</td>
+                <td>
+                  <span class="publish-plan-text-cell" :title="row.videoCategory">{{ row.videoCategory }}</span>
+                </td>
+                <td>
+                  <span class="publish-plan-text-cell" :title="row.accountName">{{ row.accountName }}</span>
+                </td>
                 <td>
                   <input
                     class="publish-plan-table-input"
@@ -244,10 +249,9 @@ watch(globalTimedPublish, (enabled) => {
                     <input
                       v-if="isRowTimedPublishEnabled(row.scheduledAt)"
                       class="publish-plan-table-input publish-plan-table-schedule-input"
-                      :value="row.scheduledAt"
-                      type="text"
-                      placeholder="YYYY-MM-DD HH:mm"
-                      @input="emit('update-row-field', { rowId: row.id, field: 'scheduledAt', value: ($event.target as HTMLInputElement).value })"
+                      :value="toDatetimeLocal(row.scheduledAt)"
+                      type="datetime-local"
+                      @input="emit('update-row-field', { rowId: row.id, field: 'scheduledAt', value: fromDatetimeLocal(($event.target as HTMLInputElement).value) })"
                     />
                     <span v-else class="publish-plan-immediate-text">开启后可单独设置时间</span>
                   </div>
