@@ -141,6 +141,25 @@ test('baijiahao record matcher uses title when there is a unique title match', a
   assert.equal(matched?.record, uniqueRecord)
 })
 
+test('baijiahao record matcher accepts published title formatted as title plus description', async () => {
+  const { findBaijiahaoRecordInList } = await loadBaijiahaoRecordStatusModule()
+
+  const publishedRecord = {
+    title: '8525: market wrap',
+    publish_at: '2026-05-07 12:30:00',
+    status: 'publish',
+  }
+
+  const matched = findBaijiahaoRecordInList([publishedRecord], {
+    accountFile: '/tmp/mock.json',
+    title: '8525',
+    publishedAt: '2026-05-07T12:31:00.000Z',
+  })
+
+  assert.equal(matched?.matchedBy, 'title')
+  assert.equal(matched?.record, publishedRecord)
+})
+
 test('baijiahao record matcher uses title_and_time_window to disambiguate duplicate titles', async () => {
   const { findBaijiahaoRecordInList } = await loadBaijiahaoRecordStatusModule()
 

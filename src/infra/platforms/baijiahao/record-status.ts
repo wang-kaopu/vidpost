@@ -33,6 +33,22 @@ function normalizeComparisonText(value: string | null): string | null {
   return normalized || null;
 }
 
+function matchesBaijiahaoTrackedTitle(recordTitle: string | null, trackedTitle: string | null): boolean {
+  const normalizedRecordTitle = normalizeComparisonText(recordTitle);
+  const normalizedTrackedTitle = normalizeComparisonText(trackedTitle);
+  if (!normalizedRecordTitle || !normalizedTrackedTitle) {
+    return false;
+  }
+
+  if (normalizedRecordTitle === normalizedTrackedTitle) {
+    return true;
+  }
+
+  return normalizedRecordTitle.startsWith(`${normalizedTrackedTitle}: `)
+    || normalizedRecordTitle.startsWith(`${normalizedTrackedTitle}:`)
+    || normalizedRecordTitle.startsWith(`${normalizedTrackedTitle}：`);
+}
+
 function resolveBaijiahaoStatusValue(record: Record<string, unknown>): string | null {
   if (typeof record.status === "string") {
     const normalized = record.status.trim();
@@ -219,7 +235,7 @@ export function findBaijiahaoRecordInList(records: Record<string, unknown>[], pa
 
   const normalizedTitle = normalizeComparisonText(clues.title);
   if (normalizedTitle) {
-    const titleMatches = records.filter((record) => normalizeComparisonText(normalizeOptionalString(record.title)) === normalizedTitle);
+    const titleMatches = records.filter((record) => matchesBaijiahaoTrackedTitle(normalizeOptionalString(record.title), clues.title));
     if (titleMatches.length === 1) {
       return { matchedBy: "title", record: titleMatches[0] };
     }
