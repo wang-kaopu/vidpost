@@ -580,7 +580,7 @@ onMounted(() => {
     <PlatformPickerDialog
       :visible="platformDialogVisible"
       title="选择发布平台"
-      description="请选择要创建账号的发布平台。"
+      description="请选择要创建账号的发布平台"
       :platforms="platforms"
       :loading="platformLoading"
       :error-message="platformErrorMessage"
