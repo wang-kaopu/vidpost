@@ -13,6 +13,7 @@ export async function cookieAuth(accountFile: string): Promise<boolean> {
       accountFile,
       platform: "bilibili",
       targetUrl: BILIBILI_PROBE_URL,
+      headlessMode: "ping:bilibili",
     },
     async ({ finalUrl, html, title }) => {
       const pageText = `${title}\n${html}`;

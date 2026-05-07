@@ -1,5 +1,5 @@
 /**
- * @typedef {'default' | 'probe' | 'publish:douyin' | 'publish:sohu' | 'record-status:douyin' | 'record-status:bilibili' | 'record-status:sohu' | 'record-status:baijiahao' | 'script:douyin-record-status' | 'script:baijiahao-video-state-success' | 'script:bilibili-video-state-success'} PlaywrightHeadlessScenario
+ * @typedef {'default' | 'probe' | 'ping:douyin' | 'ping:bilibili' | 'ping:sohu' | 'ping:baijiahao' | 'publish:douyin' | 'publish:sohu' | 'record-status:douyin' | 'record-status:bilibili' | 'record-status:sohu' | 'record-status:baijiahao' | 'script:douyin-record-status' | 'script:baijiahao-video-state-success' | 'script:bilibili-video-state-success'} PlaywrightHeadlessScenario
  */
 
 /**
@@ -10,6 +10,10 @@
 export const PLAYWRIGHT_HEADLESS_CONFIG = {
   default: false,
   probe: false,
+  'ping:douyin': true,
+  'ping:bilibili': true,
+  'ping:sohu': true,
+  'ping:baijiahao': true,
   'publish:douyin': false,
   'publish:sohu': false,
   'record-status:douyin': false,

@@ -12,6 +12,7 @@ export async function cookieAuth(accountFile: string): Promise<boolean> {
       accountFile,
       platform: "baijiahao",
       targetUrl: BAIJIAHAO_PROBE_URL,
+      headlessMode: "ping:baijiahao",
       settleMs: 6_000,
     },
     async ({ finalUrl, html, title }) => {

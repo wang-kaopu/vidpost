@@ -1,6 +1,10 @@
 export type PlaywrightHeadlessScenario =
   | "default"
   | "probe"
+  | "ping:douyin"
+  | "ping:bilibili"
+  | "ping:sohu"
+  | "ping:baijiahao"
   | "publish:douyin"
   | "publish:sohu"
   | "record-status:douyin"

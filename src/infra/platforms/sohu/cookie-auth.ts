@@ -12,6 +12,7 @@ export async function cookieAuth(accountFile: string): Promise<boolean> {
       accountFile,
       platform: "sohu",
       targetUrl: SOHU_PROBE_URL,
+      headlessMode: "ping:sohu",
     },
     async ({ finalUrl, html, title }) => {
       const pageText = `${title}\n${html}`;

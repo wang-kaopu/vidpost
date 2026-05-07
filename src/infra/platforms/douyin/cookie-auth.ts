@@ -12,6 +12,7 @@ export async function cookieAuth(accountFile: string): Promise<boolean> {
       accountFile,
       platform: "douyin",
       targetUrl: DOUYIN_PROBE_URL,
+      headlessMode: "ping:douyin",
     },
     async ({ finalUrl, html, title }) => {
       const pageText = `${title}\n${html}`;

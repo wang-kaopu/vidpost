@@ -88,6 +88,7 @@ const createWindow = () => {
   mainWindow = new BrowserWindow({
     width: 940,
     height: 630,
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs')
     }
