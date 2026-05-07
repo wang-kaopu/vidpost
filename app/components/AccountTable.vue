@@ -73,6 +73,7 @@ const tagDialogError = ref("");
 const deletingAccountId = ref("");
 const pingingAccountId = ref("");
 const pingingAll = ref(false);
+const pendingPingAccountIds = ref<string[]>([]);
 
 const statusLabelMap: Record<string, string> = {
   online: "在线",
@@ -153,13 +154,14 @@ const loadTags = async () => {
   }
 };
 
-const loadAccounts = async () => {
+const loadAccounts = async ({ preservePage = false }: { preservePage?: boolean } = {}) => {
   loading.value = true;
   errorMessage.value = "";
+  const currentPage = page.value;
   try {
     const res = await getPublishAccounts({ limit: 999 });
     allAccounts.value = (res.list || []).map(normalizePublishAccount);
-    page.value = 1;
+    page.value = preservePage ? Math.min(currentPage, totalPages.value) : 1;
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : "账号列表加载失败";
   } finally {
@@ -279,13 +281,12 @@ const handleDeleteTag = async (item: PublishAccountItem, tag: string) => {
   }
 };
 
-const handlePingAccount = async (item: PublishAccountItem) => {
-  if (renameDialogLoading.value || deletingAccountId.value || pingingAccountId.value) return;
+const pingAccount = async (item: Pick<PublishAccountItem, "id" | "platformKey">) => {
   pingingAccountId.value = item.id;
   errorMessage.value = "";
   try {
-    await window.electronAPI?.ping({id: item.id, platform: item.platformKey});
-    await loadAccounts();
+    await window.electronAPI?.ping({ id: item.id, platform: item.platformKey });
+    await loadAccounts({ preservePage: true });
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : "账号检测失败";
   } finally {
@@ -293,16 +294,37 @@ const handlePingAccount = async (item: PublishAccountItem) => {
   }
 };
 
+const handlePingAccount = async (item: PublishAccountItem) => {
+  if (renameDialogLoading.value || deletingAccountId.value || pingingAccountId.value || pingingAll.value) return;
+  await pingAccount(item);
+};
+
 const handlePingAllAccounts = async () => {
-  if (pingingAll.value) return;
+  if (pingingAll.value || renameDialogLoading.value || deletingAccountId.value || pingingAccountId.value) return;
+  const queue = pagedAccounts.value.map((item) => ({ id: item.id, platformKey: item.platformKey }));
+  if (!queue.length) return;
   pingingAll.value = true;
+  pendingPingAccountIds.value = queue.map((item) => item.id);
   errorMessage.value = "";
-  await loadAccounts();
-  pingingAll.value = false;
+  try {
+    for (const item of queue) {
+      await pingAccount(item);
+      pendingPingAccountIds.value = pendingPingAccountIds.value.filter((id) => id !== item.id);
+    }
+  } finally {
+    pingingAll.value = false;
+    pendingPingAccountIds.value = [];
+  }
+};
+
+const getPingButtonLabel = (itemId: string) => {
+  if (pingingAccountId.value === itemId) return "检测中...";
+  if (pendingPingAccountIds.value.includes(itemId)) return "排队中...";
+  return "检测";
 };
 
 const handleDeleteAccount = async (item: PublishAccountItem) => {
-  if (renameDialogLoading.value || deletingAccountId.value || pingingAccountId.value) return;
+  if (renameDialogLoading.value || deletingAccountId.value || pingingAccountId.value || pingingAll.value) return;
   if (!window.confirm(`确认删除账号"${item.nickname}"吗？`)) return;
   deletingAccountId.value = item.id;
   errorMessage.value = "";
@@ -494,22 +516,22 @@ onMounted(() => {
             <div class="table-links">
               <button
                 type="button"
-                :disabled="Boolean(renameDialogLoading || deletingAccountId || pingingAccountId)"
+                :disabled="Boolean(renameDialogLoading || deletingAccountId || pingingAccountId || pingingAll)"
                 @click="openRenameDialog(item)"
               >
                 重命名
               </button>
               <button
                 type="button"
-                :disabled="Boolean(renameDialogLoading || deletingAccountId || pingingAccountId)"
+                :disabled="Boolean(renameDialogLoading || deletingAccountId || pingingAccountId || pingingAll)"
                 @click="handlePingAccount(item)"
               >
-                {{ pingingAccountId === item.id ? "检测中..." : "检测" }}
+                {{ getPingButtonLabel(item.id) }}
               </button>
               <button
                 type="button"
                 class="danger-text"
-                :disabled="Boolean(renameDialogLoading || deletingAccountId || pingingAccountId)"
+                :disabled="Boolean(renameDialogLoading || deletingAccountId || pingingAccountId || pingingAll)"
                 @click="handleDeleteAccount(item)"
               >
                 <AppIcon name="trash" :size="16" />
@@ -526,17 +548,18 @@ onMounted(() => {
         {{ Math.min(page * pageSize, filteredAccounts.length) }}，共 {{ filteredAccounts.length }} 条
       </div>
       <div class="pager-numbers">
-        <button type="button" :disabled="page <= 1" @click="handlePageChange(page - 1)">上一页</button>
+        <button type="button" :disabled="page <= 1 || pingingAll" @click="handlePageChange(page - 1)">上一页</button>
         <button
           v-for="p in totalPages"
           :key="p"
           type="button"
+          :disabled="pingingAll"
           :class="{ active: p === page }"
           @click="handlePageChange(p)"
         >
           {{ p }}
         </button>
-        <button type="button" :disabled="page >= totalPages" @click="handlePageChange(page + 1)">下一页</button>
+        <button type="button" :disabled="page >= totalPages || pingingAll" @click="handlePageChange(page + 1)">下一页</button>
       </div>
     </footer>
 

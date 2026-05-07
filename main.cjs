@@ -128,9 +128,9 @@ if (hasSingletonLock) {
     startSseServer()
 
     // 注册 IPC 监听器和处理器
-    registerIpcListener('login', login)
+    registerIpcHandler('login', login)
     registerIpcListener('publish', publish)
-    registerIpcListener('ping', ping)
+    registerIpcHandler('ping', ping)
     registerIpcListener('sync-task-state-bg', syncTaskStateBg)
     registerIpcHandler('agenthunt:get-launch-intent', () => pendingLaunchIntent)
 
