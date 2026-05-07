@@ -4,6 +4,8 @@ export type PlaywrightHeadlessScenario =
   | "publish:douyin"
   | "publish:sohu"
   | "record-status:douyin"
+  | "record-status:bilibili"
+  | "record-status:sohu"
   | "script:douyin-record-status"
   | "script:baijiahao-video-state-success"
   | "script:bilibili-video-state-success";

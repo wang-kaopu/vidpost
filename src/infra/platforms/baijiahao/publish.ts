@@ -1,5 +1,6 @@
 // 提供百家号平台的上传发布能力。
 import fs from "node:fs/promises";
+import path from "node:path";
 import type { Locator, Page } from "playwright";
 
 // import type { PlatformUploadPayload, PlatformUploadResult } from "../contracts.ts";
@@ -23,10 +24,10 @@ const BAIJIAHAO_EDITOR_READY_SELECTORS = [
   "button:has-text('预计'):visible",
 ];
 const BAIJIAHAO_DESCRIPTION_SELECTORS = [
-  "#formMain .tags-container.videov2-title-wrap ._872ce91b1b159b92-editorArea",
-  "#formMain .tags-container.videov2-title-wrap div[class$='-editorArea']",
-  "#formMain .tags-container.videov2-title-wrap div[class*='editorArea']",
-  "#formMain .tags-container.videov2-title-wrap [contenteditable='true']",
+  "#formMain div.d482ca4cbff50e1c-contentEditable",
+  "div.d482ca4cbff50e1c-contentEditable",
+  "#formMain ._872ce91b1b159b92-editorArea div.d482ca4cbff50e1c-contentEditable",
+  "._872ce91b1b159b92-editorArea div.d482ca4cbff50e1c-contentEditable",
   "#formMain [contenteditable='true']",
   "#formMain textarea",
   "textarea[placeholder*='简介']",
@@ -604,48 +605,156 @@ export function buildBaijiahaoDescriptionValue(title: string, description: strin
   return `${normalizedTitle}: ${normalizedDescription}`;
 }
 
-async function setBaijiahaoDescriptionContent(page: Page, selectors: readonly string[], value: string): Promise<boolean> {
-  const locator = await findFirstVisible(page, selectors);
-  if (!locator) {
+function normalizeBaijiahaoFieldText(value: string | null | undefined): string {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function normalizeBaijiahaoFilenameToken(value: string | null | undefined): string {
+  return normalizeBaijiahaoFieldText(String(value || "").toLowerCase()).replace(/[._-]+/g, " ");
+}
+
+function buildBaijiahaoVideoFilenameCandidates(videoPath: string): string[] {
+  const baseName = path.basename(String(videoPath || "").trim());
+  const parsed = path.parse(baseName);
+  const candidates = new Set<string>();
+
+  for (const candidate of [baseName, parsed.name]) {
+    const normalized = normalizeBaijiahaoFilenameToken(candidate);
+    if (normalized) {
+      candidates.add(normalized);
+    }
+  }
+
+  return Array.from(candidates);
+}
+
+export function isBaijiahaoFilenameRefill(currentValue: string, expectedTitle: string, videoPath: string): boolean {
+  const normalizedCurrent = normalizeBaijiahaoFilenameToken(currentValue);
+  const normalizedTitle = normalizeBaijiahaoFilenameToken(expectedTitle);
+  if (!normalizedCurrent) {
+    return false;
+  }
+  if (normalizedTitle && normalizedCurrent.includes(normalizedTitle)) {
     return false;
   }
 
+  const fileNameCandidates = buildBaijiahaoVideoFilenameCandidates(videoPath);
+  return fileNameCandidates.some((candidate) => candidate && (normalizedCurrent === candidate || normalizedCurrent.includes(candidate) || candidate.includes(normalizedCurrent)));
+}
+
+async function readBaijiahaoEditorValue(locator: Locator): Promise<string> {
+  return normalizeBaijiahaoFieldText(await locator.evaluate((node) => {
+    if (node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement) {
+      return node.value;
+    }
+    if (node instanceof HTMLElement) {
+      return node.innerText || node.textContent || "";
+    }
+    return "";
+  }).catch(() => ""));
+}
+
+async function readBaijiahaoDescriptionContent(page: Page, selectors: readonly string[]): Promise<string> {
+  const locator = await findFirstVisible(page, selectors);
+  if (!locator) {
+    return "";
+  }
+
+  return readBaijiahaoEditorValue(locator);
+}
+
+function resolveBaijiahaoSelectAllShortcut(): string {
+  return process.platform === "darwin" ? "Meta+A" : "Control+A";
+}
+
+async function focusBaijiahaoDescriptionContent(locator: Locator): Promise<"text" | "editable" | null> {
   await locator.scrollIntoViewIfNeeded().catch(() => undefined);
   await locator.click({ timeout: 5_000, force: true }).catch(() => undefined);
 
-  return locator.evaluate((node, nextValue) => {
-    const value = String(nextValue ?? "");
-    const setWithEvents = (target: HTMLElement) => {
-      target.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: value }));
-      target.dispatchEvent(new Event("change", { bubbles: true }));
-    };
-
+  return locator.evaluate((node) => {
     if (node instanceof HTMLTextAreaElement || node instanceof HTMLInputElement) {
       node.focus();
-      node.value = value;
-      setWithEvents(node);
-      return true;
+      return "text";
     }
 
     if (node instanceof HTMLElement) {
       node.focus();
-      const doc = node.ownerDocument;
-      node.replaceChildren();
-
-      const lines = value.split("\n");
-      lines.forEach((line, index) => {
-        if (index > 0) {
-          node.append(doc.createElement("br"));
-        }
-        node.append(doc.createTextNode(line));
-      });
-
-      setWithEvents(node);
-      return true;
+      return "editable";
     }
 
+    return null;
+  }).catch(() => null);
+}
+
+async function clearBaijiahaoDescriptionContent(page: Page, locator: Locator, kind: "text" | "editable"): Promise<void> {
+  if (kind === "text") {
+    await locator.fill("").catch(async () => {
+      await locator.press(resolveBaijiahaoSelectAllShortcut()).catch(() => undefined);
+      await page.keyboard.press("Backspace").catch(() => undefined);
+      await page.keyboard.press("Delete").catch(() => undefined);
+    });
+    return;
+  }
+
+  await locator.evaluate((node) => {
+    if (!(node instanceof HTMLElement)) {
+      return;
+    }
+    node.focus();
+    const selection = node.ownerDocument.getSelection();
+    const range = node.ownerDocument.createRange();
+    range.selectNodeContents(node);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+  }).catch(() => undefined);
+
+  await locator.press(resolveBaijiahaoSelectAllShortcut()).catch(() => undefined);
+  await page.keyboard.press("Backspace").catch(() => undefined);
+  await page.keyboard.press("Delete").catch(() => undefined);
+}
+
+async function typeBaijiahaoDescriptionContent(page: Page, locator: Locator, kind: "text" | "editable", value: string): Promise<void> {
+  if (kind === "text") {
+    await locator.fill(value).catch(async () => {
+      await page.keyboard.type(value);
+    });
+    return;
+  }
+
+  const lines = String(value).split("\n");
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line) {
+      await page.keyboard.type(line);
+    }
+    if (index < lines.length - 1) {
+      await page.keyboard.press("Shift+Enter").catch(async () => {
+        await page.keyboard.press("Enter").catch(() => undefined);
+      });
+    }
+  }
+}
+
+async function blurBaijiahaoDescriptionContent(page: Page, locator: Locator): Promise<void> {
+  await locator.evaluate((node) => {
+    if (node instanceof HTMLElement) {
+      node.blur();
+    }
+  }).catch(() => undefined);
+  await page.locator("body").click({ timeout: 3_000, force: true, position: { x: 8, y: 8 } }).catch(() => undefined);
+  await page.waitForTimeout(300);
+}
+
+async function setBaijiahaoDescriptionContent(page: Page, locator: Locator, value: string): Promise<boolean> {
+  const kind = await focusBaijiahaoDescriptionContent(locator);
+  if (!kind) {
     return false;
-  }, value).catch(() => false);
+  }
+
+  await clearBaijiahaoDescriptionContent(page, locator, kind);
+  await typeBaijiahaoDescriptionContent(page, locator, kind, value);
+  await blurBaijiahaoDescriptionContent(page, locator);
+  return true;
 }
 
 // 填充百家号编辑页中的标题与简介。
@@ -655,11 +764,38 @@ async function fillTitleAndDescription(page: Page, title: string, description: s
     return;
   }
 
-  if (await setBaijiahaoDescriptionContent(page, BAIJIAHAO_DESCRIPTION_SELECTORS, descriptionValue)) {
+  const locator = await findFirstVisible(page, BAIJIAHAO_DESCRIPTION_SELECTORS);
+  if (!locator) {
+    throw new Error("未找到百家号作品描述输入区");
+  }
+
+  const beforeValue = await readBaijiahaoEditorValue(locator);
+  console.info(`[baijiahao:upload] 填写前标题值="${beforeValue}"`);
+
+  if (await setBaijiahaoDescriptionContent(page, locator, descriptionValue)) {
+    const afterValue = await readBaijiahaoEditorValue(locator);
+    console.info(`[baijiahao:upload] 填写后标题值="${afterValue}"`);
     return;
   }
 
   throw new Error("未找到百家号作品描述输入区");
+}
+
+async function ensureTitleNotRevertedToFilename(page: Page, payload: Pick<BaijiahaoUploadPayload, "title" | "description" | "videoPath">): Promise<void> {
+  const finalValueBeforePublish = await readBaijiahaoDescriptionContent(page, BAIJIAHAO_DESCRIPTION_SELECTORS);
+  console.info(`[baijiahao:upload] 发布前最终标题值="${finalValueBeforePublish}"`);
+
+  if (!isBaijiahaoFilenameRefill(finalValueBeforePublish, payload.title, payload.videoPath)) {
+    return;
+  }
+
+  console.warn(
+    `[baijiahao:upload] 检测到文件名回填并触发重填 current="${finalValueBeforePublish}" file="${path.basename(payload.videoPath)}"`,
+  );
+  await fillTitleAndDescription(page, payload.title, payload.description || payload.title);
+
+  const refilledValue = await readBaijiahaoDescriptionContent(page, BAIJIAHAO_DESCRIPTION_SELECTORS);
+  console.info(`[baijiahao:upload] 文件名回填重填后标题值="${refilledValue}"`);
 }
 
 // 设置百家号封面，找不到可用控件时直接跳过。
@@ -791,6 +927,8 @@ async function uploadOnce(payload: BaijiahaoUploadPayload, attempt: number, maxA
     if (payload.coverPath) {
       await setThumbnail(page, payload.coverPath);
     }
+
+    await ensureTitleNotRevertedToFilename(page, payload);
 
     const scheduledDate = parseScheduledDate(payload.scheduledAt || "");
     if (scheduledDate) {

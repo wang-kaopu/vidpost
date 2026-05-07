@@ -12,7 +12,7 @@ test('buildBaijiahaoDescriptionValue joins title and copy with colon', async () 
 
   assert.equal(
     buildBaijiahaoDescriptionValue('olivia', 'Olivia IG update'),
-    'olivia:Olivia IG update',
+    'olivia: Olivia IG update',
   )
 })
 
@@ -21,6 +21,19 @@ test('buildBaijiahaoDescriptionValue keeps single title when copy is empty or du
 
   assert.equal(buildBaijiahaoDescriptionValue('olivia', ''), 'olivia')
   assert.equal(buildBaijiahaoDescriptionValue('olivia', 'olivia'), 'olivia')
+})
+
+test('isBaijiahaoFilenameRefill detects filename fallback while ignoring expected title', async () => {
+  const { isBaijiahaoFilenameRefill } = await loadPublishModule()
+
+  assert.equal(
+    isBaijiahaoFilenameRefill('IMG_20260507_123456', 'olivia market update', '/tmp/IMG_20260507_123456.mp4'),
+    true,
+  )
+  assert.equal(
+    isBaijiahaoFilenameRefill('olivia market update', 'olivia market update', '/tmp/IMG_20260507_123456.mp4'),
+    false,
+  )
 })
 
 test('normalizeBaijiahaoScheduledAt treats "0" as immediate publish', async () => {
