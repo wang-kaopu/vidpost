@@ -309,7 +309,7 @@ export async function fetchPublishedState(payload: PlatformPublishedStatePayload
   }
 
   const timeoutMs = resolveRecordStatusTimeoutMs(payload.timeoutMs);
-  const context = await createContextFromAccountFile(accountFile);
+  const context = await createContextFromAccountFile(accountFile, "record-status:baijiahao");
   const browser = context.browser();
 
   try {
