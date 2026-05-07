@@ -44,6 +44,22 @@ const platformLabelMap: Record<string, string> = {
   sohu: "搜狐号",
 };
 
+const recordStatusLabelMap: Record<string, string> = {
+  running: "发布中",
+  reviewing: "审核中",
+  public: "公开",
+  non_public: "未公开",
+  failed: "发布失败",
+};
+
+const recordStatusClassMap: Record<string, string> = {
+  running: "warning",
+  reviewing: "warning",
+  public: "success",
+  non_public: "danger",
+  failed: "danger",
+};
+
 const loadPlatforms = async () => {
   try {
     const res = await getPublishPlatforms();
@@ -229,7 +245,7 @@ onMounted(() => {
   <section class="panel-card history-card">
     <header class="panel-header">
       <div>
-        <h2>发布记录汇总</h2>
+        <h2>发布记录</h2>
       </div>
       <div class="panel-actions">
         <button class="ghost-button compact" type="button" :disabled="exporting || !items.length" @click="handleExport">
@@ -301,6 +317,7 @@ onMounted(() => {
         <col class="records-col-nickname" />
         <col class="records-col-id" />
         <col class="records-col-title" />
+        <col class="records-col-status" />
         <col class="records-col-scheduled" />
         <col class="records-col-actions" />
       </colgroup>
@@ -318,19 +335,20 @@ onMounted(() => {
           <th>账号昵称</th>
           <th>账号ID</th>
           <th>内容标题</th>
+          <th>状态</th>
           <th>预约发布时间</th>
           <th>操作</th>
         </tr>
       </thead>
       <tbody>
         <tr v-if="loading && !items.length">
-          <td colspan="7" class="table-state">正在加载发布记录...</td>
+          <td colspan="8" class="table-state">正在加载发布记录...</td>
         </tr>
         <tr v-else-if="errorMessage">
-          <td colspan="7" class="table-state table-state-error">{{ errorMessage }}</td>
+          <td colspan="8" class="table-state table-state-error">{{ errorMessage }}</td>
         </tr>
         <tr v-else-if="!items.length">
-          <td colspan="7" class="table-state">暂无发布记录</td>
+          <td colspan="8" class="table-state">暂无发布记录</td>
         </tr>
         <tr v-for="item in items" :key="item.id">
           <td>
@@ -348,6 +366,11 @@ onMounted(() => {
           <td class="records-account-cell">--</td>
           <td>{{ item.account_id || "--" }}</td>
           <td class="records-title-cell" :title="item.title || '--'">{{ item.title || "--" }}</td>
+          <td>
+            <span class="status-pill" :class="recordStatusClassMap[item.status] || 'danger'">
+              {{ recordStatusLabelMap[item.status] || item.status || "未知状态" }}
+            </span>
+          </td>
           <td class="records-scheduled-cell">{{ item.scheduled_at || "--" }}</td>
           <td>
             <div class="table-links">

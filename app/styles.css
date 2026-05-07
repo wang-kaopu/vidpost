@@ -882,6 +882,10 @@ button {
   width: auto;
 }
 
+.records-table .records-col-status {
+  width: 112px;
+}
+
 .records-table .records-col-scheduled {
   width: 160px;
 }
