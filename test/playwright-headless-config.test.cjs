@@ -19,6 +19,10 @@ test('playwright headless config is centralized in shared config file', () => {
     PLAYWRIGHT_HEADLESS_CONFIG['record-status:bilibili']
   )
   assert.equal(
+    resolvePlaywrightHeadlessMode('record-status:sohu'),
+    PLAYWRIGHT_HEADLESS_CONFIG['record-status:sohu']
+  )
+  assert.equal(
     resolvePlaywrightHeadlessMode('script:douyin-record-status'),
     PLAYWRIGHT_HEADLESS_CONFIG['script:douyin-record-status']
   )
