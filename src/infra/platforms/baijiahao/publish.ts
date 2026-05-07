@@ -24,10 +24,10 @@ const BAIJIAHAO_EDITOR_READY_SELECTORS = [
   "button:has-text('预计'):visible",
 ];
 const BAIJIAHAO_DESCRIPTION_SELECTORS = [
-  "#formMain .tags-container.videov2-title-wrap ._872ce91b1b159b92-editorArea",
-  "#formMain .tags-container.videov2-title-wrap div[class$='-editorArea']",
-  "#formMain .tags-container.videov2-title-wrap div[class*='editorArea']",
-  "#formMain .tags-container.videov2-title-wrap [contenteditable='true']",
+  "#formMain div.d482ca4cbff50e1c-contentEditable",
+  "div.d482ca4cbff50e1c-contentEditable",
+  "#formMain ._872ce91b1b159b92-editorArea div.d482ca4cbff50e1c-contentEditable",
+  "._872ce91b1b159b92-editorArea div.d482ca4cbff50e1c-contentEditable",
   "#formMain [contenteditable='true']",
   "#formMain textarea",
   "textarea[placeholder*='简介']",
@@ -663,43 +663,98 @@ async function readBaijiahaoDescriptionContent(page: Page, selectors: readonly s
   return readBaijiahaoEditorValue(locator);
 }
 
-async function setBaijiahaoDescriptionContent(locator: Locator, value: string): Promise<boolean> {
+function resolveBaijiahaoSelectAllShortcut(): string {
+  return process.platform === "darwin" ? "Meta+A" : "Control+A";
+}
+
+async function focusBaijiahaoDescriptionContent(locator: Locator): Promise<"text" | "editable" | null> {
   await locator.scrollIntoViewIfNeeded().catch(() => undefined);
   await locator.click({ timeout: 5_000, force: true }).catch(() => undefined);
 
-  return locator.evaluate((node, nextValue) => {
-    const value = String(nextValue ?? "");
-    const setWithEvents = (target: HTMLElement) => {
-      target.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: value }));
-      target.dispatchEvent(new Event("change", { bubbles: true }));
-    };
-
+  return locator.evaluate((node) => {
     if (node instanceof HTMLTextAreaElement || node instanceof HTMLInputElement) {
       node.focus();
-      node.value = value;
-      setWithEvents(node);
-      return true;
+      return "text";
     }
 
     if (node instanceof HTMLElement) {
       node.focus();
-      const doc = node.ownerDocument;
-      node.replaceChildren();
-
-      const lines = value.split("\n");
-      lines.forEach((line, index) => {
-        if (index > 0) {
-          node.append(doc.createElement("br"));
-        }
-        node.append(doc.createTextNode(line));
-      });
-
-      setWithEvents(node);
-      return true;
+      return "editable";
     }
 
+    return null;
+  }).catch(() => null);
+}
+
+async function clearBaijiahaoDescriptionContent(page: Page, locator: Locator, kind: "text" | "editable"): Promise<void> {
+  if (kind === "text") {
+    await locator.fill("").catch(async () => {
+      await locator.press(resolveBaijiahaoSelectAllShortcut()).catch(() => undefined);
+      await page.keyboard.press("Backspace").catch(() => undefined);
+      await page.keyboard.press("Delete").catch(() => undefined);
+    });
+    return;
+  }
+
+  await locator.evaluate((node) => {
+    if (!(node instanceof HTMLElement)) {
+      return;
+    }
+    node.focus();
+    const selection = node.ownerDocument.getSelection();
+    const range = node.ownerDocument.createRange();
+    range.selectNodeContents(node);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+  }).catch(() => undefined);
+
+  await locator.press(resolveBaijiahaoSelectAllShortcut()).catch(() => undefined);
+  await page.keyboard.press("Backspace").catch(() => undefined);
+  await page.keyboard.press("Delete").catch(() => undefined);
+}
+
+async function typeBaijiahaoDescriptionContent(page: Page, locator: Locator, kind: "text" | "editable", value: string): Promise<void> {
+  if (kind === "text") {
+    await locator.fill(value).catch(async () => {
+      await page.keyboard.type(value);
+    });
+    return;
+  }
+
+  const lines = String(value).split("\n");
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line) {
+      await page.keyboard.type(line);
+    }
+    if (index < lines.length - 1) {
+      await page.keyboard.press("Shift+Enter").catch(async () => {
+        await page.keyboard.press("Enter").catch(() => undefined);
+      });
+    }
+  }
+}
+
+async function blurBaijiahaoDescriptionContent(page: Page, locator: Locator): Promise<void> {
+  await locator.evaluate((node) => {
+    if (node instanceof HTMLElement) {
+      node.blur();
+    }
+  }).catch(() => undefined);
+  await page.locator("body").click({ timeout: 3_000, force: true, position: { x: 8, y: 8 } }).catch(() => undefined);
+  await page.waitForTimeout(300);
+}
+
+async function setBaijiahaoDescriptionContent(page: Page, locator: Locator, value: string): Promise<boolean> {
+  const kind = await focusBaijiahaoDescriptionContent(locator);
+  if (!kind) {
     return false;
-  }, value).catch(() => false);
+  }
+
+  await clearBaijiahaoDescriptionContent(page, locator, kind);
+  await typeBaijiahaoDescriptionContent(page, locator, kind, value);
+  await blurBaijiahaoDescriptionContent(page, locator);
+  return true;
 }
 
 // 填充百家号编辑页中的标题与简介。
@@ -717,7 +772,7 @@ async function fillTitleAndDescription(page: Page, title: string, description: s
   const beforeValue = await readBaijiahaoEditorValue(locator);
   console.info(`[baijiahao:upload] 填写前标题值="${beforeValue}"`);
 
-  if (await setBaijiahaoDescriptionContent(locator, descriptionValue)) {
+  if (await setBaijiahaoDescriptionContent(page, locator, descriptionValue)) {
     const afterValue = await readBaijiahaoEditorValue(locator);
     console.info(`[baijiahao:upload] 填写后标题值="${afterValue}"`);
     return;
