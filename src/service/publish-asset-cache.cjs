@@ -29,14 +29,41 @@ function guessAssetFilename(url, fallbackName) {
     }
 }
 
+function resolveWorkIdValue(payload) {
+    const candidates = [
+        payload?.workId,
+        payload?.work_id,
+    ]
+
+    for (const candidate of candidates) {
+        const normalized = String(candidate || '').trim()
+        if (normalized) {
+            return normalized
+        }
+    }
+
+    return ''
+}
+
+function buildPreferredAssetFilename(sourceUrl, fallbackName, preferredBaseName) {
+    const normalizedBaseName = sanitizeFilename(preferredBaseName || '')
+    if (!normalizedBaseName || normalizedBaseName === 'asset.bin') {
+        return guessAssetFilename(sourceUrl, fallbackName)
+    }
+
+    const guessedName = guessAssetFilename(sourceUrl, fallbackName)
+    const parsed = path.parse(guessedName)
+    return `${normalizedBaseName}${parsed.ext || ''}`
+}
+
 function resolveDefaultPublishAssetCacheRoot() {
     return path.join(os.tmpdir(), 'agenthunt', 'publish-assets')
 }
 
 function resolveCacheKey(payload) {
     const candidates = [
-        payload?.remoteTaskId,
         payload?.workId,
+        payload?.remoteTaskId,
         payload?.taskId,
         payload?.accountId && payload?.platform
             ? `${payload.accountId}_${payload.platform}`
@@ -104,6 +131,7 @@ class PublishAssetCache {
     async materializePublishPayload(payload) {
         const normalizedPayload = payload ? { ...payload } : {}
         const cacheKey = resolveCacheKey(normalizedPayload)
+        const preferredBaseName = resolveWorkIdValue(normalizedPayload)
 
         const videoPath = await this.materializeAsset({
             cacheKey,
@@ -111,6 +139,7 @@ class PublishAssetCache {
             localPath: normalizedPayload.videoPath || normalizedPayload.filePath,
             remoteUrl: normalizedPayload.videoUrl,
             fallbackName: 'video.bin',
+            preferredBaseName,
         })
 
         const coverPath = await this.materializeAsset({
@@ -119,6 +148,7 @@ class PublishAssetCache {
             localPath: normalizedPayload.coverPath || normalizedPayload.thumbnailPath,
             remoteUrl: normalizedPayload.coverUrl,
             fallbackName: 'cover.bin',
+            preferredBaseName,
         })
 
         return {
@@ -128,7 +158,7 @@ class PublishAssetCache {
         }
     }
 
-    async materializeAsset({ cacheKey, assetKind, localPath, remoteUrl, fallbackName }) {
+    async materializeAsset({ cacheKey, assetKind, localPath, remoteUrl, fallbackName, preferredBaseName }) {
         const normalizedLocalPath = String(localPath || '').trim()
         if (normalizedLocalPath && !isRemoteUrl(normalizedLocalPath)) {
             return normalizedLocalPath
@@ -142,7 +172,7 @@ class PublishAssetCache {
             return normalizedLocalPath
         }
 
-        const fileName = guessAssetFilename(sourceUrl, fallbackName)
+        const fileName = buildPreferredAssetFilename(sourceUrl, fallbackName, preferredBaseName)
         const destination = path.join(this.cacheRootDir, cacheKey, assetKind, fileName)
 
         if (await fileExists(destination)) {
