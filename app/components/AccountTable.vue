@@ -562,18 +562,33 @@ onMounted(() => {
         {{ Math.min(page * pageSize, filteredAccounts.length) }}，共 {{ filteredAccounts.length }} 条
       </div>
       <div class="pager-numbers">
-        <button type="button" :disabled="page <= 1 || pingingAll" @click="handlePageChange(page - 1)">上一页</button>
+        <button
+          type="button"
+          class="pager-button pager-nav-button"
+          :disabled="page <= 1 || pingingAll"
+          @click="handlePageChange(page - 1)"
+        >
+          上一页
+        </button>
         <button
           v-for="p in totalPages"
           :key="p"
           type="button"
+          class="pager-button pager-number-button"
           :disabled="pingingAll"
           :class="{ active: p === page }"
           @click="handlePageChange(p)"
         >
           {{ p }}
         </button>
-        <button type="button" :disabled="page >= totalPages || pingingAll" @click="handlePageChange(page + 1)">下一页</button>
+        <button
+          type="button"
+          class="pager-button pager-nav-button"
+          :disabled="page >= totalPages || pingingAll"
+          @click="handlePageChange(page + 1)"
+        >
+          下一页
+        </button>
       </div>
     </footer>
 
