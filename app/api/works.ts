@@ -75,21 +75,6 @@ function resolveWorkStatus(work: BackendWork): WorkStatus {
   return "生成中";
 }
 
-function formatUpdatedAt(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-  const formatter = new Intl.DateTimeFormat("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-  return formatter.format(date).replace(",", "");
-}
-
 function mapWorkType(type: string | null | undefined): { platform: string; platformShort: string } {
   if (type === "talking_head_video") {
     return { platform: "真人口播视频", platformShort: "播" };
@@ -117,7 +102,7 @@ function normalizeWork(work: BackendWork): WorkItem {
     duration: "--:--",
     cover,
     status: resolveWorkStatus(work),
-    updatedAt: formatUpdatedAt(work.created_at),
+    updatedAt: String(work.created_at || "").trim(),
     orientation: "portrait",
   };
 }

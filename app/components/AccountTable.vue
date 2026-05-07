@@ -612,13 +612,13 @@ onMounted(() => {
               />
               <div class="tag-dialog-char-count">{{ tagDialogDraft.length }} / 20</div>
             </div>
-            <div v-if="tagDialogError" class="tag-dialog-error">{{ tagDialogError }}</div>
+            <div v-if="tagDialogError" class="tag--error">{{ tagDialogError }}</div>
           </div>
           <div class="tag-dialog-footer">
             <button type="button" class="ghost-button" :disabled="tagDialogLoading" @click="closeTagDialog">取消</button>
             <button
               type="button"
-              class="blue-button"
+              class="blue-button"dialog
               :disabled="!tagDialogDraft.trim() || tagDialogLoading"
               @click="confirmTagDialog"
             >
