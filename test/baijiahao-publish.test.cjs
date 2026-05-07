@@ -48,6 +48,14 @@ test('normalizeBaijiahaoScheduledAt keeps valid YYYY-MM-DD HH:mm input', async (
   assert.equal(normalizeBaijiahaoScheduledAt('2026-05-01 12:30', new Date('2026-05-01T10:00:00').getTime()), '2026-05-01 12:30')
 })
 
+test('isBaijiahaoSecurityVerificationText detects Baidu verification hints', async () => {
+  const { isBaijiahaoSecurityVerificationText } = await loadPublishModule()
+
+  assert.equal(isBaijiahaoSecurityVerificationText('百度安全验证 请完成下方验证后继续操作'), true)
+  assert.equal(isBaijiahaoSecurityVerificationText('拖动左侧滑块使图片为正'), true)
+  assert.equal(isBaijiahaoSecurityVerificationText('发布成功，正在审核中'), false)
+})
+
 test('normalizeBaijiahaoScheduledAt rejects non-standard schedule formats', async () => {
   const { normalizeBaijiahaoScheduledAt } = await loadPublishModule()
 

@@ -7,6 +7,7 @@ export type PlaywrightHeadlessScenario =
   | "ping:baijiahao"
   | "publish:douyin"
   | "publish:sohu"
+  | "publish:baijiahao"
   | "record-status:douyin"
   | "record-status:bilibili"
   | "record-status:sohu"

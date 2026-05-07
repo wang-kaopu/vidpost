@@ -14,6 +14,7 @@ test('playwright headless config is centralized in shared config file', () => {
   assert.equal(resolvePlaywrightHeadlessMode('ping:baijiahao'), PLAYWRIGHT_HEADLESS_CONFIG['ping:baijiahao'])
   assert.equal(resolvePlaywrightHeadlessMode('publish:douyin'), PLAYWRIGHT_HEADLESS_CONFIG['publish:douyin'])
   assert.equal(resolvePlaywrightHeadlessMode('publish:sohu'), PLAYWRIGHT_HEADLESS_CONFIG['publish:sohu'])
+  assert.equal(resolvePlaywrightHeadlessMode('publish:baijiahao'), PLAYWRIGHT_HEADLESS_CONFIG['publish:baijiahao'])
   assert.equal(
     resolvePlaywrightHeadlessMode('record-status:douyin'),
     PLAYWRIGHT_HEADLESS_CONFIG['record-status:douyin']

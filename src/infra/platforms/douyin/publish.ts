@@ -2,11 +2,12 @@ import fs from "node:fs/promises";
 
 import type { BrowserContextOptions } from "playwright";
 import type { Locator, Page } from "playwright";
+import type { InteractionRecoveryContext } from "../shared/browser/page-helpers.ts";
 
 import type { PlatformUploadPayload, PlatformUploadResult } from "../contracts.ts";
 import type { PublishVerificationStore } from "../../runtime/publish-verification-store.ts";
 import { createBrowserSession } from "../shared/browser.ts";
-import { clickWithDomFallback, firstVisibleLocator, pickFileWithChooser, waitForCondition } from "../shared/browser/page-helpers.ts";
+import { clickWithDomFallback, fillWithRecovery, firstVisibleLocator, pickFileWithChooser, waitForCondition } from "../shared/browser/page-helpers.ts";
 import { PlatformCookieInvalidError, PlatformManualVerificationError } from "../shared/errors.ts";
 import {
   buildFailureOutcome,
@@ -54,6 +55,7 @@ const PUBLISH_SUCCESS_TIMEOUT_MS = 45_000;
 const MANAGE_URL_SETTLE_MS = 3_000;
 const DIAGNOSTIC_TEXT_PREVIEW_LENGTH = 500;
 const DOUYIN_PUBLISH_BUTTON_TEXTS = ["发布", "立即发布", "发布作品"] as const;
+const DOUYIN_INTERACTION_RETRY_ATTEMPTS = 3;
 
 type DouyinUploadPayload = PlatformUploadPayload & {
   accountFile: string;
@@ -404,23 +406,80 @@ async function waitForPublishFormReady(page: Page): Promise<void> {
   );
 }
 
+function summarizeInteractionError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error ?? "");
+}
+
+async function recoverFromInteractionInterference(page: Page, context: InteractionRecoveryContext): Promise<boolean> {
+  const dismissed = await dismissKnownPopups(page);
+  if (dismissed) {
+    await centerPublishPageHorizontally(page);
+    await scrollPublishPageToBottom(page);
+  }
+
+  console.info(`[douyin:interference] kind=${context.kind} attempt=${context.attempt} dismissed=${dismissed} error=${summarizeInteractionError(context.error)}`);
+  return dismissed;
+}
+
+async function focusLocatorForTyping(page: Page, locator: Locator, label: string): Promise<boolean> {
+  for (let attempt = 1; attempt <= DOUYIN_INTERACTION_RETRY_ATTEMPTS; attempt += 1) {
+    await locator.scrollIntoViewIfNeeded().catch(() => undefined);
+    const clicked = await clickWithDomFallback(locator, {
+      timeoutMs: 5_000,
+      force: true,
+      attempts: 2,
+      onInterference: (context) => recoverFromInteractionInterference(page, context),
+    });
+    const focused = await locator.evaluate((node) => {
+      const active = document.activeElement;
+      return active === node || (node instanceof HTMLElement && active instanceof Node && node.contains(active));
+    }).catch(() => false);
+    console.info(`[douyin:focus] label=${label} attempt=${attempt} clicked=${clicked} focused=${focused}`);
+    if (clicked && focused) {
+      return true;
+    }
+
+    await recoverFromInteractionInterference(page, {
+      kind: "click",
+      attempt,
+      error: new Error(`${label} focus not acquired`),
+    });
+  }
+
+  return false;
+}
+
 async function fillTitleAndDescription(page: Page, title: string, description: string, tags: string[]): Promise<void> {
   const titleLocator = await firstVisibleLocator(page, DOUYIN_TITLE_SELECTORS, 3_000);
   if (titleLocator) {
     await titleLocator.scrollIntoViewIfNeeded().catch(() => undefined);
-    await titleLocator.click({ force: true, timeout: 5_000 }).catch(() => undefined);
+    const titleFocused = await focusLocatorForTyping(page, titleLocator, "title").catch(() => false);
     const tagName = await titleLocator.evaluate((node) => node.tagName).catch(() => "");
     if (["INPUT", "TEXTAREA"].includes(String(tagName).toUpperCase())) {
-      await titleLocator.fill("").catch(() => undefined);
-      await titleLocator.fill(title, { timeout: 5_000 }).catch(async () => {
+      await fillWithRecovery(titleLocator, "", {
+        timeoutMs: 5_000,
+        attempts: DOUYIN_INTERACTION_RETRY_ATTEMPTS,
+        onInterference: (context) => recoverFromInteractionInterference(page, context),
+      }).catch(() => false);
+      const filled = await fillWithRecovery(titleLocator, title, {
+        timeoutMs: 5_000,
+        attempts: DOUYIN_INTERACTION_RETRY_ATTEMPTS,
+        onInterference: (context) => recoverFromInteractionInterference(page, context),
+      });
+      if (!filled) {
         await titleLocator.press(process.platform === "darwin" ? "Meta+A" : "Control+A").catch(() => undefined);
         await page.keyboard.press("Backspace").catch(() => undefined);
         await page.keyboard.type(title);
-      });
-    } else {
+      }
+    } else if (titleFocused) {
       await titleLocator.press(process.platform === "darwin" ? "Meta+A" : "Control+A").catch(() => undefined);
       await page.keyboard.press("Backspace").catch(() => undefined);
       await page.keyboard.type(title);
+    } else {
+      console.info("[douyin:publish] title locator found but focus not acquired, skip title keyboard fallback");
     }
     const titleValue = await titleLocator.evaluate((node) => {
       if (node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement) {
@@ -439,7 +498,10 @@ async function fillTitleAndDescription(page: Page, title: string, description: s
   }
 
   await descriptionLocator.scrollIntoViewIfNeeded().catch(() => undefined);
-  await descriptionLocator.click({ force: true, timeout: 5_000 }).catch(() => undefined);
+  const descriptionFocused = await focusLocatorForTyping(page, descriptionLocator, "description");
+  if (!descriptionFocused) {
+    throw new Error("未能聚焦抖音作品描述输入区");
+  }
   await page.keyboard.type(description);
 
   for (const tag of tags) {
@@ -499,7 +561,12 @@ async function setScheduleTime(page: Page, scheduledAt: string): Promise<void> {
   }
 
   await input.scrollIntoViewIfNeeded().catch(() => undefined);
-  await input.click({ force: true, timeout: 3_000 });
+  await clickWithDomFallback(input, {
+    timeoutMs: 3_000,
+    force: true,
+    attempts: DOUYIN_INTERACTION_RETRY_ATTEMPTS,
+    onInterference: (context) => recoverFromInteractionInterference(page, context),
+  });
   await input.press(process.platform === "darwin" ? "Meta+A" : "Control+A").catch(() => undefined);
   await page.keyboard.type(parsed.normalized);
   await page.keyboard.press("Enter");
@@ -518,11 +585,21 @@ async function ensureThirdPartyToggle(page: Page): Promise<void> {
 
   const nativeInput = toggle.locator("input.semi-switch-native-control").first();
   if ((await nativeInput.count().catch(() => 0)) > 0) {
-    await nativeInput.click({ force: true, timeout: 3_000 }).catch(() => undefined);
+    await clickWithDomFallback(nativeInput, {
+      timeoutMs: 3_000,
+      force: true,
+      attempts: DOUYIN_INTERACTION_RETRY_ATTEMPTS,
+      onInterference: (context) => recoverFromInteractionInterference(page, context),
+    }).catch(() => false);
     return;
   }
 
-  await clickWithDomFallback(toggle, { timeoutMs: 3_000, force: true });
+  await clickWithDomFallback(toggle, {
+    timeoutMs: 3_000,
+    force: true,
+    attempts: DOUYIN_INTERACTION_RETRY_ATTEMPTS,
+    onInterference: (context) => recoverFromInteractionInterference(page, context),
+  });
 }
 
 // 收集候选按钮快照，便于稳定选择真正的发布动作按钮。
@@ -713,9 +790,10 @@ async function findPublishButton(page: Page): Promise<Locator | null> {
   return null;
 }
 
-async function dismissKnownPopups(page: Page): Promise<void> {
+async function dismissKnownPopups(page: Page): Promise<boolean> {
   const dismissed = await clickFirstVisible(page, DOUYIN_KNOWN_POPUP_DISMISS_SELECTORS, { force: true, timeoutMs: 2_000 }).catch(() => false);
   console.info(`[douyin:popup] dismissed-known-popup=${dismissed}`);
+  return dismissed;
 }
 
 async function centerPublishPageHorizontally(page: Page): Promise<void> {
@@ -727,13 +805,26 @@ async function centerPublishPageHorizontally(page: Page): Promise<void> {
   console.info("[douyin:publish] reset page horizontal scroll to keep publish panel visible");
 }
 
-async function clickFirstVisible(page: Page, selectors: readonly string[], options?: { force?: boolean; timeoutMs?: number }): Promise<boolean> {
+async function clickFirstVisible(
+  page: Page,
+  selectors: readonly string[],
+  options?: {
+    force?: boolean;
+    timeoutMs?: number;
+    onInterference?: (context: InteractionRecoveryContext) => Promise<boolean> | boolean;
+  },
+): Promise<boolean> {
   const locator = await firstVisibleLocator(page, selectors, options?.timeoutMs ?? 3_000);
   if (!locator) {
     return false;
   }
   await locator.scrollIntoViewIfNeeded().catch(() => undefined);
-  return clickWithDomFallback(locator, { timeoutMs: options?.timeoutMs ?? 3_000, force: options?.force ?? true });
+  return clickWithDomFallback(locator, {
+    timeoutMs: options?.timeoutMs ?? 3_000,
+    force: options?.force ?? true,
+    attempts: options?.onInterference ? DOUYIN_INTERACTION_RETRY_ATTEMPTS : 1,
+    onInterference: options?.onInterference,
+  });
 }
 
 async function setCover(page: Page, coverPath?: string): Promise<void> {
@@ -896,7 +987,12 @@ async function clickPublishButton(page: Page, button: Locator): Promise<void> {
   const html = await button.evaluate((node) => (node instanceof HTMLElement ? node.outerHTML : "")).catch(() => "");
   console.info(`[douyin:publish] clicking publish button text=${buttonText} box=${JSON.stringify(box)} html=${html.slice(0, 300)}`);
 
-  const clicked = await clickWithDomFallback(button, { timeoutMs: 5_000, force: true });
+  const clicked = await clickWithDomFallback(button, {
+    timeoutMs: 5_000,
+    force: true,
+    attempts: DOUYIN_INTERACTION_RETRY_ATTEMPTS,
+    onInterference: (context) => recoverFromInteractionInterference(page, context),
+  });
   if (clicked) {
     const reaction = await waitForPublishReaction(page, 3_000);
     console.info(`[douyin:publish] publish button click dispatched reaction=${reaction ?? "<none>"}`);
@@ -904,6 +1000,12 @@ async function clickPublishButton(page: Page, button: Locator): Promise<void> {
       return;
     }
   }
+
+  await recoverFromInteractionInterference(page, {
+    kind: "click",
+    attempt: DOUYIN_INTERACTION_RETRY_ATTEMPTS + 1,
+    error: new Error("publish button click had no observable reaction"),
+  });
 
   const mouseClicked = await clickPublishButtonWithMouse(page, button).catch(() => false);
   if (mouseClicked) {
@@ -949,7 +1051,12 @@ async function triggerPublishSmsVerification(page: Page): Promise<boolean> {
   if (!button) {
     return false;
   }
-  return clickWithDomFallback(button, { timeoutMs: 2_000, force: true });
+  return clickWithDomFallback(button, {
+    timeoutMs: 2_000,
+    force: true,
+    attempts: DOUYIN_INTERACTION_RETRY_ATTEMPTS,
+    onInterference: (context) => recoverFromInteractionInterference(page, context),
+  });
 }
 
 async function fillPublishSmsCodeFromEnv(page: Page): Promise<boolean> {
@@ -963,10 +1070,15 @@ async function fillPublishSmsCodeFromEnv(page: Page): Promise<boolean> {
     return false;
   }
 
-  await input.click({ force: true, timeout: 3_000 }).catch(() => undefined);
-  await input.fill(publishSmsCode, { timeout: 3_000 }).catch(async () => {
-    await page.keyboard.type(publishSmsCode);
+  await focusLocatorForTyping(page, input, "sms-env").catch(() => false);
+  const filled = await fillWithRecovery(input, publishSmsCode, {
+    timeoutMs: 3_000,
+    attempts: DOUYIN_INTERACTION_RETRY_ATTEMPTS,
+    onInterference: (context) => recoverFromInteractionInterference(page, context),
   });
+  if (!filled) {
+    await page.keyboard.type(publishSmsCode);
+  }
   return true;
 }
 
@@ -993,10 +1105,15 @@ async function fillPublishSmsCodeManually(page: Page, payload: DouyinUploadPaylo
   });
   const verificationCode = await waitForManualVerificationCode(store, request.requestId, 60_000);
 
-  await input.click({ force: true, timeout: 3_000 }).catch(() => undefined);
-  await input.fill(verificationCode, { timeout: 3_000 }).catch(async () => {
-    await page.keyboard.type(verificationCode);
+  await focusLocatorForTyping(page, input, "sms-manual").catch(() => false);
+  const filled = await fillWithRecovery(input, verificationCode, {
+    timeoutMs: 3_000,
+    attempts: DOUYIN_INTERACTION_RETRY_ATTEMPTS,
+    onInterference: (context) => recoverFromInteractionInterference(page, context),
   });
+  if (!filled) {
+    await page.keyboard.type(verificationCode);
+  }
   return true;
 }
 

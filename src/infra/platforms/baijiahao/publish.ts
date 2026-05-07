@@ -6,13 +6,22 @@ import type { Locator, Page } from "playwright";
 // import type { PlatformUploadPayload, PlatformUploadResult } from "../contracts.ts";
 import { createContextFromAccountFile } from "../shared/browser.ts";
 import { clickWithDomFallback, findFileInput, pickFileWithChooser } from "../shared/browser/page-helpers.ts";
-import { buildSuccessOutcome, MAX_UPLOAD_ATTEMPTS, normalizeUploadAttemptError, parseScheduledTimeInput, runUploadAttemptWithTimeout, UPLOAD_ATTEMPT_TIMEOUT_MS, waitForCondition, withUploadRetry } from "../shared/publish/index.ts";
+import { buildSuccessOutcome, MAX_UPLOAD_ATTEMPTS, normalizeUploadAttemptError, parseScheduledTimeInput, runUploadAttemptWithTimeout, UPLOAD_ATTEMPT_TIMEOUT_MS, withUploadRetry } from "../shared/publish/index.ts";
 import { saveContextStorageState } from "../shared/session/storage-state.ts";
 import { cookieAuth } from "./cookie-auth.ts";
 
 const BAIJIAHAO_UPLOAD_URL = "https://baijiahao.baidu.com/builder/rc/edit?type=videoV2";
 const BAIJIAHAO_UPLOAD_WAIT_TIMEOUT_MS = 60_000;
+const BAIJIAHAO_SECURITY_VERIFICATION_WAIT_TIMEOUT_MS = 10 * 60_000;
+const BAIJIAHAO_POST_PUBLISH_POLL_INTERVAL_MS = 1_000;
 const BAIJIAHAO_SUCCESS_HINTS = ["发布成功", "提交成功", "发表成功", "审核中", "查看作品"];
+const BAIJIAHAO_SECURITY_VERIFICATION_HINTS = [
+  "百度安全验证",
+  "请完成下方验证后继续操作",
+  "拖动左侧滑块使图片为正",
+  "拖动滑块使图片为正",
+  "扫码验证",
+];
 const BAIJIAHAO_EDITOR_READY_SELECTORS = [
   "div#formMain:visible",
   "#formMain textarea:visible",
@@ -96,6 +105,15 @@ export function pickBaijiahaoImmediatePublishButtonCandidate<T extends { text: s
   }
 
   return picked;
+}
+
+export function isBaijiahaoSecurityVerificationText(value: string | null | undefined): boolean {
+  const normalized = String(value || "").replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return false;
+  }
+
+  return BAIJIAHAO_SECURITY_VERIFICATION_HINTS.some((hint) => normalized.includes(hint));
 }
 
 // 规范化上传参数并校验关键字段。
@@ -200,6 +218,60 @@ async function clickPublishButtonWithRetry(page: Page): Promise<void> {
   }
 
   throw new Error("百家号发布点击后未检测到 URL 跳转");
+}
+
+async function isBaijiahaoSecurityVerificationVisible(page: Page): Promise<boolean> {
+  const currentUrl = page.url();
+  if (/verify|captcha|wappass\.baidu\.com/i.test(currentUrl)) {
+    return true;
+  }
+
+  const title = await page.title().catch(() => "");
+  if (isBaijiahaoSecurityVerificationText(title)) {
+    return true;
+  }
+
+  const bodyText = await page.locator("body").innerText().catch(() => "");
+  return isBaijiahaoSecurityVerificationText(bodyText);
+}
+
+async function waitForBaijiahaoPublishSuccess(page: Page): Promise<void> {
+  const startedAt = Date.now();
+  let securityVerificationDetectedAt: number | null = null;
+
+  while (true) {
+    if (page.isClosed()) {
+      throw new Error("百家号上传页面已关闭");
+    }
+
+    const currentUrl = page.url();
+    if (!currentUrl.includes("edit?type=videoV2")) {
+      return;
+    }
+
+    for (const hint of BAIJIAHAO_SUCCESS_HINTS) {
+      if ((await page.getByText(hint, { exact: false }).count()) > 0) {
+        return;
+      }
+    }
+
+    const securityVerificationVisible = await isBaijiahaoSecurityVerificationVisible(page);
+    if (securityVerificationVisible) {
+      if (securityVerificationDetectedAt === null) {
+        securityVerificationDetectedAt = Date.now();
+        console.warn(`[baijiahao:upload] 检测到百度安全验证，保持可见浏览器等待人工完成 url=${currentUrl}`);
+        await page.bringToFront().catch(() => undefined);
+      }
+
+      if (Date.now() - securityVerificationDetectedAt >= BAIJIAHAO_SECURITY_VERIFICATION_WAIT_TIMEOUT_MS) {
+        throw new Error("百家号百度安全验证等待超时，请在浏览器窗口中完成验证后重试");
+      }
+    } else if (Date.now() - startedAt >= BAIJIAHAO_UPLOAD_WAIT_TIMEOUT_MS) {
+      throw new Error("等待百家号发布成功超时");
+    }
+
+    await page.waitForTimeout(BAIJIAHAO_POST_PUBLISH_POLL_INTERVAL_MS);
+  }
 }
 
 // 轻量填写首个可见输入框。
@@ -906,7 +978,7 @@ async function setThumbnail(page: Page, coverPath: string): Promise<void> {
 
 // 执行百家号实际上传发布步骤。
 async function uploadOnce(payload: BaijiahaoUploadPayload, attempt: number, maxAttempts: number): Promise<PlatformUploadResult> {
-  const context = await createContextFromAccountFile(payload.accountFile);
+  const context = await createContextFromAccountFile(payload.accountFile, "publish:baijiahao");
   const browser = context.browser();
   const page = await context.newPage();
   page.setDefaultTimeout(payload.timeoutMs ?? BAIJIAHAO_UPLOAD_WAIT_TIMEOUT_MS);
@@ -941,24 +1013,7 @@ async function uploadOnce(payload: BaijiahaoUploadPayload, attempt: number, maxA
       await clickPublishButtonWithRetry(page);
     }
 
-    await waitForCondition("百家号", "publish-success", BAIJIAHAO_UPLOAD_WAIT_TIMEOUT_MS, async () => {
-      if (page.isClosed()) {
-        throw new Error("百家号上传页面已关闭");
-      }
-
-      const currentUrl = page.url();
-      if (!currentUrl.includes("edit?type=videoV2")) {
-        return true;
-      }
-
-      for (const hint of BAIJIAHAO_SUCCESS_HINTS) {
-        if ((await page.getByText(hint, { exact: false }).count()) > 0) {
-          return true;
-        }
-      }
-
-      return false;
-    }, 1_000);
+    await waitForBaijiahaoPublishSuccess(page);
 
     await saveContextStorageState(context, payload.accountFile);
     return buildSuccessOutcome({ detail: "百家号上传成功" });

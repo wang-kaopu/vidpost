@@ -147,6 +147,10 @@ export const DOUYIN_KNOWN_POPUP_DISMISS_SELECTORS = [
   "text=我知道了",
   "button:has-text('知道了')",
   "text=知道了",
+  "div[role='dialog'] button[aria-label='关闭']",
+  "div[role='dialog'] [aria-label='关闭']",
+  "div[role='dialog'] .semi-modal-close",
+  "div[role='dialog'] .semi-modal-close-x",
 ] as const;
 
 export const DOUYIN_RETRY_UPLOAD_INPUT_SELECTORS = [

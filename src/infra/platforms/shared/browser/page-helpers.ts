@@ -4,6 +4,18 @@ import { PlatformTimeoutError } from "../errors.ts";
 
 export const DEFAULT_POLL_INTERVAL_MS = 200;
 export type FileInputKind = "any" | "image" | "video";
+export type InteractionRecoveryKind = "click" | "fill";
+export type InteractionRecoveryContext = {
+  kind: InteractionRecoveryKind;
+  attempt: number;
+  error: unknown;
+};
+export type InteractionRecoveryHandler = (context: InteractionRecoveryContext) => Promise<boolean> | boolean;
+export type InteractionRecoveryOptions = {
+  attempts?: number;
+  intervalMs?: number;
+  onInterference?: InteractionRecoveryHandler;
+};
 
 export const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -117,20 +129,46 @@ export async function firstVisibleLocatorAcrossScopes(page: Page, selectors: rea
   return null;
 }
 
-export async function clickWithDomFallback(target: Locator, options?: { timeoutMs?: number; force?: boolean }): Promise<boolean> {
+export async function clickWithDomFallback(
+  target: Locator,
+  options?: InteractionRecoveryOptions & { timeoutMs?: number; force?: boolean },
+): Promise<boolean> {
   const timeoutMs = options?.timeoutMs ?? 5_000;
   const force = options?.force ?? true;
+  const attempts = Math.max(1, options?.attempts ?? 1);
+  const intervalMs = options?.intervalMs ?? 300;
+  const onInterference = options?.onInterference;
+  let lastError: unknown;
 
-  try {
-    await target.click({ timeout: timeoutMs, force });
-    return true;
-  } catch {
-    const handle = await target.elementHandle().catch(() => null);
-    if (!handle) {
-      return false;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      await target.click({ timeout: timeoutMs, force });
+      return true;
+    } catch (error) {
+      lastError = error;
+      if (!onInterference || attempt >= attempts) {
+        continue;
+      }
+
+      const recovered = await onInterference({ kind: "click", attempt, error });
+      if (recovered) {
+        await sleep(intervalMs);
+      }
     }
-    return domClickHandle(handle);
   }
+
+  if (onInterference) {
+    const recovered = await onInterference({ kind: "click", attempt: attempts + 1, error: lastError });
+    if (recovered) {
+      await sleep(intervalMs);
+    }
+  }
+
+  const handle = await target.elementHandle().catch(() => null);
+  if (!handle) {
+    return false;
+  }
+  return domClickHandle(handle);
 }
 
 export async function domClickHandle(handle: ElementHandle): Promise<boolean> {
@@ -144,6 +182,44 @@ export async function domClickHandle(handle: ElementHandle): Promise<boolean> {
       }
     })
     .catch(() => false);
+}
+
+export async function fillWithRecovery(
+  target: Locator,
+  value: string,
+  options?: InteractionRecoveryOptions & { timeoutMs?: number },
+): Promise<boolean> {
+  const timeoutMs = options?.timeoutMs ?? 5_000;
+  const attempts = Math.max(1, options?.attempts ?? 1);
+  const intervalMs = options?.intervalMs ?? 300;
+  const onInterference = options?.onInterference;
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      await target.fill(value, { timeout: timeoutMs });
+      return true;
+    } catch (error) {
+      lastError = error;
+      if (!onInterference || attempt >= attempts) {
+        continue;
+      }
+
+      const recovered = await onInterference({ kind: "fill", attempt, error });
+      if (recovered) {
+        await sleep(intervalMs);
+      }
+    }
+  }
+
+  if (onInterference) {
+    const recovered = await onInterference({ kind: "fill", attempt: attempts + 1, error: lastError });
+    if (recovered) {
+      await sleep(intervalMs);
+    }
+  }
+
+  return false;
 }
 
 export function acceptMatchesKind(accept: string | null | undefined, kind: FileInputKind = "any"): boolean {
