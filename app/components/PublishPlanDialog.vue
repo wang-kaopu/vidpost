@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { useDialogLayer } from "../composables/useDialogLayer";
 
 type PublishPlanRow = {
   id: string;
@@ -107,28 +108,32 @@ watch(globalTimedPublish, (enabled) => {
     globalScheduleTime.value = "";
   }
 });
+
+useDialogLayer(() => props.visible);
 </script>
 
 <template>
-  <div v-if="visible" class="platform-dialog-mask" @click.self="emit('close')">
-    <section class="platform-dialog platform-dialog--table publish-plan-dialog">
-      <header class="platform-dialog-header">
-        <div>
-          <h2>发布计划</h2>
-          <p>{{ description || `已生成 ${totalPlanCount} 条待发布计划` }}</p>
-        </div>
-        <button class="platform-dialog-close" type="button" aria-label="关闭" @click="emit('close')">
-          ×
-        </button>
-      </header>
+  <teleport to="body">
+    <transition name="dialog-layer" appear>
+      <div v-if="visible" class="platform-dialog-mask" @click.self="emit('close')">
+        <section class="platform-dialog platform-dialog--table publish-plan-dialog dialog-surface">
+          <header class="platform-dialog-header">
+            <div>
+              <h2>发布计划</h2>
+              <p>{{ description || `已生成 ${totalPlanCount} 条待发布计划` }}</p>
+            </div>
+            <button class="platform-dialog-close" type="button" aria-label="关闭" @click="emit('close')">
+              ×
+            </button>
+          </header>
 
-      <div v-if="!groups.length" class="platform-dialog-state">
-        暂无可生成的发布计划
-      </div>
-      <div v-else class="publish-plan-shell">
-        <p v-if="errorMessage" class="platform-dialog-state platform-dialog-state-error">
-          {{ errorMessage }}
-        </p>
+          <div v-if="!groups.length" class="platform-dialog-state">
+            暂无可生成的发布计划
+          </div>
+          <div v-else class="publish-plan-shell">
+            <p v-if="errorMessage" class="platform-dialog-state platform-dialog-state-error">
+              {{ errorMessage }}
+            </p>
 
         <section class="publish-plan-global-card">
           <div class="publish-plan-global-head">
@@ -283,17 +288,19 @@ watch(globalTimedPublish, (enabled) => {
           </table>
         </section>
 
-        <footer class="platform-dialog-footer platform-dialog-footer--table publish-plan-footer">
-          <p class="platform-dialog-footer-copy">
-            共 <strong>{{ totalPlanCount }}</strong> 条发布计划
-          </p>
-          <div class="publish-plan-footer-actions">
-            <button class="platform-confirm-button" :class="{ active: canConfirm && !submitting }" type="button" :disabled="!canConfirm || submitting" @click="emit('confirm')">
-              {{ submitting ? "发布中..." : "确定发布" }}
-            </button>
+            <footer class="platform-dialog-footer platform-dialog-footer--table publish-plan-footer">
+              <p class="platform-dialog-footer-copy">
+                共 <strong>{{ totalPlanCount }}</strong> 条发布计划
+              </p>
+              <div class="publish-plan-footer-actions">
+                <button class="platform-confirm-button" :class="{ active: canConfirm && !submitting }" type="button" :disabled="!canConfirm || submitting" @click="emit('confirm')">
+                  {{ submitting ? "发布中..." : "确定发布" }}
+                </button>
+              </div>
+            </footer>
           </div>
-        </footer>
+        </section>
       </div>
-    </section>
-  </div>
+    </transition>
+  </teleport>
 </template>

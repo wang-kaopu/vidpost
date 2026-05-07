@@ -4,6 +4,7 @@ import LoginView from "./components/LoginView.vue";
 import SidebarNav from "./components/SidebarNav.vue";
 import AccountTable from "./components/AccountTable.vue";
 import RecordsTable from "./components/RecordsTable.vue";
+import AppContentTransition from "./components/AppContentTransition.vue";
 // import WorksPlaceholder from "./components/WorksPlaceholder.vue";
 import { fetchUserProfile, loginByPhone, logout as apiLogout, refreshToken } from "./api/auth";
 import { clearSessionTokens, getAccessToken, getRefreshToken, setAccessToken, setRefreshToken } from "./config";
@@ -193,7 +194,7 @@ onBeforeUnmount(() => {
             <h1>作品</h1>
           </div>
         </header>
-        <component :is="currentView" />
+        <AppContentTransition :view="currentView" :view-key="activeMenu" />
       </section>
       <NotificationCenter
         :items="notificationCenter.items.value"

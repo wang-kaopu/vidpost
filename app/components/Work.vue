@@ -13,6 +13,7 @@ import PlatformPickerDialog from "./PlatformPickerDialog.vue";
 import PublishPlanDialog from "./PublishPlanDialog.vue";
 import type { AccountItem, WorkItem } from "@/types";
 import { useNotificationCenter } from "@/notifications";
+import { useDialogLayer } from "../composables/useDialogLayer";
 
 type SelectedWorkRow = {
   id: string;
@@ -619,6 +620,8 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   cleanupObserver();
 });
+
+useDialogLayer(() => previewVisible.value);
 </script>
 
 <template>
@@ -766,17 +769,21 @@ onBeforeUnmount(() => {
     @apply-all="handlePublishPlanApplyAll" @confirm="handlePublishPlanConfirm" />
 
   <!-- 视频预览 -->
-  <div v-if="previewVisible" class="video-preview-mask" @click.self="closePreview">
-    <div class="video-preview-dialog">
-      <div class="video-preview-header">
-        <h3>{{ previewTitle || '视频预览' }}</h3>
-        <button class="video-preview-close" type="button" @click="closePreview">×</button>
+  <teleport to="body">
+    <transition name="dialog-layer" appear>
+      <div v-if="previewVisible" class="video-preview-mask" @click.self="closePreview">
+        <div class="video-preview-dialog dialog-surface">
+          <div class="video-preview-header">
+            <h3>{{ previewTitle || '视频预览' }}</h3>
+            <button class="video-preview-close" type="button" @click="closePreview">×</button>
+          </div>
+          <div class="video-preview-body">
+            <div v-if="previewLoading" class="video-preview-loading">加载中...</div>
+            <video v-else-if="previewVideoUrl" :src="previewVideoUrl" controls autoplay
+              style="width: 100%; max-height: 70vh; display: block;"></video>
+          </div>
+        </div>
       </div>
-      <div class="video-preview-body">
-        <div v-if="previewLoading" class="video-preview-loading">加载中...</div>
-        <video v-else-if="previewVideoUrl" :src="previewVideoUrl" controls autoplay
-          style="width: 100%; max-height: 70vh; display: block;"></video>
-      </div>
-    </div>
-  </div>
+    </transition>
+  </teleport>
 </template>

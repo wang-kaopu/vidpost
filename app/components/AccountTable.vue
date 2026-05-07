@@ -13,6 +13,7 @@ import {
 } from "@/api/publish";
 import { removeAccount, updateAccount } from "@/api/accounts";
 import type { PublishAccountItem, PlatformOption, BackendPlatform } from "@/api/publish";
+import { useDialogLayer } from "../composables/useDialogLayer";
 
 // declare global {
 //   interface Window {
@@ -191,6 +192,7 @@ const renameDialogTarget = ref<PublishAccountItem | null>(null);
 const renameDialogDraft = ref("");
 const renameDialogLoading = ref(false);
 const renameDialogError = ref("");
+const accountDialogVisible = computed(() => tagDialogVisible.value || renameDialogVisible.value);
 
 const openRenameDialog = (item: PublishAccountItem) => {
   renameDialogTarget.value = item;
@@ -389,6 +391,8 @@ onMounted(() => {
   void loadTags();
   void loadAccounts();
 });
+
+useDialogLayer(() => accountDialogVisible.value);
 </script>
 
 <template>
@@ -609,75 +613,79 @@ onMounted(() => {
     />
 
     <teleport to="body">
-      <div v-if="tagDialogVisible" class="platform-dialog-mask" @click.self="closeTagDialog">
-        <div class="tag-dialog">
-          <div class="tag-dialog-header">
-            <h3>添加标签</h3>
-            <button type="button" class="platform-dialog-close" @click="closeTagDialog">×</button>
-          </div>
-          <div class="tag-dialog-body">
-            <div class="tag-dialog-field">
-              <input
-                v-model="tagDialogDraft"
-                type="text"
-                placeholder="请输入标签名"
-                maxlength="20"
-                :disabled="tagDialogLoading"
-                @keydown.enter="confirmTagDialog"
-              />
-              <div class="tag-dialog-char-count">{{ tagDialogDraft.length }} / 20</div>
+      <transition name="dialog-layer" appear>
+        <div v-if="tagDialogVisible" class="platform-dialog-mask" @click.self="closeTagDialog">
+          <div class="tag-dialog dialog-surface" @click.stop>
+            <div class="tag-dialog-header">
+              <h3>添加标签</h3>
+              <button type="button" class="platform-dialog-close" @click="closeTagDialog">×</button>
             </div>
-            <div v-if="tagDialogError" class="tag--error">{{ tagDialogError }}</div>
-          </div>
-          <div class="tag-dialog-footer">
-            <button type="button" class="ghost-button" :disabled="tagDialogLoading" @click="closeTagDialog">取消</button>
-            <button
-              type="button"
-              class="blue-button"dialog
-              :disabled="!tagDialogDraft.trim() || tagDialogLoading"
-              @click="confirmTagDialog"
-            >
-              {{ tagDialogLoading ? "提交中..." : "确认" }}
-            </button>
+            <div class="tag-dialog-body">
+              <div class="tag-dialog-field">
+                <input
+                  v-model="tagDialogDraft"
+                  type="text"
+                  placeholder="请输入标签名"
+                  maxlength="20"
+                  :disabled="tagDialogLoading"
+                  @keydown.enter="confirmTagDialog"
+                />
+                <div class="tag-dialog-char-count">{{ tagDialogDraft.length }} / 20</div>
+              </div>
+              <div v-if="tagDialogError" class="tag--error">{{ tagDialogError }}</div>
+            </div>
+            <div class="tag-dialog-footer">
+              <button type="button" class="ghost-button" :disabled="tagDialogLoading" @click="closeTagDialog">取消</button>
+              <button
+                type="button"
+                class="blue-button"
+                :disabled="!tagDialogDraft.trim() || tagDialogLoading"
+                @click="confirmTagDialog"
+              >
+                {{ tagDialogLoading ? "提交中..." : "确认" }}
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      </transition>
     </teleport>
 
     <teleport to="body">
-      <div v-if="renameDialogVisible" class="platform-dialog-mask" @click.self="closeRenameDialog">
-        <div class="tag-dialog">
-          <div class="tag-dialog-header">
-            <h3>重命名</h3>
-            <button type="button" class="platform-dialog-close" @click="closeRenameDialog">×</button>
-          </div>
-          <div class="tag-dialog-body">
-            <div class="tag-dialog-field">
-              <input
-                v-model="renameDialogDraft"
-                type="text"
-                placeholder="请输入新的昵称"
-                maxlength="30"
-                :disabled="renameDialogLoading"
-                @keydown.enter="confirmRenameDialog"
-              />
-              <div class="tag-dialog-char-count">{{ renameDialogDraft.length }} / 30</div>
+      <transition name="dialog-layer" appear>
+        <div v-if="renameDialogVisible" class="platform-dialog-mask" @click.self="closeRenameDialog">
+          <div class="tag-dialog dialog-surface" @click.stop>
+            <div class="tag-dialog-header">
+              <h3>重命名</h3>
+              <button type="button" class="platform-dialog-close" @click="closeRenameDialog">×</button>
             </div>
-            <div v-if="renameDialogError" class="tag-dialog-error">{{ renameDialogError }}</div>
-          </div>
-          <div class="tag-dialog-footer">
-            <button type="button" class="ghost-button" :disabled="renameDialogLoading" @click="closeRenameDialog">取消</button>
-            <button
-              type="button"
-              class="blue-button"
-              :disabled="!renameDialogDraft.trim() || renameDialogLoading"
-              @click="confirmRenameDialog"
-            >
-              {{ renameDialogLoading ? "提交中..." : "确认" }}
-            </button>
+            <div class="tag-dialog-body">
+              <div class="tag-dialog-field">
+                <input
+                  v-model="renameDialogDraft"
+                  type="text"
+                  placeholder="请输入新的昵称"
+                  maxlength="30"
+                  :disabled="renameDialogLoading"
+                  @keydown.enter="confirmRenameDialog"
+                />
+                <div class="tag-dialog-char-count">{{ renameDialogDraft.length }} / 30</div>
+              </div>
+              <div v-if="renameDialogError" class="tag-dialog-error">{{ renameDialogError }}</div>
+            </div>
+            <div class="tag-dialog-footer">
+              <button type="button" class="ghost-button" :disabled="renameDialogLoading" @click="closeRenameDialog">取消</button>
+              <button
+                type="button"
+                class="blue-button"
+                :disabled="!renameDialogDraft.trim() || renameDialogLoading"
+                @click="confirmRenameDialog"
+              >
+                {{ renameDialogLoading ? "提交中..." : "确认" }}
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      </transition>
     </teleport>
   </section>
 </template>
