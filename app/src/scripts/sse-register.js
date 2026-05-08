@@ -1,6 +1,16 @@
 const DEFAULT_SSE_URL = 'http://127.0.0.1:3001/notify'
 
-export function registerSse({ url = DEFAULT_SSE_URL, onMessage } = {}) {
+function reportSseError(title, message) {
+    const detail = {
+        title,
+        message,
+        source: '通知服务',
+        tone: 'error',
+    }
+    window.dispatchEvent(new CustomEvent('app-notification', { detail }))
+}
+
+export function registerSse({ url = DEFAULT_SSE_URL, onMessage, onError } = {}) {
     console.log('Registering SSE...');
 
     const eventSource = new EventSource(url); // 是服务器端提供SSE的端点
@@ -11,8 +21,13 @@ export function registerSse({ url = DEFAULT_SSE_URL, onMessage } = {}) {
     // };
 
     eventSource.onmessage = function (event) {
-        const payload = JSON.parse(event.data)
-        onMessage?.(payload, event)
+        try {
+            const payload = JSON.parse(event.data)
+            onMessage?.(payload, event)
+        } catch (error) {
+            reportSseError('通知消息解析失败', '收到的实时通知格式异常，已忽略本条通知')
+            onError?.(error, event)
+        }
     }
 
     eventSource.onerror = function (event) {
@@ -22,6 +37,10 @@ export function registerSse({ url = DEFAULT_SSE_URL, onMessage } = {}) {
         } else {
             // 处理其他错误，例如网络问题
             console.error('EventSource error:', event);
+            reportSseError('通知服务连接异常', '实时通知暂时不可用，请稍后重试')
+            onError?.(event)
         }
     };
+
+    return eventSource
 }

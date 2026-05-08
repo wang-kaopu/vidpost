@@ -13,6 +13,7 @@ import {
 } from "@/api/publish";
 import { removeAccount, updateAccount } from "@/api/accounts";
 import type { PublishAccountItem, PlatformOption, BackendPlatform } from "@/api/publish";
+import { useNotificationCenter } from "@/notifications";
 import { useDialogLayer } from "../composables/useDialogLayer";
 
 // declare global {
@@ -75,6 +76,17 @@ const deletingAccountId = ref("");
 const pingingAccountId = ref("");
 const pingingAll = ref(false);
 const pendingPingAccountIds = ref<string[]>([]);
+const notificationCenter = useNotificationCenter();
+
+const pushAccountError = (title: string, message: string): void => {
+  notificationCenter.push({
+    title,
+    message,
+    source: "账号管理",
+    tone: "error",
+    unread: true,
+  });
+};
 
 const statusLabelMap: Record<string, string> = {
   online: "在线",
@@ -163,8 +175,9 @@ const loadAccounts = async ({ preservePage = false }: { preservePage?: boolean }
     const res = await getPublishAccounts({ limit: 999 });
     allAccounts.value = (res.list || []).map(normalizePublishAccount);
     page.value = preservePage ? Math.min(currentPage, totalPages.value) : 1;
-  } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : "账号列表加载失败";
+  } catch {
+    errorMessage.value = "";
+    pushAccountError("账号列表加载失败", "账号列表暂时无法加载，请稍后重试");
   } finally {
     loading.value = false;
   }
@@ -278,8 +291,9 @@ const handleDeleteTag = async (item: PublishAccountItem, tag: string) => {
   try {
     await deleteAccountTag(item.id, tag);
     item.tags = item.tags.filter((t: string) => t !== tag);
-  } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : "删除标签失败";
+  } catch {
+    errorMessage.value = "";
+    pushAccountError("删除标签失败", "标签没有删除成功，请稍后重试");
   }
 };
 
@@ -289,8 +303,9 @@ const pingAccount = async (item: Pick<PublishAccountItem, "id" | "platformKey">)
   try {
     await window.electronAPI?.ping({ id: item.id, platform: item.platformKey });
     await loadAccounts({ preservePage: true });
-  } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : "账号检测失败";
+  } catch {
+    errorMessage.value = "";
+    pushAccountError("账号检测失败", "账号状态检测没有完成，请稍后重试");
   } finally {
     pingingAccountId.value = "";
   }
@@ -333,8 +348,9 @@ const handleDeleteAccount = async (item: PublishAccountItem) => {
   try {
     await removeAccount(item.id);
     allAccounts.value = allAccounts.value.filter((a: PublishAccountItem) => a.id !== item.id);
-  } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : "账号删除失败";
+  } catch {
+    errorMessage.value = "";
+    pushAccountError("账号删除失败", "账号没有删除成功，请稍后重试");
   } finally {
     deletingAccountId.value = "";
   }
@@ -355,8 +371,10 @@ const openPlatformDialog = async () => {
         const key = p.name.trim().toLowerCase();
         return { id: String(p.name), key, label: platformLabelMap[key] || key };
       });
-  } catch (error) {
-    platformErrorMessage.value = error instanceof Error ? error.message : "平台列表加载失败";
+  } catch {
+    platformErrorMessage.value = "";
+    platformDialogVisible.value = false;
+    pushAccountError("平台列表加载失败", "新增账号入口暂时无法打开，请稍后重试");
   } finally {
     platformLoading.value = false;
   }
@@ -379,8 +397,10 @@ const createPlatformAccount = async (platform: PlatformOption) => {
     await window.electronAPI.login(platform.key);
     await loadAccounts();
     platformDialogVisible.value = false;
-  } catch (error) {
-    platformErrorMessage.value = error instanceof Error ? error.message : "新增账号失败";
+  } catch {
+    platformErrorMessage.value = "";
+    platformDialogVisible.value = false;
+    pushAccountError("新增账号失败", "账号没有新增成功，请稍后重试");
   } finally {
     creatingPlatformKey.value = "";
   }

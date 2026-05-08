@@ -102,6 +102,16 @@ const publishPlanDrafts = ref<Record<string, PublishPlanDraft>>({});
 const publishPlanSubmitting = ref(false);
 const notificationCenter = useNotificationCenter();
 
+const pushWorksError = (title: string, messageText: string): void => {
+  notificationCenter.push({
+    title,
+    message: messageText,
+    source: "作品",
+    tone: "error",
+    unread: true,
+  });
+};
+
 const selectedCount = computed(() => selectedWorkIds.value.size);
 const selectedWorks = computed<SelectedWorkRow[]>(() =>
   worksList.value
@@ -223,16 +233,10 @@ const openPublishPlatformAccountDialog = async (): Promise<void> => {
         tag: normalized.tags.join(" / ") || "--",
       } as AccountItem;
     });
-  } catch (error) {
-    const messageText = error instanceof Error ? error.message : "发布平台账号列表加载失败";
+  } catch {
     publishPlatformAccountErrorMessage.value = "";
-    notificationCenter.push({
-      title: "发布账号加载失败",
-      message: messageText,
-      source: "发布计划",
-      tone: "error",
-      unread: true,
-    });
+    publishPlatformAccountDialogVisible.value = false;
+    pushWorksError("发布账号加载失败", "发布账号暂时无法加载，请稍后重试");
     publishPlatformAccounts.value = [];
   } finally {
     publishPlatformAccountLoading.value = false;
@@ -424,10 +428,10 @@ const handlePublishPlanConfirm = async (): Promise<void> => {
     }
 
     resetPublishPlanState();
-  } catch (error) {
+  } catch {
     notificationCenter.push({
       title: "发布计划提交失败",
-      message: error instanceof Error ? error.message : "发布失败",
+      message: "发布计划没有提交成功，请检查计划内容后重试",
       source: "发布计划",
       tone: "error",
       unread: true,
@@ -492,7 +496,8 @@ const playVideo = async (item: WorkItem) => {
     return;
   }
   if (item.status === "生成失败") {
-    message.error("视频生成失败，请重试");
+    const messageText = `《${item.title}》视频生成失败，请重试`;
+    pushWorksError("视频生成失败", messageText);
     return;
   }
   previewLoading.value = true;
@@ -502,7 +507,7 @@ const playVideo = async (item: WorkItem) => {
     const payload = await fetchWorkPublishPayload(item.id);
     previewVideoUrl.value = payload.videoPath;
   } catch {
-    message.error("视频地址获取失败");
+    pushWorksError("视频预览失败", "视频暂时无法预览，请稍后重试");
     closePreview();
   } finally {
     previewLoading.value = false;
@@ -535,8 +540,9 @@ async function loadWorksPage(mode: "initial" | "more"): Promise<void> {
     works.value = mode === "initial" ? result.items : [...works.value, ...result.items];
     nextLastId.value = result.lastId;
     reachedEnd.value = result.isEnd;
-  } catch (error) {
-    loadError.value = error instanceof Error ? error.message : "作品列表加载失败";
+  } catch {
+    loadError.value = "";
+    pushWorksError("作品列表加载失败", "作品列表暂时无法加载，请稍后重试");
   } finally {
     loading.value = false;
     loadingMore.value = false;

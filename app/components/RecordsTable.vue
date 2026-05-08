@@ -4,6 +4,7 @@ import AppIcon from "./AppIcon.vue";
 import PlatformLogo from "./PlatformLogo.vue";
 import { getPublishPlatforms, getPublishTasks, deletePublishTask, exportPublishTasks } from "@/api/publish";
 import type { PublishTask, BackendPlatform } from "@/api/publish";
+import { useNotificationCenter } from "@/notifications";
 
 // declare global {
 //   interface Window {
@@ -18,6 +19,17 @@ const exporting = ref(false);
 const errorMessage = ref("");
 const records = ref<PublishTask[]>([]);
 const selectedIds = ref<Set<number>>(new Set());
+const notificationCenter = useNotificationCenter();
+
+const pushRecordsError = (title: string, message: string): void => {
+  notificationCenter.push({
+    title,
+    message,
+    source: "发布记录",
+    tone: "error",
+    unread: true,
+  });
+};
 
 const titleFilter = ref("");
 const platformFilter = ref("");
@@ -153,8 +165,9 @@ const loadRecords = async () => {
     const res = await getPublishTasks({ limit: 999 });
     records.value = res.list || [];
     selectedIds.value.clear();
-  } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : "发布记录加载失败";
+  } catch {
+    errorMessage.value = "";
+    pushRecordsError("发布记录加载失败", "发布记录暂时无法加载，请稍后重试");
     records.value = [];
   } finally {
     loading.value = false;
@@ -199,8 +212,9 @@ const handleDelete = async (item: PublishTask) => {
     await deletePublishTask(item.id);
     records.value = records.value.filter((r: PublishTask) => r.id !== item.id);
     selectedIds.value.delete(item.id);
-  } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : "删除失败";
+  } catch {
+    errorMessage.value = "";
+    pushRecordsError("删除发布任务失败", "发布任务没有删除成功，请稍后重试");
   }
 };
 
@@ -227,17 +241,32 @@ const handleExport = async () => {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : "导出失败";
+  } catch {
+    errorMessage.value = "";
+    pushRecordsError("导出发布记录失败", "发布记录没有导出成功，请稍后重试");
   } finally {
     exporting.value = false;
+  }
+};
+
+const syncTaskStateInBackground = (): void => {
+  const syncTaskState = window.electronAPI?.syncTaskStateBg;
+  if (!syncTaskState) {
+    return;
+  }
+  try {
+    Promise.resolve(syncTaskState()).catch(() => {
+      pushRecordsError("发布状态同步失败", "后台发布状态没有同步成功，请稍后重试");
+    });
+  } catch {
+    pushRecordsError("发布状态同步失败", "后台发布状态没有同步成功，请稍后重试");
   }
 };
 
 onMounted(() => {
   void loadPlatforms();
   void loadRecords();
-  window.electronAPI?.syncTaskStateBg();
+  syncTaskStateInBackground();
 });
 </script>
 

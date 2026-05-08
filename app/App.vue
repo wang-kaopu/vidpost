@@ -13,6 +13,13 @@ import Work from "./components/Work.vue";
 import NotificationCenter from "./components/NotificationCenter.vue";
 import { createNotificationCenter, notificationCenterKey } from "./notifications";
 
+type AppNotificationEventDetail = {
+  title: string;
+  message: string;
+  source?: string;
+  tone?: "info" | "success" | "warning" | "error";
+};
+
 const activeMenu = ref<MenuKey>("accounts");
 const loggedIn = ref(false);
 const user = ref<User | null>(null);
@@ -20,7 +27,19 @@ const loginError = ref("");
 const pendingLaunchMenu = ref<MenuKey | null>(null);
 let tokenRefreshTimer: number | null = null;
 let removeLaunchIntentListener: (() => void) | null = null;
+let removeNotificationEventListener: (() => void) | null = null;
+let tokenRefreshFailureNotified = false;
 const notificationCenter = createNotificationCenter();
+
+const pushSystemError = (title: string, message: string): void => {
+  notificationCenter.push({
+    title,
+    message,
+    source: "系统",
+    tone: "error",
+    unread: true,
+  });
+};
 
 const currentView = computed(() => {
   if (activeMenu.value === "accounts") {
@@ -81,8 +100,9 @@ const login = async (payload: LoginForm) => {
     startVerificationPolling();
     startTokenRefresh();
     consumePendingLaunchMenu();
-  } catch (error) {
-    loginError.value = error instanceof Error ? error.message : "登录失败";
+  } catch {
+    loginError.value = "";
+    pushSystemError("登录失败", "登录没有成功，请检查手机号和验证码后重试");
   }
 };
 
@@ -122,6 +142,20 @@ const handleNotificationAction = (notificationId: string) => {
   notificationCenter.markRead(notificationId);
 };
 
+const handleAppNotificationEvent = (event: Event): void => {
+  const detail = (event as CustomEvent<AppNotificationEventDetail>).detail;
+  if (!detail?.title || !detail.message) {
+    return;
+  }
+  notificationCenter.push({
+    title: detail.title,
+    message: detail.message,
+    source: detail.source || "系统",
+    tone: detail.tone || "error",
+    unread: true,
+  });
+};
+
 provide(notificationCenterKey, notificationCenter);
 
 const refreshAccessToken = async () => {
@@ -132,8 +166,13 @@ const refreshAccessToken = async () => {
   try {
     const result = await refreshToken(refreshTokenValue);
     setAccessToken(result.access_token);
+    tokenRefreshFailureNotified = false;
   } catch {
-    // refresh failed, force re-login on next request
+    if (tokenRefreshFailureNotified) {
+      return;
+    }
+    tokenRefreshFailureNotified = true;
+    pushSystemError("登录状态已失效", "请重新登录后继续操作");
   }
 };
 
@@ -152,6 +191,11 @@ const stopTokenRefresh = () => {
 };
 
 onMounted(async () => {
+  window.addEventListener("app-notification", handleAppNotificationEvent);
+  removeNotificationEventListener = () => {
+    window.removeEventListener("app-notification", handleAppNotificationEvent);
+  };
+
   removeLaunchIntentListener = window.electronAPI?.onLaunchIntent((intent) => {
     applyLaunchIntent(intent);
   }) ?? null;
@@ -170,11 +214,14 @@ onMounted(async () => {
     } catch {
       clearSessionTokens();
       loggedIn.value = false;
+      pushSystemError("自动登录失效", "请重新登录后继续操作");
     }
   }
 });
 
 onBeforeUnmount(() => {
+  removeNotificationEventListener?.();
+  removeNotificationEventListener = null;
   removeLaunchIntentListener?.();
   removeLaunchIntentListener = null;
   stopVerificationPolling();
@@ -196,15 +243,16 @@ onBeforeUnmount(() => {
         </header>
         <AppContentTransition :view="currentView" :view-key="activeMenu" />
       </section>
-      <NotificationCenter
-        :items="notificationCenter.items.value"
-        title="系统通知"
-        empty-text="新的发布结果会显示在这里"
-        :default-collapsed="true"
-        @dismiss="dismissNotification"
-        @clear="clearNotifications"
-        @action="handleNotificationAction($event.id)"
-      />
     </div>
+
+    <NotificationCenter
+      :items="notificationCenter.items.value"
+      title="系统通知"
+      empty-text="新的发布结果会显示在这里"
+      :default-collapsed="true"
+      @dismiss="dismissNotification"
+      @clear="clearNotifications"
+      @action="handleNotificationAction($event.id)"
+    />
   </main>
 </template>
