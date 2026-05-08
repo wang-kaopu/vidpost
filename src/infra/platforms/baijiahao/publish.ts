@@ -14,6 +14,7 @@ const BAIJIAHAO_UPLOAD_URL = "https://baijiahao.baidu.com/builder/rc/edit?type=v
 const BAIJIAHAO_UPLOAD_WAIT_TIMEOUT_MS = 60_000;
 const BAIJIAHAO_SECURITY_VERIFICATION_WAIT_TIMEOUT_MS = 10 * 60_000;
 const BAIJIAHAO_POST_PUBLISH_POLL_INTERVAL_MS = 1_000;
+const BAIJIAHAO_DESCRIPTION_MAX_LENGTH = 50;
 const BAIJIAHAO_SUCCESS_HINTS = ["发布成功", "提交成功", "发表成功", "审核中", "查看作品"];
 const BAIJIAHAO_SECURITY_VERIFICATION_HINTS = [
   "百度安全验证",
@@ -666,15 +667,16 @@ export function formatBaijiahaoScheduleMinuteOption(date: Date): string {
 export function buildBaijiahaoDescriptionValue(title: string, description: string): string {
   const normalizedTitle = String(title || "").trim();
   const normalizedDescription = String(description || "").trim();
+  const truncateDescription = (value: string): string => Array.from(value).slice(0, BAIJIAHAO_DESCRIPTION_MAX_LENGTH).join("");
 
   if (!normalizedTitle) {
-    return normalizedDescription;
+    return truncateDescription(normalizedDescription);
   }
   if (!normalizedDescription || normalizedDescription === normalizedTitle) {
-    return normalizedTitle;
+    return truncateDescription(normalizedTitle);
   }
 
-  return `${normalizedTitle}: ${normalizedDescription}`;
+  return truncateDescription(`${normalizedTitle}: ${normalizedDescription}`);
 }
 
 function normalizeBaijiahaoFieldText(value: string | null | undefined): string {

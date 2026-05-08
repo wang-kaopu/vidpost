@@ -23,6 +23,15 @@ test('buildBaijiahaoDescriptionValue keeps single title when copy is empty or du
   assert.equal(buildBaijiahaoDescriptionValue('olivia', 'olivia'), 'olivia')
 })
 
+test('buildBaijiahaoDescriptionValue truncates final editor text to 50 characters', async () => {
+  const { buildBaijiahaoDescriptionValue } = await loadPublishModule()
+
+  const value = buildBaijiahaoDescriptionValue('标题'.repeat(20), '简介'.repeat(20))
+
+  assert.equal(Array.from(value).length, 50)
+  assert.equal(value, Array.from(`${'标题'.repeat(20)}: ${'简介'.repeat(20)}`).slice(0, 50).join(''))
+})
+
 test('isBaijiahaoFilenameRefill detects filename fallback while ignoring expected title', async () => {
   const { isBaijiahaoFilenameRefill } = await loadPublishModule()
 
