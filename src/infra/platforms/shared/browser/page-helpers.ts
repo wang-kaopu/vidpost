@@ -19,6 +19,29 @@ export type InteractionRecoveryOptions = {
 
 export const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+export function runOnAbort(signal: AbortSignal | undefined, callback: () => Promise<void> | void): () => void {
+  if (!signal) {
+    return () => undefined;
+  }
+
+  let handled = false;
+  const onAbort = () => {
+    if (handled) {
+      return;
+    }
+    handled = true;
+    void Promise.resolve(callback()).catch(() => undefined);
+  };
+
+  if (signal.aborted) {
+    onAbort();
+    return () => undefined;
+  }
+
+  signal.addEventListener("abort", onAbort, { once: true });
+  return () => signal.removeEventListener("abort", onAbort);
+}
+
 function listScopeCandidates(page: Page): Array<Page | Frame> {
   return [page, ...page.frames().filter((frame) => frame !== page.mainFrame())];
 }

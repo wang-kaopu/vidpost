@@ -29,7 +29,10 @@ export function normalizeUploadAttemptError(platformLabel: string, error: unknow
   if (error instanceof PlatformUserAbortedError || error instanceof PlatformManualVerificationError) {
     return error;
   }
-  if (error instanceof Error && (error.name === "TimeoutError" || /上传单轮超时|attempt timeout/i.test(error.message))) {
+  if (error instanceof Error && /上传单轮超时/i.test(error.message)) {
+    return error;
+  }
+  if (error instanceof Error && (error.name === "TimeoutError" || /attempt timeout/i.test(error.message))) {
     return new Error(`${platformLabel} 上传单轮超时（>${UPLOAD_ATTEMPT_TIMEOUT_MS / 1000} 秒）`);
   }
   if (isContextClosedError(error)) {
@@ -40,16 +43,19 @@ export function normalizeUploadAttemptError(platformLabel: string, error: unknow
 
 export async function runUploadAttemptWithTimeout<T>(
   platformLabel: string,
-  runner: () => Promise<T>,
+  runner: (signal: AbortSignal) => Promise<T>,
   timeoutMs = UPLOAD_ATTEMPT_TIMEOUT_MS,
 ): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
+  const abortController = new AbortController();
   try {
     return await Promise.race([
-      runner(),
+      runner(abortController.signal),
       new Promise<T>((_, reject) => {
         timer = setTimeout(() => {
-          reject(new Error(`${platformLabel} 上传单轮超时（>${timeoutMs / 1000} 秒）`));
+          const error = new Error(`${platformLabel} 上传单轮超时（>${timeoutMs / 1000} 秒）`);
+          abortController.abort(error);
+          reject(error);
         }, timeoutMs);
       }),
     ]);

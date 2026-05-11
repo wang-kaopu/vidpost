@@ -5,7 +5,7 @@ import type { Locator, Page } from "playwright";
 
 // import type { PlatformUploadPayload, PlatformUploadResult } from "../contracts.ts";
 import { createContextFromAccountFile } from "../shared/browser.ts";
-import { clickWithDomFallback, findFileInput, pickFileWithChooser } from "../shared/browser/page-helpers.ts";
+import { clickWithDomFallback, findFileInput, pickFileWithChooser, runOnAbort } from "../shared/browser/page-helpers.ts";
 import { buildSuccessOutcome, MAX_UPLOAD_ATTEMPTS, normalizeUploadAttemptError, parseScheduledTimeInput, runUploadAttemptWithTimeout, UPLOAD_ATTEMPT_TIMEOUT_MS, withUploadRetry } from "../shared/publish/index.ts";
 import { saveContextStorageState } from "../shared/session/storage-state.ts";
 import { cookieAuth } from "./cookie-auth.ts";
@@ -979,12 +979,18 @@ async function setThumbnail(page: Page, coverPath: string): Promise<void> {
 }
 
 // 执行百家号实际上传发布步骤。
-async function uploadOnce(payload: BaijiahaoUploadPayload, attempt: number, maxAttempts: number): Promise<PlatformUploadResult> {
+async function uploadOnce(payload: BaijiahaoUploadPayload, attempt: number, maxAttempts: number, signal?: AbortSignal): Promise<PlatformUploadResult> {
   const context = await createContextFromAccountFile(payload.accountFile, "publish:baijiahao");
   const browser = context.browser();
   const page = await context.newPage();
   page.setDefaultTimeout(payload.timeoutMs ?? BAIJIAHAO_UPLOAD_WAIT_TIMEOUT_MS);
   page.setDefaultNavigationTimeout(payload.timeoutMs ?? BAIJIAHAO_UPLOAD_WAIT_TIMEOUT_MS);
+  const detachAbortHandler = runOnAbort(signal, async () => {
+    console.info("[baijiahao:upload] timeout abort received, closing browser session");
+    await page.close().catch(() => undefined);
+    await context.close().catch(() => undefined);
+    await browser?.close().catch(() => undefined);
+  });
 
   try {
     console.info(`[baijiahao:upload] 开始第 ${attempt}/${maxAttempts} 次尝试`);
@@ -1020,6 +1026,8 @@ async function uploadOnce(payload: BaijiahaoUploadPayload, attempt: number, maxA
     await saveContextStorageState(context, payload.accountFile);
     return buildSuccessOutcome({ detail: "百家号上传成功" });
   } finally {
+    detachAbortHandler();
+    await page.close().catch(() => undefined);
     await context.close().catch(() => undefined);
     await browser?.close().catch(() => undefined);
   }
@@ -1034,7 +1042,7 @@ export async function upload(payload: PlatformUploadPayload): Promise<PlatformUp
 
   return withUploadRetry(
     MAX_UPLOAD_ATTEMPTS,
-    (attempt) => runUploadAttemptWithTimeout("百家号", () => uploadOnce(parsed, attempt, MAX_UPLOAD_ATTEMPTS), parsed.timeoutMs ?? UPLOAD_ATTEMPT_TIMEOUT_MS),
+    (attempt) => runUploadAttemptWithTimeout("百家号", (signal) => uploadOnce(parsed, attempt, MAX_UPLOAD_ATTEMPTS, signal), parsed.timeoutMs ?? UPLOAD_ATTEMPT_TIMEOUT_MS),
     {
       normalizeError: (error) => normalizeUploadAttemptError("百家号", error),
     },

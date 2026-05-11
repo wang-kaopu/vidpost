@@ -1,9 +1,9 @@
 {
   "name": "agenthunt",
-  "version": "0.9.1",
+  "version": "1.0.0",
   "description": "agenthunt",
   "productName": "agenthunt",
-  "authors": "Kelvin", 
+  "authors": "kelvinwww", 
   "main": "main.cjs",
   "scripts": {
     "build:renderer": "pnpm --dir app run build",

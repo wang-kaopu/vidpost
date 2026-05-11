@@ -7,7 +7,7 @@ import type { InteractionRecoveryContext } from "../shared/browser/page-helpers.
 import type { PlatformUploadPayload, PlatformUploadResult } from "../contracts.ts";
 import type { PublishVerificationStore } from "../../runtime/publish-verification-store.ts";
 import { createBrowserSession } from "../shared/browser.ts";
-import { clickWithDomFallback, fillWithRecovery, firstVisibleLocator, pickFileWithChooser, waitForCondition } from "../shared/browser/page-helpers.ts";
+import { clickWithDomFallback, fillWithRecovery, firstVisibleLocator, pickFileWithChooser, runOnAbort, waitForCondition } from "../shared/browser/page-helpers.ts";
 import { PlatformCookieInvalidError, PlatformManualVerificationError } from "../shared/errors.ts";
 import {
   buildFailureOutcome,
@@ -1195,7 +1195,7 @@ async function waitForPublishSuccess(page: Page, payload: DouyinUploadPayload): 
   throw new Error("等待抖音发布成功超时");
 }
 
-async function uploadOnce(payload: DouyinUploadPayload, attempt: number): Promise<PlatformUploadResult> {
+async function uploadOnce(payload: DouyinUploadPayload, attempt: number, signal?: AbortSignal): Promise<PlatformUploadResult> {
   const contextOptions = await loadContextStorageState(payload.accountFile);
   const session = await createBrowserSession({
     accountFile: payload.accountFile,
@@ -1204,6 +1204,12 @@ async function uploadOnce(payload: DouyinUploadPayload, attempt: number): Promis
     launchOptions: {
       args: ["--start-maximized"],
     },
+  });
+  const detachAbortHandler = runOnAbort(signal, async () => {
+    console.info("[douyin:upload] timeout abort received, closing browser session");
+    await session.page.close().catch(() => undefined);
+    await session.context.close().catch(() => undefined);
+    await session.browser.close().catch(() => undefined);
   });
 
   try {
@@ -1248,6 +1254,7 @@ async function uploadOnce(payload: DouyinUploadPayload, attempt: number): Promis
 
     return buildSuccessOutcome({ detail: "抖音发布成功" });
   } finally {
+    detachAbortHandler();
     await session.page.close().catch(() => undefined);
     await session.context.close().catch(() => undefined);
     await session.browser.close().catch(() => undefined);
@@ -1267,7 +1274,7 @@ export async function upload(payload: PlatformUploadPayload): Promise<PlatformUp
     return await withUploadRetry(MAX_UPLOAD_ATTEMPTS, async (attempt) =>
       runUploadAttemptWithTimeout(
         DOUYIN_PLATFORM_LABEL,
-        () => uploadOnce(parsed, attempt),
+        (signal) => uploadOnce(parsed, attempt, signal),
         parsed.timeoutMs ?? UPLOAD_ATTEMPT_TIMEOUT_MS,
       ), {
         normalizeError: (error) => normalizeUploadAttemptError(DOUYIN_PLATFORM_LABEL, error),

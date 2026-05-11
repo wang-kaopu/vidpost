@@ -4,7 +4,7 @@ import type { Locator, Page } from "playwright";
 
 import type { PlatformUploadPayload, PlatformUploadResult } from "../contracts.ts";
 import { createBrowserSession } from "../shared/browser.ts";
-import { clickWithDomFallback, findFileInput, firstVisibleLocator, pickFileWithChooser, retryTriggerUntil } from "../shared/browser/page-helpers.ts";
+import { clickWithDomFallback, findFileInput, firstVisibleLocator, pickFileWithChooser, retryTriggerUntil, runOnAbort } from "../shared/browser/page-helpers.ts";
 import { PlatformCookieInvalidError } from "../shared/errors.ts";
 import { buildFailureOutcome, buildSuccessOutcome, MAX_UPLOAD_ATTEMPTS, normalizeUploadAttemptError, runUploadAttemptWithTimeout, UPLOAD_ATTEMPT_TIMEOUT_MS, waitForCondition, withUploadRetry } from "../shared/publish/index.ts";
 import { loadContextStorageState, saveContextStorageState } from "../shared/session/storage-state.ts";
@@ -603,9 +603,15 @@ async function captureInitialPageDiagnostics(page: Page): Promise<void> {
   console.log(`[sohu:diagnostic] html=${htmlPreview}`);
 }
 
-async function uploadOnce(payload: SohuUploadPayload): Promise<PlatformUploadResult> {
+async function uploadOnce(payload: SohuUploadPayload, signal?: AbortSignal): Promise<PlatformUploadResult> {
   const contextOptions = await loadContextStorageState(payload.accountFile);
   const session = await createBrowserSession({ contextOptions, headlessMode: "publish:sohu" });
+  const detachAbortHandler = runOnAbort(signal, async () => {
+    console.log("[sohu:upload] timeout abort received, closing browser session");
+    await session.page.close().catch(() => undefined);
+    await session.context.close().catch(() => undefined);
+    await session.browser.close().catch(() => undefined);
+  });
 
   try {
     await session.page.setViewportSize({ width: 1440, height: 900 });
@@ -635,6 +641,8 @@ async function uploadOnce(payload: SohuUploadPayload): Promise<PlatformUploadRes
 
     return buildSuccessOutcome({ detail: "搜狐发布成功" });
   } finally {
+    detachAbortHandler();
+    await session.page.close().catch(() => undefined);
     await session.context.close().catch(() => undefined);
     await session.browser.close().catch(() => undefined);
   }
@@ -646,7 +654,7 @@ export async function upload(payload: PlatformUploadPayload): Promise<PlatformUp
   try {
     return await withUploadRetry(
       MAX_UPLOAD_ATTEMPTS,
-      async () => runUploadAttemptWithTimeout(SOHU_PLATFORM_LABEL, () => uploadOnce(parsed), UPLOAD_ATTEMPT_TIMEOUT_MS),
+      async () => runUploadAttemptWithTimeout(SOHU_PLATFORM_LABEL, (signal) => uploadOnce(parsed, signal), parsed.timeoutMs ?? UPLOAD_ATTEMPT_TIMEOUT_MS),
       {
         normalizeError: (error) => normalizeUploadAttemptError(SOHU_PLATFORM_LABEL, error),
       },
