@@ -21,8 +21,6 @@ import {
   SOHU_PUBLISH_SUCCESS_TEXTS,
   SOHU_PUBLISH_SUCCESS_URL_MARKERS,
   SOHU_PUBLISH_URL,
-  SOHU_SECONDARY_CATEGORY_DROPDOWN_SELECTORS,
-  SOHU_SECONDARY_CATEGORY_OPTION_SELECTORS,
   SOHU_TAG_SELECTORS,
   SOHU_TITLE_SELECTORS,
   SOHU_UPLOAD_SUCCESS_TEXTS,
@@ -37,6 +35,12 @@ const COVER_TRIGGER_RETRY_INTERVAL_MS = 1_000;
 const COVER_APPLY_TIMEOUT_MS = 15_000;
 const UPLOAD_COMPLETE_TIMEOUT_MS = 30 * 60 * 1_000;
 const PUBLISH_SUCCESS_TIMEOUT_MS = 180_000;
+const SOHU_CHANNEL_DROPDOWN_SELECTOR = "#container-section-1 > div:nth-child(5) > div:nth-child(2)";
+const SOHU_CATEGORY_DROPDOWN_SELECTOR = "#container-section-1 > div:nth-child(5) > div:nth-child(3)";
+const SOHU_PREFERRED_CHANNEL = "财经";
+const SOHU_PREFERRED_CATEGORY = "财经";
+const SOHU_CATEGORY_SELECT_ATTEMPTS = 2;
+const SOHU_OPTION_SCROLL_ATTEMPTS = 12;
 
 type SohuUploadPayload = PlatformUploadPayload & {
   accountFile: string;
@@ -210,69 +214,159 @@ async function setTags(page: Page, tags: string[]): Promise<void> {
   }
 }
 
-async function ensureSecondaryCategory(page: Page): Promise<void> {
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
-    console.log(`[sohu:category] attempt=${attempt} start`);
-    const dropdown = await firstVisibleLocator(page, SOHU_SECONDARY_CATEGORY_DROPDOWN_SELECTORS);
-    if (!dropdown) {
-      console.log(`[sohu:category] attempt=${attempt} dropdown not found`);
-      await page.waitForTimeout(1_000);
+function normalizeVisibleText(value: string): string {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function isSohuDropdownSelected(text: string): boolean {
+  const normalized = normalizeVisibleText(text);
+  return Boolean(normalized && normalized !== "请选择");
+}
+
+async function readSohuDropdownText(dropdown: Locator): Promise<string> {
+  const selectText = await dropdown.locator("span.select-text").first().innerText().catch(() => "");
+  if (isSohuDropdownSelected(selectText)) {
+    return normalizeVisibleText(selectText);
+  }
+
+  return "";
+}
+
+async function clickByMouse(page: Page, locator: Locator, label: string): Promise<boolean> {
+  await locator.scrollIntoViewIfNeeded({ timeout: 2_000 }).catch(() => undefined);
+  const box = await locator.boundingBox({ timeout: 2_000 }).catch(() => null);
+  if (!box) {
+    console.log(`[sohu:category] ${label} no bounding box`);
+    return false;
+  }
+
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.up();
+  return true;
+}
+
+async function waitForSohuDropdownCommit(dropdown: Locator, pickedText: string): Promise<boolean> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < 3_000) {
+    const selectedText = await readSohuDropdownText(dropdown);
+    if (selectedText === pickedText || isSohuDropdownSelected(selectedText)) {
+      console.log(`[sohu:category] selection committed selected=${selectedText}`);
+      return true;
+    }
+    await dropdown.page().waitForTimeout(200);
+  }
+  return false;
+}
+
+async function moveMouseToSohuOptionList(page: Page): Promise<boolean> {
+  const lists = page.locator("div.select-list:visible");
+  const listCount = await lists.count().catch(() => 0);
+  for (let index = 0; index < listCount; index += 1) {
+    const list = lists.nth(index);
+    const visible = await list.isVisible({ timeout: 100 }).catch(() => false);
+    if (!visible) {
       continue;
     }
 
-    const placeholder = dropdown.locator("span.select-text.placeholder").first();
-    const placeholderText = String((await placeholder.innerText().catch(() => "")) || "").trim();
-    console.log(`[sohu:category] attempt=${attempt} placeholder=${placeholderText}`);
-    if (placeholderText && placeholderText !== "请选择") {
-      console.log(`[sohu:category] attempt=${attempt} already selected`);
+    const box = await list.boundingBox().catch(() => null);
+    if (!box) {
+      continue;
+    }
+
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    return true;
+  }
+
+  return false;
+}
+
+async function findVisibleSohuOption(page: Page, preferredText: string): Promise<{ locator: Locator; text: string; exact: boolean } | null> {
+  const optionSelectors = ["div.select-list:visible li", "div.select-list li"];
+  let fallback: { locator: Locator; text: string; exact: boolean } | null = null;
+
+  for (const selector of optionSelectors) {
+    const options = page.locator(selector);
+    const optionCount = await options.count().catch(() => 0);
+    for (let index = 0; index < optionCount; index += 1) {
+      const option = options.nth(index);
+      const visible = await option.isVisible({ timeout: 100 }).catch(() => false);
+      if (!visible) {
+        continue;
+      }
+
+      const text = normalizeVisibleText(await option.innerText().catch(() => ""));
+      if (!text) {
+        continue;
+      }
+      if (text === preferredText) {
+        return { locator: option, text, exact: true };
+      }
+      fallback ||= { locator: option, text, exact: false };
+    }
+  }
+
+  return fallback;
+}
+
+async function selectSohuDropdownByMouse(page: Page, selector: string, preferredText: string, label: string): Promise<void> {
+  for (let attempt = 1; attempt <= SOHU_CATEGORY_SELECT_ATTEMPTS; attempt += 1) {
+    const dropdown = page.locator(selector).first();
+    const visible = await dropdown.isVisible({ timeout: 2_000 }).catch(() => false);
+    if (!visible) {
+      throw new Error(`搜狐${label}下拉框不可见`);
+    }
+
+    const currentText = await readSohuDropdownText(dropdown);
+    console.log(`[sohu:category] ${label} attempt=${attempt} current=${currentText}`);
+    if (isSohuDropdownSelected(currentText)) {
       return;
     }
 
-    const openTarget = dropdown.locator("div.select-main").first();
-    const opened = await clickWithDomFallback(openTarget, { timeoutMs: 3_000, force: true });
-    console.log(`[sohu:category] attempt=${attempt} opened=${opened}`);
+    const opened = await clickByMouse(page, dropdown, `${label} dropdown`);
+    console.log(`[sohu:category] ${label} attempt=${attempt} opened=${opened}`);
     if (!opened) {
-      await page.waitForTimeout(1_000);
+      await page.waitForTimeout(300);
       continue;
     }
 
-    await page.waitForTimeout(500);
-    const options = dropdown.locator(SOHU_SECONDARY_CATEGORY_OPTION_SELECTORS[0]);
-    const optionCount = await options.count().catch(() => 0);
-    console.log(`[sohu:category] attempt=${attempt} optionCount=${optionCount}`);
-    if (!optionCount) {
-      await page.waitForTimeout(1_000);
-      continue;
+    await page.waitForTimeout(300);
+    await moveMouseToSohuOptionList(page);
+
+    for (let scrollAttempt = 0; scrollAttempt < SOHU_OPTION_SCROLL_ATTEMPTS; scrollAttempt += 1) {
+      const option = await findVisibleSohuOption(page, preferredText);
+      if (option?.exact) {
+        const picked = await clickByMouse(page, option.locator, `${label} option ${option.text}`);
+        console.log(`[sohu:category] ${label} picked preferred=${option.text} result=${picked}`);
+        if (picked && await waitForSohuDropdownCommit(dropdown, option.text)) {
+          return;
+        }
+      }
+
+      await moveMouseToSohuOptionList(page);
+      await page.mouse.wheel(0, 420);
+      await page.waitForTimeout(120);
     }
 
-    let picked = false;
-    for (let index = 0; index < optionCount; index += 1) {
-      const option = options.nth(index);
-      const optionText = String((await option.innerText().catch(() => "")) || "").trim();
-      console.log(`[sohu:category] attempt=${attempt} option[${index}]=${optionText}`);
-      if (optionText === "财经") {
-        picked = await clickWithDomFallback(option, { timeoutMs: 3_000, force: true });
-        console.log(`[sohu:category] attempt=${attempt} pick 财经 result=${picked}`);
-        break;
+    const fallback = await findVisibleSohuOption(page, preferredText);
+    if (fallback) {
+      const picked = await clickByMouse(page, fallback.locator, `${label} fallback ${fallback.text}`);
+      console.log(`[sohu:category] ${label} picked fallback=${fallback.text} result=${picked}`);
+      if (picked && await waitForSohuDropdownCommit(dropdown, fallback.text)) {
+        return;
       }
     }
 
-    if (!picked) {
-      const firstOption = options.nth(0);
-      const firstText = String((await firstOption.innerText().catch(() => "")) || "").trim();
-      picked = await clickWithDomFallback(firstOption, { timeoutMs: 3_000, force: true });
-      console.log(`[sohu:category] attempt=${attempt} fallback first option=${firstText} result=${picked}`);
-    }
-
-    await page.waitForTimeout(500);
-    const nextPlaceholderText = String((await placeholder.innerText().catch(() => "")) || "").trim();
-    const dropdownText = String((await dropdown.innerText().catch(() => "")) || "").trim();
-    console.log(`[sohu:category] attempt=${attempt} after select placeholder=${nextPlaceholderText} dropdownText=${dropdownText} at=${Date.now()}`);
-    if (dropdownText.includes("财经") || (nextPlaceholderText && nextPlaceholderText !== "请选择")) {
-      console.log(`[sohu:category] attempt=${attempt} selection committed at=${Date.now()}`);
-      return;
-    }
+    await page.keyboard.press("Escape").catch(() => undefined);
+    await page.waitForTimeout(300);
   }
+
+  throw new Error(`搜狐${label}选择失败：未能通过鼠标滚动选中目标项`);
+}
+
+async function ensureSecondaryCategory(page: Page): Promise<void> {
+  await selectSohuDropdownByMouse(page, SOHU_CHANNEL_DROPDOWN_SELECTOR, SOHU_PREFERRED_CHANNEL, "频道");
+  await selectSohuDropdownByMouse(page, SOHU_CATEGORY_DROPDOWN_SELECTOR, SOHU_PREFERRED_CATEGORY, "分类");
 }
 
 async function findCoverFileInput(page: Page): Promise<Locator | null> {
