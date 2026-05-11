@@ -12,7 +12,7 @@ module.exports = {
     prune: true,
     protocols: [
       {
-        name: 'Agenthunt Deep Link',
+        name: '矩阵特工队 Deep Link',
         schemes: ['agenthunt'],
       },
     ],

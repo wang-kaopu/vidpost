@@ -1,8 +1,8 @@
 {
   "name": "agenthunt",
   "version": "1.0.0",
-  "description": "agenthunt",
-  "productName": "agenthunt",
+  "description": "矩阵特工队",
+  "productName": "矩阵特工队",
   "authors": "kelvinwww", 
   "main": "main.cjs",
   "scripts": {

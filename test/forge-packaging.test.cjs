@@ -59,7 +59,7 @@ test('packaging ignore rules drop non-runtime assets and keep renderer build out
 test('forge packager declares the agenthunt custom protocol', () => {
   assert.deepEqual(forgeConfig.packagerConfig.protocols, [
     {
-      name: 'Agenthunt Deep Link',
+      name: '矩阵特工队 Deep Link',
       schemes: ['agenthunt'],
     },
   ])

@@ -5,7 +5,7 @@ export interface FrontendEnv {
 }
 
 const DEFAULT_API_BASE_URL = "https://testai.reelsagent.com/api";
-const DEFAULT_APP_NAME = "AgentHunt";
+const DEFAULT_APP_NAME = "矩阵特工队";
 
 function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
