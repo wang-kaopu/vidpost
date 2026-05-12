@@ -78,6 +78,28 @@ function handleProtocolUrl(rawUrl) {
 // 单例锁，确保把 URL 交给现有窗口，而不是打开新窗口
 const hasSingletonLock = getSingletonLock(() => mainWindow, extractProtocolUrlFromCommandLine, handleProtocolUrl)
 
+// 检测当前URL是否为agenthunt的开发服务器
+const RENDERER_MARKER = '<meta name="agenthunt-renderer" content="rm-server"'
+
+async function loadRenderer(window, devServerUrl, builtAppPath) {
+  let isDevServer = false
+  try {
+    const response = await fetch(devServerUrl, {
+      signal: AbortSignal.timeout(800),
+    })
+    if (response.ok) {
+      const html = await response.text()
+      isDevServer = html.includes(RENDERER_MARKER)
+    }
+  } catch (error) {
+    isDevServer = false
+  }
+  if (isDevServer) {
+    await window.loadURL(devServerUrl)
+    return
+  }
+  await window.loadFile(builtAppPath)
+}
 
 // 创建主窗口
 const createWindow = () => {
@@ -114,7 +136,10 @@ const createWindow = () => {
   // })
 
   // 加载页面URL
-  mainWindow.loadURL(devServerUrl)
+  loadRenderer(mainWindow, devServerUrl, builtAppPath).catch((error) => {
+    console.error('[renderer] failed to load renderer:', error)
+    mainWindow.loadFile(builtAppPath)
+  })
 
   // 将主窗口传给 API 客户端模块以便通信，如获取token
   setApiClientWindow(mainWindow)
