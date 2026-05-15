@@ -151,7 +151,7 @@ if (hasSingletonLock) {
   // 应用准备就绪后注册 IPC 监听器并创建窗口
   app.whenReady().then(() => {
     // 启动 SSE 服务器
-    startSseServer()
+    // startSseServer()
 
     // 注册 IPC 监听器和处理器
     registerIpcHandler('login', login)

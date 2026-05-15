@@ -1,4 +1,5 @@
 import electron from "electron";
+import { randomUUID } from "node:crypto";
 import syncFs from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -7,6 +8,181 @@ import { fileURLToPath } from "node:url";
 import type { PlatformLoginFlowContext } from "./types";
 
 const { BrowserWindow, shell } = electron;
+
+const LOGIN_BROWSER_FINGERPRINT = {
+  webdriver: false,
+  userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+  platform: "Win32",
+  webglVendor: "Google Inc. (Intel)",
+  webglRenderer: "ANGLE (Intel, Intel(R) UHD Graphics 730 (0x00004682) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+  hardwareConcurrency: 16,
+  deviceMemory: 32,
+  screen: "1920x1080",
+  pixelRatio: 1,
+  timezone: "Asia/Shanghai",
+  language: "zh-CN",
+  languages: "zh-CN, zh",
+  cookieEnabled: true,
+  online: true,
+  plugins: "PDF Viewer | Chrome PDF Viewer | Chromium PDF Viewer | Microsoft Edge PDF Viewer | WebKit built-in PDF",
+  mimeTypes: "application/pdf | text/pdf",
+  fonts: "Douyin Sans Zh | Douyin Sans | DOUYINSANSBOLD-GB | Douyin Sans",
+} as const;
+
+const LOGIN_ACCEPT_LANGUAGE = "zh-CN,zh;q=0.9";
+
+const LOGIN_FINGERPRINT_SCRIPT = `
+(() => {
+  const fingerprint = ${JSON.stringify(LOGIN_BROWSER_FINGERPRINT)};
+  const languages = fingerprint.languages.split(",").map((item) => item.trim()).filter(Boolean);
+  const pluginNames = fingerprint.plugins.split("|").map((item) => item.trim()).filter(Boolean);
+  const mimeTypeNames = fingerprint.mimeTypes.split("|").map((item) => item.trim()).filter(Boolean);
+  const fontNames = fingerprint.fonts.split("|").map((item) => item.trim()).filter(Boolean);
+  const [screenWidth, screenHeight] = fingerprint.screen.split("x").map((item) => Number.parseInt(item, 10));
+
+  const defineGetter = (target, property, value) => {
+    try {
+      Object.defineProperty(target, property, {
+        get: () => value,
+        configurable: true,
+      });
+    } catch {}
+  };
+
+  defineGetter(Navigator.prototype, "webdriver", fingerprint.webdriver);
+  defineGetter(Navigator.prototype, "userAgent", fingerprint.userAgent);
+  defineGetter(Navigator.prototype, "platform", fingerprint.platform);
+  defineGetter(Navigator.prototype, "hardwareConcurrency", fingerprint.hardwareConcurrency);
+  defineGetter(Navigator.prototype, "deviceMemory", fingerprint.deviceMemory);
+  defineGetter(Navigator.prototype, "language", fingerprint.language);
+  defineGetter(Navigator.prototype, "languages", languages);
+  defineGetter(Navigator.prototype, "cookieEnabled", fingerprint.cookieEnabled);
+  defineGetter(Navigator.prototype, "onLine", fingerprint.online);
+  defineGetter(window, "devicePixelRatio", fingerprint.pixelRatio);
+
+  const screenValues = {
+    width: screenWidth,
+    height: screenHeight,
+    availWidth: screenWidth,
+    availHeight: screenHeight,
+    colorDepth: 24,
+    pixelDepth: 24,
+  };
+  for (const [property, value] of Object.entries(screenValues)) {
+    defineGetter(window.screen, property, value);
+    if (typeof Screen !== "undefined") {
+      defineGetter(Screen.prototype, property, value);
+    }
+  }
+
+  const createMimeType = (type, plugin) => {
+    const mimeType = {
+      type,
+      suffixes: type === "application/pdf" ? "pdf" : "",
+      description: type === "application/pdf" ? "Portable Document Format" : type,
+      enabledPlugin: plugin,
+    };
+    Object.defineProperty(mimeType, Symbol.toStringTag, { value: "MimeType" });
+    return mimeType;
+  };
+
+  const createPlugin = (name) => {
+    const plugin = {
+      name,
+      filename: "internal-pdf-viewer",
+      description: "Portable Document Format",
+      length: mimeTypeNames.length,
+      item(index) {
+        return this[index] ?? null;
+      },
+      namedItem(type) {
+        return this[type] ?? null;
+      },
+    };
+    mimeTypeNames.forEach((type, index) => {
+      const mimeType = createMimeType(type, plugin);
+      plugin[index] = mimeType;
+      plugin[type] = mimeType;
+    });
+    Object.defineProperty(plugin, Symbol.toStringTag, { value: "Plugin" });
+    return plugin;
+  };
+
+  const createNamedArray = (items, nameKey, tag) => {
+    const array = [];
+    items.forEach((item, index) => {
+      array[index] = item;
+      array[item[nameKey]] = item;
+    });
+    Object.defineProperty(array, "item", {
+      value(index) {
+        return array[index] ?? null;
+      },
+      configurable: true,
+    });
+    Object.defineProperty(array, "namedItem", {
+      value(name) {
+        return array[name] ?? null;
+      },
+      configurable: true,
+    });
+    Object.defineProperty(array, Symbol.toStringTag, { value: tag });
+    return array;
+  };
+
+  const plugins = createNamedArray(pluginNames.map(createPlugin), "name", "PluginArray");
+  const mimeTypes = createNamedArray(
+    mimeTypeNames.map((type) => createMimeType(type, plugins[0] ?? null)),
+    "type",
+    "MimeTypeArray",
+  );
+  Object.defineProperty(plugins, "refresh", { value() {}, configurable: true });
+  defineGetter(Navigator.prototype, "plugins", plugins);
+  defineGetter(Navigator.prototype, "mimeTypes", mimeTypes);
+
+  const originalResolvedOptions = Intl.DateTimeFormat.prototype.resolvedOptions;
+  Object.defineProperty(Intl.DateTimeFormat.prototype, "resolvedOptions", {
+    value() {
+      return { ...originalResolvedOptions.call(this), timeZone: fingerprint.timezone, locale: fingerprint.language };
+    },
+    configurable: true,
+  });
+
+  const overrideWebgl = (context) => {
+    if (!context?.prototype?.getParameter) {
+      return;
+    }
+    const originalGetParameter = context.prototype.getParameter;
+    Object.defineProperty(context.prototype, "getParameter", {
+      value(parameter) {
+        if (parameter === 37445) {
+          return fingerprint.webglVendor;
+        }
+        if (parameter === 37446) {
+          return fingerprint.webglRenderer;
+        }
+        return originalGetParameter.call(this, parameter);
+      },
+      configurable: true,
+    });
+  };
+  overrideWebgl(window.WebGLRenderingContext);
+  overrideWebgl(window.WebGL2RenderingContext);
+
+  const originalFontCheck = document.fonts?.check?.bind(document.fonts);
+  if (originalFontCheck) {
+    Object.defineProperty(document.fonts, "check", {
+      value(font, text) {
+        if (fontNames.some((fontName) => String(font).includes(fontName))) {
+          return true;
+        }
+        return originalFontCheck(font, text);
+      },
+      configurable: true,
+    });
+  }
+})();
+`;
 
 export type FrontendLoginResult = {
   accountFile: string;
@@ -257,6 +433,7 @@ export const createPlatformLoginWindow = (
   partitionPrefix: string,
   parentWindow?: BrowserWindow | null,
 ) => {
+  const partitionName = `${partitionPrefix}-${randomUUID()}`;
   const loginWindow = new BrowserWindow({
     width: 1200,
     height: 900,
@@ -273,16 +450,55 @@ export const createPlatformLoginWindow = (
     maximizable: false,
     webPreferences: {
       preload: PLATFORM_LOGIN_PRELOAD_PATH,
-      partition: `${partitionPrefix}-${Date.now()}`,
+      partition: partitionName,
     },
   });
 
+  loginWindow.webContents.setUserAgent(LOGIN_BROWSER_FINGERPRINT.userAgent);
   loginWindow.webContents.setWindowOpenHandler(({ url }) => {
     void shell.openExternal(url);
     return { action: "deny" };
   });
 
   return loginWindow;
+};
+
+export const configurePlatformLoginWindow = async (loginWindow: BrowserWindow) => {
+  const loginSession = loginWindow.webContents.session;
+
+  loginWindow.webContents.setUserAgent(LOGIN_BROWSER_FINGERPRINT.userAgent);
+  await loginSession.setProxy({ mode: "direct" });
+  await loginSession.clearStorageData();
+  await loginSession.clearCache();
+
+  loginSession.webRequest.onBeforeSendHeaders((details, callback) => {
+    callback({
+      requestHeaders: {
+        ...details.requestHeaders,
+        "User-Agent": LOGIN_BROWSER_FINGERPRINT.userAgent,
+        "Accept-Language": LOGIN_ACCEPT_LANGUAGE,
+      },
+    });
+  });
+
+  const debuggerApi = loginWindow.webContents.debugger;
+  if (!debuggerApi.isAttached()) {
+    debuggerApi.attach("1.3");
+  }
+
+  await debuggerApi.sendCommand("Page.enable");
+  await debuggerApi.sendCommand("Network.enable");
+  await debuggerApi.sendCommand("Network.setUserAgentOverride", {
+    userAgent: LOGIN_BROWSER_FINGERPRINT.userAgent,
+    acceptLanguage: LOGIN_ACCEPT_LANGUAGE,
+    platform: LOGIN_BROWSER_FINGERPRINT.platform,
+  });
+  await debuggerApi.sendCommand("Emulation.setTimezoneOverride", {
+    timezoneId: LOGIN_BROWSER_FINGERPRINT.timezone,
+  });
+  await debuggerApi.sendCommand("Page.addScriptToEvaluateOnNewDocument", {
+    source: LOGIN_FINGERPRINT_SCRIPT,
+  });
 };
 
 export const wireCloseControls = (
@@ -464,9 +680,11 @@ export async function runPlatformLoginFlow(
       loginWindow.show();
     });
 
-    void loginWindow.loadURL(hooks.loginUrl).catch((error: unknown) => {
-      const detail = error instanceof Error ? error.message : String(error);
-      finish(new Error(`${hooks.title} 登录页加载失败: ${detail}`));
-    });
+    void configurePlatformLoginWindow(loginWindow)
+      .then(() => loginWindow.loadURL(hooks.loginUrl))
+      .catch((error: unknown) => {
+        const detail = error instanceof Error ? error.message : String(error);
+        finish(new Error(`${hooks.title} 登录页加载失败: ${detail}`));
+      });
   });
 }
