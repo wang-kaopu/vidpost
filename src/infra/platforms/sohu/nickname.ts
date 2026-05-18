@@ -139,7 +139,7 @@ async function pickNicknameFromSelectors(page: Page, selectors: string[]): Promi
 
 // 使用账号文件拉起 Playwright 并抓取搜狐昵称。
 export async function syncSohuNickname(accountFile: string, timeoutMs: number): Promise<string | undefined> {
-  const context = await createContextFromAccountFile(accountFile);
+  const context = await createContextFromAccountFile(accountFile, "login-success:sohu");
   const browser = context.browser();
 
   try {

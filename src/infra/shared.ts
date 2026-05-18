@@ -486,7 +486,12 @@ export const configurePlatformLoginWindow = async (loginWindow: BrowserWindow) =
     debuggerApi.attach("1.3");
   }
 
-  await debuggerApi.sendCommand("Page.enable");
+  // Electron's debugger target is not command-ready immediately after BrowserWindow creation.
+  // Prime it with an initial blank document before registering scripts for future navigations.
+  if (!loginWindow.webContents.getURL()) {
+    await loginWindow.loadURL("about:blank");
+  }
+
   await debuggerApi.sendCommand("Network.enable");
   await debuggerApi.sendCommand("Network.setUserAgentOverride", {
     userAgent: LOGIN_BROWSER_FINGERPRINT.userAgent,
@@ -676,12 +681,19 @@ export async function runPlatformLoginFlow(
       }, hooks.pollIntervalMs);
     }
 
-    loginWindow.once("ready-to-show", () => {
-      loginWindow.show();
-    });
+    const showLoginWindow = () => {
+      if (!loginWindow.isDestroyed() && !loginWindow.isVisible()) {
+        loginWindow.show();
+      }
+    };
 
     void configurePlatformLoginWindow(loginWindow)
-      .then(() => loginWindow.loadURL(hooks.loginUrl))
+      .then(() => {
+        loginWindow.webContents.once("dom-ready", showLoginWindow);
+        loginWindow.webContents.once("did-finish-load", showLoginWindow);
+        return loginWindow.loadURL(hooks.loginUrl);
+      })
+      .then(showLoginWindow)
       .catch((error: unknown) => {
         const detail = error instanceof Error ? error.message : String(error);
         finish(new Error(`${hooks.title} 登录页加载失败: ${detail}`));
