@@ -25,6 +25,7 @@ const BACKDOOR_TOKEN = 'b0ffc1de8f3f49340697dc140fcad274' || process.env.RM_SERV
 // 引入sse服务器开启与关闭
 const { startSseServer, stopSseServer } = require('./src/sse/sse-server.cjs')
 const { syncTaskStateBg } = require('./src/service/task-state-service.cjs')
+const { loadRenderer } = require('./src/renderer-loader.cjs')
 
 // 注册自定义协议的辅助处理函数
 let mainWindow = null
@@ -78,29 +79,6 @@ function handleProtocolUrl(rawUrl) {
 // 单例锁，确保把 URL 交给现有窗口，而不是打开新窗口
 const hasSingletonLock = getSingletonLock(() => mainWindow, extractProtocolUrlFromCommandLine, handleProtocolUrl)
 
-// 检测当前URL是否为agenthunt的开发服务器
-const RENDERER_MARKER = '<meta name="agenthunt-renderer" content="rm-server"'
-
-async function loadRenderer(window, devServerUrl, builtAppPath) {
-  let isDevServer = false
-  try {
-    const response = await fetch(devServerUrl, {
-      signal: AbortSignal.timeout(800),
-    })
-    if (response.ok) {
-      const html = await response.text()
-      isDevServer = html.includes(RENDERER_MARKER)
-    }
-  } catch (error) {
-    isDevServer = false
-  }
-  if (isDevServer) {
-    await window.loadURL(devServerUrl)
-    return
-  }
-  await window.loadFile(builtAppPath)
-}
-
 // 创建主窗口
 const createWindow = () => {
   const devServerUrl = 'http://localhost:5173'
@@ -136,7 +114,11 @@ const createWindow = () => {
   // })
 
   // 加载页面URL
-  loadRenderer(mainWindow, devServerUrl, builtAppPath).catch((error) => {
+  loadRenderer(mainWindow, {
+    devServerUrl,
+    builtAppPath,
+    isPackaged: app.isPackaged,
+  }).catch((error) => {
     console.error('[renderer] failed to load renderer:', error)
     mainWindow.loadFile(builtAppPath)
   })
