@@ -25,7 +25,7 @@ const pushRecordsError = (title: string, message: string): void => {
   notificationCenter.push({
     title,
     message,
-    source: "发布记录",
+    source: "矩阵发布记录",
     tone: "error",
     unread: true,
   });
@@ -274,7 +274,7 @@ onMounted(() => {
   <section class="panel-card history-card">
     <header class="panel-header">
       <div>
-        <h2>发布记录</h2>
+        <h2>矩阵发布记录</h2>
       </div>
       <div class="panel-actions">
         <button class="ghost-button compact" type="button" :disabled="exporting || !items.length" @click="handleExport">
@@ -403,14 +403,14 @@ onMounted(() => {
           <td class="records-scheduled-cell">{{ item.scheduled_at || "--" }}</td>
           <td>
             <div class="table-links">
-              <button
+              <!-- <button
                 type="button"
                 class="link-btn"
                 :disabled="!item.link"
                 @click="openLink(item.link)"
               >
                 <AppIcon name="search" :size="14" /> 链接
-              </button>
+              </button> -->
               <button type="button" class="danger-text" @click="handleDelete(item)">
                 <AppIcon name="trash" :size="14" /> 删除
               </button>

@@ -238,7 +238,7 @@ onBeforeUnmount(() => {
       <section class="content-area">
         <header v-if="activeMenu !== 'accounts' && activeMenu !== 'records' && activeMenu !== 'works'" class="workspace-header">
           <div>
-            <h1>作品</h1>
+            <h1>预定发布作品</h1>
           </div>
         </header>
         <AppContentTransition :view="currentView" :view-key="activeMenu" />

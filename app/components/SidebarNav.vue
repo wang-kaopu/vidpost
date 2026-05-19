@@ -14,9 +14,9 @@ const emit = defineEmits<{
 }>();
 
 const menus: Array<{ key: MenuKey; label: string; icon: "accounts" | "works" | "records" }> = [
-  { key: "accounts", label: "账号管理", icon: "accounts" },
-  { key: "works", label: "作品", icon: "works" },
-  { key: "records", label: "发布记录", icon: "records" },
+  { key: "accounts", label: "矩阵账号", icon: "accounts" },
+  { key: "works", label: "预定发布作品", icon: "works" },
+  { key: "records", label: "矩阵发布记录", icon: "records" },
 ];
 
 const displayName = computed(() => props.user?.nickname || "Admin");

@@ -419,7 +419,7 @@ useDialogLayer(() => accountDialogVisible.value);
   <section class="panel-card">
     <header class="panel-header">
       <div>
-        <h2>账号管理</h2>
+        <h2>矩阵账号</h2>
         <!-- <p>管理并监控所有社交平台的账号同步状态与访问凭证</p> -->
       </div>
       <div class="panel-actions">
@@ -429,7 +429,7 @@ useDialogLayer(() => accountDialogVisible.value);
         </button>
         <button class="blue-button" type="button" @click="openPlatformDialog">
           <AppIcon name="plus" :size="18" />
-          <span>新增账号</span>
+          <span>绑定账号</span>
         </button>
       </div>
     </header>
@@ -450,14 +450,14 @@ useDialogLayer(() => accountDialogVisible.value);
         </div>
       </div>
       <div class="filter-item">
-        <label>关联手机号</label>
+        <label>手机号</label>
         <div class="filter-input-wrap">
           <AppIcon class="filter-search-icon" name="search" :size="14" />
           <input v-model="filterPhone" type="text" placeholder="搜索手机号" />
         </div>
       </div>
       <div class="filter-item account-filters-tag">
-        <label>自定义标签</label>
+        <label>标签</label>
         <select v-model="filterTag" :class="{ 'is-placeholder': !filterTag }">
           <option value="" disabled hidden>选择标签</option>
           <option v-for="tag in tagOptions" :key="tag" :value="tag">{{ tag }}</option>
@@ -497,8 +497,8 @@ useDialogLayer(() => accountDialogVisible.value);
           <th>账号昵称</th>
           <th>账号ID</th>
           <th>备注名</th>
-          <th>关联手机号</th>
-          <th>自定义标签</th>
+          <th>手机号</th>
+          <th>标签</th>
           <th>状态</th>
           <th>操作</th>
         </tr>

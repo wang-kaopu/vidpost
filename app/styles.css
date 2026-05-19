@@ -699,7 +699,14 @@ body.rm-dialog-open .workspace {
 .panel-header p {
   margin: 10px 0 0;
   color: #5a6575;
-  font-size: 22px;
+  font-size: 20px;
+}
+
+.panel-header-tip {
+  margin: 6px 0 0;
+  color: #8a95a5;
+  font-size: 6px;
+  line-height: 1.4;
 }
 
 .panel-actions {

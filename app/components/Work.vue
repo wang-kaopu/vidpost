@@ -106,7 +106,7 @@ const pushWorksError = (title: string, messageText: string): void => {
   notificationCenter.push({
     title,
     message: messageText,
-    source: "作品",
+    source: "预定发布作品",
     tone: "error",
     unread: true,
   });
@@ -634,7 +634,8 @@ useDialogLayer(() => previewVisible.value);
   <section class="panel-card">
     <header class="panel-header">
       <div>
-        <h2>作品</h2>
+        <h2>预定发布作品</h2>
+        <p class="panel-header-tip">勾选作品右下角方框，创建发布计划</p>
       </div>
     </header>
 
