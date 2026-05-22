@@ -492,18 +492,19 @@ export const configurePlatformLoginWindow = async (loginWindow: BrowserWindow) =
     await loginWindow.loadURL("about:blank");
   }
 
-  await debuggerApi.sendCommand("Network.enable");
-  await debuggerApi.sendCommand("Network.setUserAgentOverride", {
-    userAgent: LOGIN_BROWSER_FINGERPRINT.userAgent,
-    acceptLanguage: LOGIN_ACCEPT_LANGUAGE,
-    platform: LOGIN_BROWSER_FINGERPRINT.platform,
-  });
-  await debuggerApi.sendCommand("Emulation.setTimezoneOverride", {
-    timezoneId: LOGIN_BROWSER_FINGERPRINT.timezone,
-  });
-  await debuggerApi.sendCommand("Page.addScriptToEvaluateOnNewDocument", {
-    source: LOGIN_FINGERPRINT_SCRIPT,
-  });
+  // Temporarily disable login fingerprint injection while investigating BitBrowser protocol prompts.
+  // await debuggerApi.sendCommand("Network.enable");
+  // await debuggerApi.sendCommand("Network.setUserAgentOverride", {
+  //   userAgent: LOGIN_BROWSER_FINGERPRINT.userAgent,
+  //   acceptLanguage: LOGIN_ACCEPT_LANGUAGE,
+  //   platform: LOGIN_BROWSER_FINGERPRINT.platform,
+  // });
+  // await debuggerApi.sendCommand("Emulation.setTimezoneOverride", {
+  //   timezoneId: LOGIN_BROWSER_FINGERPRINT.timezone,
+  // });
+  // await debuggerApi.sendCommand("Page.addScriptToEvaluateOnNewDocument", {
+  //   source: LOGIN_FINGERPRINT_SCRIPT,
+  // });
 };
 
 export const wireCloseControls = (
