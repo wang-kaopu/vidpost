@@ -454,7 +454,7 @@ export const createPlatformLoginWindow = (
     },
   });
 
-  loginWindow.webContents.setUserAgent(LOGIN_BROWSER_FINGERPRINT.userAgent);
+  // loginWindow.webContents.setUserAgent(LOGIN_BROWSER_FINGERPRINT.userAgent);
   loginWindow.webContents.setWindowOpenHandler(({ url }) => {
     void shell.openExternal(url);
     return { action: "deny" };
@@ -466,7 +466,7 @@ export const createPlatformLoginWindow = (
 export const configurePlatformLoginWindow = async (loginWindow: BrowserWindow) => {
   const loginSession = loginWindow.webContents.session;
 
-  loginWindow.webContents.setUserAgent(LOGIN_BROWSER_FINGERPRINT.userAgent);
+  // loginWindow.webContents.setUserAgent(LOGIN_BROWSER_FINGERPRINT.userAgent);
   await loginSession.setProxy({ mode: "direct" });
   await loginSession.clearStorageData();
   await loginSession.clearCache();
