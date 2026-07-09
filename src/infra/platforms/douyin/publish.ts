@@ -6,7 +6,7 @@ import type { InteractionRecoveryContext } from "../shared/browser/page-helpers.
 
 import type { PlatformUploadPayload, PlatformUploadResult } from "../contracts.ts";
 import type { PublishVerificationStore } from "../../runtime/publish-verification-store.ts";
-import { createBrowserSession } from "../shared/browser.ts";
+import { acquireElectronPublishSession } from "../shared/browser.ts";
 import { clickWithDomFallback, fillWithRecovery, firstVisibleLocator, pickFileWithChooser, runOnAbort, waitForCondition } from "../shared/browser/page-helpers.ts";
 import { PlatformCookieInvalidError, PlatformManualVerificationError } from "../shared/errors.ts";
 import {
@@ -21,7 +21,6 @@ import {
   waitForManualVerificationCode,
   withUploadRetry,
 } from "../shared/publish/index.ts";
-import { loadContextStorageState, saveContextStorageState } from "../shared/session/storage-state.ts";
 import {
   DOUYIN_COVER_DISMISS_SELECTORS,
   DOUYIN_COVER_ENTRY_SELECTORS,
@@ -58,7 +57,7 @@ const DOUYIN_PUBLISH_BUTTON_TEXTS = ["发布", "立即发布", "发布作品"] a
 const DOUYIN_INTERACTION_RETRY_ATTEMPTS = 3;
 
 type DouyinUploadPayload = PlatformUploadPayload & {
-  accountFile: string;
+  accountFile?: string;
   title: string;
   videoPath: string;
   introduction?: string;
@@ -83,6 +82,7 @@ type DouyinPublishButtonCandidate = {
 
 function parsePayload(payload: PlatformUploadPayload): DouyinUploadPayload {
   const accountFile = String(payload.accountFile || "").trim();
+  const accountId = String(payload.accountId || "").trim();
   const title = String(payload.title || "").trim();
   const videoPath = String(payload.videoPath || payload.filePath || "").trim();
   const introduction = String(payload.introduction || payload.description || title).trim();
@@ -95,8 +95,8 @@ function parsePayload(payload: PlatformUploadPayload): DouyinUploadPayload {
     ? payload.tags.map((item) => String(item).trim()).filter(Boolean)
     : [];
 
-  if (!accountFile) {
-    throw new Error("抖音 upload 缺少 accountFile");
+  if (!accountId) {
+    throw new Error("抖音 upload 缺少 accountId");
   }
   if (!title) {
     throw new Error("抖音 upload 缺少 title");
@@ -108,6 +108,7 @@ function parsePayload(payload: PlatformUploadPayload): DouyinUploadPayload {
   return {
     ...payload,
     accountFile,
+    accountId,
     title,
     videoPath,
     introduction,
@@ -1196,24 +1197,24 @@ async function waitForPublishSuccess(page: Page, payload: DouyinUploadPayload): 
 }
 
 async function uploadOnce(payload: DouyinUploadPayload, attempt: number, signal?: AbortSignal): Promise<PlatformUploadResult> {
-  const contextOptions = await loadContextStorageState(payload.accountFile);
-  const session = await createBrowserSession({
+  const finalAttempt = attempt >= MAX_UPLOAD_ATTEMPTS;
+  const session = await acquireElectronPublishSession({
+    accountId: payload.accountId,
     accountFile: payload.accountFile,
-    contextOptions: buildDouyinUploadContextOptions(contextOptions),
-    headlessMode: "publish:douyin",
-    launchOptions: {
-      args: ["--start-maximized"],
-    },
+    platform: "douyin",
+    timeoutMs: payload.timeoutMs,
   });
   const detachAbortHandler = runOnAbort(signal, async () => {
-    console.info("[douyin:upload] timeout abort received, closing browser session");
-    await session.page.close().catch(() => undefined);
-    await session.context.close().catch(() => undefined);
-    await session.browser.close().catch(() => undefined);
+    console.info("[douyin:upload] timeout abort received");
+    if (finalAttempt) {
+      await session.fail(new Error("抖音上传超时"));
+      return;
+    }
+    await session.release();
   });
 
   try {
-    const { browser, context, page } = session;
+    const { page } = session;
     page.setDefaultTimeout(payload.timeoutMs ?? UPLOAD_ATTEMPT_TIMEOUT_MS);
     page.setDefaultNavigationTimeout(payload.timeoutMs ?? UPLOAD_ATTEMPT_TIMEOUT_MS);
 
@@ -1250,21 +1251,27 @@ async function uploadOnce(payload: DouyinUploadPayload, attempt: number, signal?
     await waitForPublishButtonReady(page, publishButton);
     await clickPublishButton(page, publishButton);
     await waitForPublishSuccess(page, payload);
-    await saveContextStorageState(context, payload.accountFile);
+    await session.complete();
 
     return buildSuccessOutcome({ detail: "抖音发布成功" });
+  } catch (error) {
+    if (finalAttempt || error instanceof PlatformManualVerificationError) {
+      await session.fail(error);
+    } else {
+      await session.release();
+    }
+    throw error;
   } finally {
     detachAbortHandler();
-    await session.page.close().catch(() => undefined);
-    await session.context.close().catch(() => undefined);
-    await session.browser.close().catch(() => undefined);
   }
 }
 
 export async function upload(payload: PlatformUploadPayload): Promise<PlatformUploadResult> {
   const parsed = parsePayload(payload);
 
-  await assertFileExists(parsed.accountFile, "账号");
+  if (parsed.accountFile) {
+    await assertFileExists(parsed.accountFile, "账号");
+  }
   await assertFileExists(parsed.videoPath, "视频");
   if (parsed.coverPath) {
     await assertFileExists(parsed.coverPath, "封面").catch(() => undefined);

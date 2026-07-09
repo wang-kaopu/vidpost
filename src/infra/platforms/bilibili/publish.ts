@@ -3,11 +3,9 @@ import fs from "node:fs/promises";
 import type { Locator, Page } from "playwright";
 
 import type { PlatformUploadPayload, PlatformUploadResult } from "../contracts.ts";
-import { createContextFromAccountFile } from "../shared/browser.ts";
+import { acquireElectronPublishSession } from "../shared/browser.ts";
 import { clickWithDomFallback, findFileInputAcrossScopes, pickFileWithChooser, runOnAbort } from "../shared/browser/page-helpers.ts";
 import { buildSuccessOutcome, MAX_UPLOAD_ATTEMPTS, normalizeUploadAttemptError, parseScheduledTimeInput, runUploadAttemptWithTimeout, UPLOAD_ATTEMPT_TIMEOUT_MS, waitForCondition, withUploadRetry } from "../shared/publish/index.ts";
-import { saveContextStorageState } from "../shared/session/storage-state.ts";
-import { cookieAuth } from "./cookie-auth.ts";
 
 const BILIBILI_CREATOR_HOME_URL = "https://member.bilibili.com/platform/home";
 const BILIBILI_UPLOAD_URL_CANDIDATES = [
@@ -147,7 +145,8 @@ const BILIBILI_SCHEDULE_DATE_WRAPPER_SELECTOR = "div.date-picker-date-wrp:nth-ch
 const BILIBILI_SCHEDULE_TIME_WRAPPER_SELECTOR = "div.date-picker-date-wrp:nth-child(3)";
 
 type BilibiliUploadPayload = PlatformUploadPayload & {
-  accountFile: string;
+  accountFile?: string;
+  accountId: string;
   title: string;
   videoPath: string;
   introduction?: string;
@@ -166,6 +165,7 @@ const BILIBILI_UPLOAD_ENTRY_POLL_INTERVAL_MS = 1_000;
 // 规范化上传参数并校验关键字段。
 function parseUploadPayload(payload: PlatformUploadPayload): BilibiliUploadPayload {
   const accountFile = String(payload.accountFile || "").trim();
+  const accountId = String(payload.accountId || "").trim();
   const title = String(payload.title || "").trim();
   const videoPath = String(payload.videoPath || payload.filePath || "").trim();
   const introduction = String(payload.introduction || payload.description || title).trim();
@@ -176,8 +176,8 @@ function parseUploadPayload(payload: PlatformUploadPayload): BilibiliUploadPaylo
     ? payload.tags.map((item) => String(item).trim()).filter(Boolean)
     : [];
 
-  if (!accountFile) {
-    throw new Error("Bilibili upload 缺少 accountFile");
+  if (!accountId) {
+    throw new Error("Bilibili upload 缺少 accountId");
   }
   if (!title) {
     throw new Error("Bilibili upload 缺少 title");
@@ -189,6 +189,7 @@ function parseUploadPayload(payload: PlatformUploadPayload): BilibiliUploadPaylo
   return {
     ...payload,
     accountFile,
+    accountId,
     title,
     videoPath,
     introduction,
@@ -1057,16 +1058,23 @@ async function setScheduledPublish(page: Page, scheduledAt: string): Promise<voi
 
 // 执行 Bilibili 实际上传发布步骤。
 async function uploadOnce(payload: BilibiliUploadPayload, attempt: number, maxAttempts: number, signal?: AbortSignal): Promise<PlatformUploadResult> {
-  const context = await createContextFromAccountFile(payload.accountFile);
-  const browser = context.browser();
-  const page = await context.newPage();
+  const finalAttempt = attempt >= maxAttempts;
+  const session = await acquireElectronPublishSession({
+    accountId: payload.accountId,
+    accountFile: payload.accountFile,
+    platform: "bilibili",
+    timeoutMs: payload.timeoutMs,
+  });
+  const page = session.page;
   page.setDefaultTimeout(payload.timeoutMs ?? BILIBILI_UPLOAD_WAIT_TIMEOUT_MS);
   page.setDefaultNavigationTimeout(payload.timeoutMs ?? BILIBILI_UPLOAD_WAIT_TIMEOUT_MS);
   const detachAbortHandler = runOnAbort(signal, async () => {
-    console.info("[bilibili:upload] timeout abort received, closing browser session");
-    await page.close().catch(() => undefined);
-    await context.close().catch(() => undefined);
-    await browser?.close().catch(() => undefined);
+    console.info("[bilibili:upload] timeout abort received");
+    if (finalAttempt) {
+      await session.fail(new Error("Bilibili 上传超时"));
+      return;
+    }
+    await session.release();
   });
 
   try {
@@ -1090,22 +1098,23 @@ async function uploadOnce(payload: BilibiliUploadPayload, attempt: number, maxAt
     }
 
     await waitForPublishSuccess(page, 60_000);
-    await saveContextStorageState(context, payload.accountFile);
+    await session.complete();
     return buildSuccessOutcome({ detail: "Bilibili 上传成功" });
+  } catch (error) {
+    if (finalAttempt) {
+      await session.fail(error);
+    } else {
+      await session.release();
+    }
+    throw error;
   } finally {
     detachAbortHandler();
-    await page.close().catch(() => undefined);
-    await context.close().catch(() => undefined);
-    await browser?.close().catch(() => undefined);
   }
 }
 
 // 对外暴露 Bilibili 上传能力。
 export async function upload(payload: PlatformUploadPayload): Promise<PlatformUploadResult> {
   const parsed = parseUploadPayload(payload);
-  if (!(await cookieAuth(parsed.accountFile))) {
-    throw new Error(`Bilibili 账号文件登录态无效: ${parsed.accountFile}`);
-  }
 
   return withUploadRetry(
     MAX_UPLOAD_ATTEMPTS,

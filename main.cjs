@@ -1,5 +1,6 @@
-const { app, ipcMain, BrowserWindow } = require('electron')
+const { app, ipcMain, BrowserWindow, session } = require('electron')
 const path = require('node:path')
+const net = require('node:net')
 
 // 如果当前进程是被Squirrel安装器事件拉起的,就停跑Electron 主程序
 // 否则应用会在安装/更新过程中误启动主窗口
@@ -25,10 +26,53 @@ const BACKDOOR_TOKEN = 'b0ffc1de8f3f49340697dc140fcad274' || process.env.RM_SERV
 // 引入sse服务器开启与关闭
 const { startSseServer, stopSseServer } = require('./src/sse/sse-server.cjs')
 const { syncTaskStateBg } = require('./src/service/task-state-service.cjs')
+const {
+  configureElectronPublishRuntime,
+} = require('./src/infra/platforms/shared/browser/electron-publish-runtime.ts')
+const {
+  destroyElectronPublishWindows,
+} = require('./src/infra/platforms/shared/browser/electron-publish-session.ts')
 
 // 注册自定义协议的辅助处理函数
 let mainWindow = null
 let pendingLaunchIntent = null
+let electronCdpPort = null
+let willQuitApp = false
+
+/**
+ * 检测指定本地端口是否可用。
+ *
+ * @param {number} port - 需要检测的端口
+ * @returns {Promise<boolean>} 端口是否可监听
+ */
+function isPortAvailable(port) {
+  return new Promise((resolve) => {
+    const server = net.createServer()
+    server.once('error', () => resolve(false))
+    server.once('listening', () => {
+      server.close(() => resolve(true))
+    })
+    server.listen(port, '127.0.0.1')
+  })
+}
+
+/**
+ * 从起始端口向后查找可用 CDP 端口。
+ *
+ * @param {number} startPort - 起始端口
+ * @param {number} attempts - 尝试次数
+ * @returns {Promise<number>} 可用端口
+ */
+async function findAvailableCdpPort(startPort = 9222, attempts = 100) {
+  for (let offset = 0; offset < attempts; offset += 1) {
+    const port = startPort + offset
+    if (await isPortAvailable(port)) {
+      return port
+    }
+  }
+
+  throw new Error(`无法找到可用 Electron CDP 端口，起始端口: ${startPort}`)
+}
 
 // 注册 IPC 监听器的通用函数，便于处理可能未catch的异步函数异常
 function registerIpcListener(channel, handler) {
@@ -150,7 +194,17 @@ const createWindow = () => {
   return mainWindow
 }
 
-if (hasSingletonLock) {
+async function startApplication() {
+  electronCdpPort = await findAvailableCdpPort()
+  app.commandLine.appendSwitch('remote-debugging-address', '127.0.0.1')
+  app.commandLine.appendSwitch('remote-debugging-port', String(electronCdpPort))
+  configureElectronPublishRuntime({
+    BrowserWindow,
+    session,
+    getCdpEndpoint: () => `http://127.0.0.1:${electronCdpPort}`,
+    isQuitting: () => willQuitApp,
+  })
+
   // 应用准备就绪后注册 IPC 监听器并创建窗口
   app.whenReady().then(() => {
     // 启动 SSE 服务器
@@ -178,6 +232,13 @@ if (hasSingletonLock) {
     // 创建主窗口
     createWindow()
   })
+}
+
+if (hasSingletonLock) {
+  startApplication().catch((error) => {
+    console.error('[startup] failed to initialize application:', error)
+    app.quit()
+  })
 
   app.on('open-url', (event, url) => {
     event.preventDefault()
@@ -185,6 +246,8 @@ if (hasSingletonLock) {
   })
 
   app.on('before-quit', () => {
+    willQuitApp = true
+    destroyElectronPublishWindows()
     stopSseServer()
   })
 

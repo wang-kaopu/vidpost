@@ -3,11 +3,10 @@ import fs from "node:fs/promises";
 import type { Locator, Page } from "playwright";
 
 import type { PlatformUploadPayload, PlatformUploadResult } from "../contracts.ts";
-import { createBrowserSession } from "../shared/browser.ts";
+import { acquireElectronPublishSession } from "../shared/browser.ts";
 import { clickWithDomFallback, findFileInput, firstVisibleLocator, pickFileWithChooser, retryTriggerUntil, runOnAbort } from "../shared/browser/page-helpers.ts";
 import { PlatformCookieInvalidError } from "../shared/errors.ts";
 import { buildFailureOutcome, buildSuccessOutcome, MAX_UPLOAD_ATTEMPTS, normalizeUploadAttemptError, runUploadAttemptWithTimeout, UPLOAD_ATTEMPT_TIMEOUT_MS, waitForCondition, withUploadRetry } from "../shared/publish/index.ts";
-import { loadContextStorageState, saveContextStorageState } from "../shared/session/storage-state.ts";
 import {
   SOHU_COVER_APPLIED_SELECTORS,
   SOHU_COVER_CONFIRM_SELECTORS,
@@ -43,7 +42,8 @@ const SOHU_CATEGORY_SELECT_ATTEMPTS = 2;
 const SOHU_OPTION_SCROLL_ATTEMPTS = 12;
 
 type SohuUploadPayload = PlatformUploadPayload & {
-  accountFile: string;
+  accountFile?: string;
+  accountId: string;
   title: string;
   videoPath: string;
   introduction?: string;
@@ -56,6 +56,7 @@ type SohuUploadPayload = PlatformUploadPayload & {
 
 function parsePayload(payload: PlatformUploadPayload): SohuUploadPayload {
   const accountFile = String(payload.accountFile || "").trim();
+  const accountId = String(payload.accountId || "").trim();
   const title = String(payload.title || "").trim();
   const videoPath = String(payload.videoPath || payload.filePath || "").trim();
   const introduction = String(payload.introduction || payload.description || title).trim();
@@ -66,8 +67,8 @@ function parsePayload(payload: PlatformUploadPayload): SohuUploadPayload {
     ? payload.tags.map((item) => String(item).trim()).filter(Boolean)
     : [];
 
-  if (!accountFile) {
-    throw new Error("搜狐 upload 缺少 accountFile");
+  if (!accountId) {
+    throw new Error("搜狐 upload 缺少 accountId");
   }
   if (!title) {
     throw new Error("搜狐 upload 缺少 title");
@@ -79,6 +80,7 @@ function parsePayload(payload: PlatformUploadPayload): SohuUploadPayload {
   return {
     ...payload,
     accountFile,
+    accountId,
     title,
     videoPath,
     introduction,
@@ -603,14 +605,22 @@ async function captureInitialPageDiagnostics(page: Page): Promise<void> {
   console.log(`[sohu:diagnostic] html=${htmlPreview}`);
 }
 
-async function uploadOnce(payload: SohuUploadPayload, signal?: AbortSignal): Promise<PlatformUploadResult> {
-  const contextOptions = await loadContextStorageState(payload.accountFile);
-  const session = await createBrowserSession({ contextOptions, headlessMode: "publish:sohu" });
+async function uploadOnce(payload: SohuUploadPayload, attempt: number, maxAttempts: number, signal?: AbortSignal): Promise<PlatformUploadResult> {
+  const finalAttempt = attempt >= maxAttempts;
+  const session = await acquireElectronPublishSession({
+    accountId: payload.accountId,
+    accountFile: payload.accountFile,
+    platform: "sohu",
+    timeoutMs: payload.timeoutMs,
+    viewport: { width: 1440, height: 900 },
+  });
   const detachAbortHandler = runOnAbort(signal, async () => {
-    console.log("[sohu:upload] timeout abort received, closing browser session");
-    await session.page.close().catch(() => undefined);
-    await session.context.close().catch(() => undefined);
-    await session.browser.close().catch(() => undefined);
+    console.log("[sohu:upload] timeout abort received");
+    if (finalAttempt) {
+      await session.fail(new Error("搜狐上传超时"));
+      return;
+    }
+    await session.release();
   });
 
   try {
@@ -620,7 +630,7 @@ async function uploadOnce(payload: SohuUploadPayload, signal?: AbortSignal): Pro
     await captureInitialPageDiagnostics(session.page);
 
     if (session.page.url().includes("/mpfe/v4/login")) {
-      throw new PlatformCookieInvalidError(SOHU_PLATFORM_LABEL, payload.accountFile);
+      throw new PlatformCookieInvalidError(SOHU_PLATFORM_LABEL, payload.accountFile || payload.accountId);
     }
 
     await setVideoFile(session.page, payload.videoPath);
@@ -637,14 +647,18 @@ async function uploadOnce(payload: SohuUploadPayload, signal?: AbortSignal): Pro
 
     await clickPublish(session.page);
     await waitForPublishSuccess(session.page);
-    await saveContextStorageState(session.context, payload.accountFile);
+    await session.complete();
 
     return buildSuccessOutcome({ detail: "搜狐发布成功" });
+  } catch (error) {
+    if (finalAttempt) {
+      await session.fail(error);
+    } else {
+      await session.release();
+    }
+    throw error;
   } finally {
     detachAbortHandler();
-    await session.page.close().catch(() => undefined);
-    await session.context.close().catch(() => undefined);
-    await session.browser.close().catch(() => undefined);
   }
 }
 
@@ -654,7 +668,7 @@ export async function upload(payload: PlatformUploadPayload): Promise<PlatformUp
   try {
     return await withUploadRetry(
       MAX_UPLOAD_ATTEMPTS,
-      async () => runUploadAttemptWithTimeout(SOHU_PLATFORM_LABEL, (signal) => uploadOnce(parsed, signal), parsed.timeoutMs ?? UPLOAD_ATTEMPT_TIMEOUT_MS),
+      async (attempt) => runUploadAttemptWithTimeout(SOHU_PLATFORM_LABEL, (signal) => uploadOnce(parsed, attempt, MAX_UPLOAD_ATTEMPTS, signal), parsed.timeoutMs ?? UPLOAD_ATTEMPT_TIMEOUT_MS),
       {
         normalizeError: (error) => normalizeUploadAttemptError(SOHU_PLATFORM_LABEL, error),
       },

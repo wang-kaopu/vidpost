@@ -1,6 +1,8 @@
+const fs = require('node:fs')
 const { resolveAccountFilePath } = require('../service/account-service.cjs')
 const { createPartitionStore, resolvePartitionForAccount } = require('../db/partition-store.cjs')
 const { createPublishTask, updatePublishTask } = require('../api/task-api.cjs')
+const { runInAccountQueue } = require('../infra/platforms/shared/publish/account-queue.ts')
 
 const { createTaskPageModel } = require('../page-model/task-page-model.cjs')
 
@@ -56,14 +58,20 @@ async function publishAndUpdateRemoteTask(payload, runUpload) {
     let remoteTaskId = null
 
     normalizedPayload.scheduledAt = normalizeScheduledAt(normalizedPayload.scheduledAt)
+    const accountId = String(normalizedPayload.accountId || normalizedPayload.account_id || '').trim()
+    const platform = String(normalizedPayload.platform || '').trim().toLowerCase()
+    if (!accountId || !platform) {
+        throw new Error('publish task requires a valid accountId and platform')
+    }
+    normalizedPayload.accountId = accountId
+    normalizedPayload.platform = platform
 
     // 如果没有提供账号文件路径，但提供了账号ID和平台，则解析出账号文件路径
-    if (!normalizedPayload.accountFile && normalizedPayload.accountId && normalizedPayload.platform) {
-        normalizedPayload.accountFile = resolveAccountFilePath(normalizedPayload.accountId, normalizedPayload.platform)
+    if (!normalizedPayload.accountFile) {
+        const resolvedAccountFile = resolveAccountFilePath(normalizedPayload.accountId, normalizedPayload.platform)
+        normalizedPayload.accountFile = fs.existsSync(resolvedAccountFile) ? resolvedAccountFile : ''
     }
-    if (normalizedPayload.accountId) {
-        normalizedPayload.browserPartition = resolvePartitionForAccount(createPartitionStore(), normalizedPayload.accountId)
-    }
+    normalizedPayload.browserPartition = resolvePartitionForAccount(createPartitionStore(), normalizedPayload.accountId)
 
     try {
         // 创建远程发布记录，初始状态为running
@@ -94,7 +102,7 @@ async function publishAndUpdateRemoteTask(payload, runUpload) {
 
         // 发布动作
         remoteTaskId = createResult.remoteTaskId
-        const publishResult = await runUpload(materializedPayload)
+        const publishResult = await runInAccountQueue(normalizedPayload.accountId, () => runUpload(materializedPayload))
         if (!publishResult || publishResult.success !== true) {
             const failureMessage = publishResult && typeof publishResult.message === 'string' && publishResult.message.trim()
                 ? publishResult.message.trim()

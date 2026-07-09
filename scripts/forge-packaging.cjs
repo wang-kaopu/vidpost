@@ -24,6 +24,18 @@ function normalizeRelativeAppPath(targetPath, projectRoot = process.cwd()) {
       return null
     }
 
+    const topLevelPath = packagerRelativePath.split('/')[0]
+    if (
+      topLevelPath === '.omx' ||
+      topLevelPath === 'app' ||
+      topLevelPath === 'node_modules' ||
+      topLevelPath === 'scripts' ||
+      topLevelPath === 'test' ||
+      packagerRelativePath === 'main.cjs'
+    ) {
+      return packagerRelativePath
+    }
+
     const candidatePath = path.join(absoluteProjectRoot, ...packagerRelativePath.split('/'))
     if (fs.existsSync(candidatePath)) {
       return packagerRelativePath

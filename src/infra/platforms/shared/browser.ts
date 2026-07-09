@@ -147,3 +147,4 @@ export async function probePlatformLogin(
 }
 
 export { createBrowserSession, resolvePlaywrightHeadlessMode, sleep };
+export { acquireElectronPublishSession, buildElectronPublishMarkerUrl, destroyElectronPublishWindows } from "./browser/electron-publish-session.ts";

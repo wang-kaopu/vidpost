@@ -3,12 +3,10 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { Locator, Page } from "playwright";
 
-// import type { PlatformUploadPayload, PlatformUploadResult } from "../contracts.ts";
-import { createContextFromAccountFile } from "../shared/browser.ts";
+import type { PlatformUploadPayload, PlatformUploadResult } from "../contracts.ts";
+import { acquireElectronPublishSession } from "../shared/browser.ts";
 import { clickWithDomFallback, findFileInput, pickFileWithChooser, runOnAbort } from "../shared/browser/page-helpers.ts";
 import { buildSuccessOutcome, MAX_UPLOAD_ATTEMPTS, normalizeUploadAttemptError, parseScheduledTimeInput, runUploadAttemptWithTimeout, UPLOAD_ATTEMPT_TIMEOUT_MS, withUploadRetry } from "../shared/publish/index.ts";
-import { saveContextStorageState } from "../shared/session/storage-state.ts";
-import { cookieAuth } from "./cookie-auth.ts";
 
 const BAIJIAHAO_UPLOAD_URL = "https://baijiahao.baidu.com/builder/rc/edit?type=videoV2";
 const BAIJIAHAO_UPLOAD_WAIT_TIMEOUT_MS = 60_000;
@@ -71,7 +69,8 @@ const BAIJIAHAO_PUBLISH_CLICK_RETRY_ATTEMPTS = 3;
 const BAIJIAHAO_PUBLISH_CLICK_RETRY_INTERVAL_MS = 3_000;
 const BAIJIAHAO_IMMEDIATE_PUBLISH_BUTTON_TEXTS = ["立即发布", "发布", "发表"] as const;
 type BaijiahaoUploadPayload = PlatformUploadPayload & {
-  accountFile: string;
+  accountFile?: string;
+  accountId: string;
   title: string;
   videoPath: string;
   introduction?: string;
@@ -120,6 +119,7 @@ export function isBaijiahaoSecurityVerificationText(value: string | null | undef
 // 规范化上传参数并校验关键字段。
 function parseUploadPayload(payload: PlatformUploadPayload): BaijiahaoUploadPayload {
   const accountFile = String(payload.accountFile || "").trim();
+  const accountId = String(payload.accountId || "").trim();
   const title = String(payload.title || "").trim();
   const videoPath = String(payload.videoPath || payload.filePath || "").trim();
   const introduction = String(payload.introduction || payload.description || title).trim();
@@ -127,8 +127,8 @@ function parseUploadPayload(payload: PlatformUploadPayload): BaijiahaoUploadPayl
   const scheduledAt = normalizeBaijiahaoScheduledAt(String(payload.scheduledAt || payload.publishDate || "").trim());
   const timeoutMs = typeof payload.timeoutMs === "number" && Number.isFinite(payload.timeoutMs) ? payload.timeoutMs : UPLOAD_ATTEMPT_TIMEOUT_MS;
 
-  if (!accountFile) {
-    throw new Error("百家号 upload 缺少 accountFile");
+  if (!accountId) {
+    throw new Error("百家号 upload 缺少 accountId");
   }
   if (!title) {
     throw new Error("百家号 upload 缺少 title");
@@ -140,6 +140,7 @@ function parseUploadPayload(payload: PlatformUploadPayload): BaijiahaoUploadPayl
   return {
     ...payload,
     accountFile,
+    accountId,
     title,
     videoPath,
     introduction,
@@ -980,16 +981,23 @@ async function setThumbnail(page: Page, coverPath: string): Promise<void> {
 
 // 执行百家号实际上传发布步骤。
 async function uploadOnce(payload: BaijiahaoUploadPayload, attempt: number, maxAttempts: number, signal?: AbortSignal): Promise<PlatformUploadResult> {
-  const context = await createContextFromAccountFile(payload.accountFile, "publish:baijiahao");
-  const browser = context.browser();
-  const page = await context.newPage();
+  const finalAttempt = attempt >= maxAttempts;
+  const session = await acquireElectronPublishSession({
+    accountId: payload.accountId,
+    accountFile: payload.accountFile,
+    platform: "baijiahao",
+    timeoutMs: payload.timeoutMs,
+  });
+  const page = session.page;
   page.setDefaultTimeout(payload.timeoutMs ?? BAIJIAHAO_UPLOAD_WAIT_TIMEOUT_MS);
   page.setDefaultNavigationTimeout(payload.timeoutMs ?? BAIJIAHAO_UPLOAD_WAIT_TIMEOUT_MS);
   const detachAbortHandler = runOnAbort(signal, async () => {
-    console.info("[baijiahao:upload] timeout abort received, closing browser session");
-    await page.close().catch(() => undefined);
-    await context.close().catch(() => undefined);
-    await browser?.close().catch(() => undefined);
+    console.info("[baijiahao:upload] timeout abort received");
+    if (finalAttempt) {
+      await session.fail(new Error("百家号上传超时"));
+      return;
+    }
+    await session.release();
   });
 
   try {
@@ -1023,22 +1031,23 @@ async function uploadOnce(payload: BaijiahaoUploadPayload, attempt: number, maxA
 
     await waitForBaijiahaoPublishSuccess(page);
 
-    await saveContextStorageState(context, payload.accountFile);
+    await session.complete();
     return buildSuccessOutcome({ detail: "百家号上传成功" });
+  } catch (error) {
+    if (finalAttempt) {
+      await session.fail(error);
+    } else {
+      await session.release();
+    }
+    throw error;
   } finally {
     detachAbortHandler();
-    await page.close().catch(() => undefined);
-    await context.close().catch(() => undefined);
-    await browser?.close().catch(() => undefined);
   }
 }
 
 // 对外暴露百家号上传能力。
 export async function upload(payload: PlatformUploadPayload): Promise<PlatformUploadResult> {
   const parsed = parseUploadPayload(payload);
-  if (!(await cookieAuth(parsed.accountFile))) {
-    throw new Error(`百家号账号文件登录态无效: ${parsed.accountFile}`);
-  }
 
   return withUploadRetry(
     MAX_UPLOAD_ATTEMPTS,
