@@ -2,7 +2,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const { pathToFileURL } = require('node:url')
 
-const COOKIE_DIR = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.matrix-account', 'cookie_files')
+const COOKIE_DIR = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.agenthunt', 'cookie_files')
 const VIDEO_PATH = '/Users/wkp/Downloads/olivia.mp4'
 const COVER_PATH = '/Users/wkp/Downloads/olivia.jpg'
 

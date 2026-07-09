@@ -1,4 +1,5 @@
 const { resolveAccountFilePath } = require('../service/account-service.cjs')
+const { createPartitionStore, resolvePartitionForAccount } = require('../db/partition-store.cjs')
 const { createPublishTask, updatePublishTask } = require('../api/task-api.cjs')
 
 const { createTaskPageModel } = require('../page-model/task-page-model.cjs')
@@ -59,6 +60,9 @@ async function publishAndUpdateRemoteTask(payload, runUpload) {
     // 如果没有提供账号文件路径，但提供了账号ID和平台，则解析出账号文件路径
     if (!normalizedPayload.accountFile && normalizedPayload.accountId && normalizedPayload.platform) {
         normalizedPayload.accountFile = resolveAccountFilePath(normalizedPayload.accountId, normalizedPayload.platform)
+    }
+    if (normalizedPayload.accountId) {
+        normalizedPayload.browserPartition = resolvePartitionForAccount(createPartitionStore(), normalizedPayload.accountId)
     }
 
     try {

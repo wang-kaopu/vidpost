@@ -1,10 +1,13 @@
 import electron from "electron";
-import { randomUUID } from "node:crypto";
 import syncFs from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+  createPartitionStore,
+  resolvePartitionForAccount,
+} from "../db/partition-store.cjs";
 import type { PlatformLoginFlowContext } from "./types";
 
 const { BrowserWindow, shell } = electron;
@@ -192,7 +195,10 @@ export type FrontendLoginResult = {
 };
 
 export type PlatformLoginOptions = {
+  accountId?: string;
   accountFile: string;
+  cookies?: ElectronCookieInput[];
+  partition?: string;
   timeoutMs: number;
   parentWindow?: BrowserWindow | null;
 };
@@ -216,6 +222,19 @@ export type PlatformLoginHooks = {
   beforePersist?: (loginWindow: BrowserWindow) => Promise<void>;
   onSuccessRedirectIfNeeded?: (loginWindow: BrowserWindow, url: string) => Promise<boolean>;
   resolveNickname?: (loginWindow: BrowserWindow) => Promise<string | undefined>;
+};
+
+type ElectronCookieInput = {
+  url?: string;
+  name?: string;
+  value?: string;
+  domain?: string;
+  path?: string;
+  expirationDate?: number;
+  expires?: number;
+  secure?: boolean;
+  httpOnly?: boolean;
+  sameSite?: string;
 };
 
 function resolveRuntimeAssetPath(candidates: string[], description: string): string {
@@ -353,6 +372,78 @@ const shouldFallbackToCookieOnlyState = (error: unknown) => {
   return detail.includes("ERR_ABORTED") || detail.includes("loading");
 };
 
+/**
+ * 将常见 cookie sameSite 表达转换为 Electron 可接受的值。
+ *
+ * @param sameSite - cookie sameSite 字段
+ * @returns Electron cookie sameSite 值
+ */
+function normalizeElectronCookieSameSite(sameSite: string | undefined) {
+  switch (String(sameSite || "").toLowerCase()) {
+    case "strict":
+      return "strict" as const;
+    case "lax":
+      return "lax" as const;
+    case "none":
+    case "no_restriction":
+      return "no_restriction" as const;
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * 根据 cookie domain/path 或目标 URL 补齐 Electron cookies.set 需要的 URL。
+ *
+ * @param cookie - 待注入 cookie
+ * @param targetUrl - 即将加载的平台页面
+ * @returns cookie 对应 URL
+ */
+function resolveCookieUrl(cookie: ElectronCookieInput, targetUrl: string): string {
+  if (cookie.url) {
+    return cookie.url;
+  }
+  const target = new URL(targetUrl);
+  const domain = String(cookie.domain || target.hostname).replace(/^\./, "");
+  const pathValue = String(cookie.path || "/");
+  return `${cookie.secure === false ? "http" : target.protocol.replace(":", "")}://${domain}${pathValue.startsWith("/") ? pathValue : `/${pathValue}`}`;
+}
+
+/**
+ * 在账号专属 partition session 中注入 cookie。
+ *
+ * @param loginWindow - 当前账号登录窗口
+ * @param targetUrl - 即将加载的平台页面
+ * @param cookies - 账号 cookie 对象数组
+ */
+async function injectCookiesIntoAccountSession(
+  loginWindow: BrowserWindow,
+  targetUrl: string,
+  cookies: ElectronCookieInput[] | undefined,
+): Promise<void> {
+  if (!cookies?.length) {
+    return;
+  }
+
+  for (const cookie of cookies) {
+    if (!cookie.name || typeof cookie.value !== "string") {
+      continue;
+    }
+    const sameSite = normalizeElectronCookieSameSite(cookie.sameSite);
+    await loginWindow.webContents.session.cookies.set({
+      url: resolveCookieUrl(cookie, targetUrl),
+      name: cookie.name,
+      value: cookie.value,
+      domain: cookie.domain,
+      path: cookie.path || "/",
+      expirationDate: typeof cookie.expirationDate === "number" ? cookie.expirationDate : cookie.expires,
+      secure: cookie.secure,
+      httpOnly: cookie.httpOnly,
+      ...(sameSite ? { sameSite } : {}),
+    });
+  }
+}
+
 export const exportStorageState = async (loginWindow: BrowserWindow, accountFile: string, logPrefix = "login") => {
   const cookies = await loginWindow.webContents.session.cookies.get({});
   const currentUrl = loginWindow.webContents.getURL();
@@ -430,10 +521,9 @@ const loadCloseButtonCss = () => {
 
 export const createPlatformLoginWindow = (
   title: string,
-  partitionPrefix: string,
+  partition: string,
   parentWindow?: BrowserWindow | null,
 ) => {
-  const partitionName = `${partitionPrefix}-${randomUUID()}`;
   const loginWindow = new BrowserWindow({
     width: 1200,
     height: 900,
@@ -450,7 +540,10 @@ export const createPlatformLoginWindow = (
     maximizable: false,
     webPreferences: {
       preload: PLATFORM_LOGIN_PRELOAD_PATH,
-      partition: partitionName,
+      partition,
+      webSecurity: false,
+      contextIsolation: true,
+      nodeIntegration: false,
     },
   });
 
@@ -468,8 +561,6 @@ export const configurePlatformLoginWindow = async (loginWindow: BrowserWindow) =
 
   loginWindow.webContents.setUserAgent(LOGIN_BROWSER_FINGERPRINT.userAgent);
   await loginSession.setProxy({ mode: "direct" });
-  await loginSession.clearStorageData();
-  await loginSession.clearCache();
 
   loginSession.webRequest.onBeforeSendHeaders((details, callback) => {
     callback({
@@ -574,10 +665,13 @@ export async function runPlatformLoginFlow(
     let pollTimer: ReturnType<typeof setInterval> | undefined;
     let inFlight = false;
     let closingAsPartOfFlow = false;
-    const loginWindow = createPlatformLoginWindow(hooks.title, hooks.partitionPrefix, options.parentWindow);
+    const partition =
+      options.partition ||
+      resolvePartitionForAccount(createPartitionStore(), options.accountId || options.accountFile);
+    const loginWindow = createPlatformLoginWindow(hooks.title, partition, options.parentWindow);
     const context: PlatformLoginFlowContext = {
       platform: hooks.partitionPrefix.replace(/-login$/, ""),
-      accountId: "",
+      accountId: options.accountId || "",
       accountFile: options.accountFile,
       timeoutMs: options.timeoutMs,
       parentWindow: options.parentWindow,
@@ -688,6 +782,7 @@ export async function runPlatformLoginFlow(
     };
 
     void configurePlatformLoginWindow(loginWindow)
+      .then(() => injectCookiesIntoAccountSession(loginWindow, hooks.loginUrl, options.cookies))
       .then(() => {
         loginWindow.webContents.once("dom-ready", showLoginWindow);
         loginWindow.webContents.once("did-finish-load", showLoginWindow);

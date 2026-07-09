@@ -4,21 +4,26 @@ const fs = require('node:fs')
 const path = require('node:path')
 const { log } = require('node:console')
 
-const { createAcccountModel } = require('../api/model/account-model.js')
 const { createAccountPageModel } = require('../page-model/account-page-model.cjs')
 
 const { createPublishAccount, updatePublishAccount } = require('../api/account-api.js')
+const {
+    createPartitionStore,
+    deletePartitionMapping,
+    movePartitionMapping,
+    resolvePartitionForAccount,
+} = require('../db/partition-store.cjs')
 
 // 拼接账号文件路径，用于正在新增过程中、未获取数据自增ID的账号文件命名
 function resolveDraftAccountFilePath(platform) {
     const homeDir = process.env.HOME || process.env.USERPROFILE || '.'
-    return path.join(homeDir, '.matrix-account', 'cookie_files', `${randomUUID()}_${platform}.json`)
+    return path.join(homeDir, '.agenthunt', 'cookie_files', `${randomUUID()}_${platform}.json`)
 }
 
 // 拼接账号文件路径，用于已获取数据自增ID的账号文件命名
 function resolveAccountFilePath(accountId, platform) {
     const homeDir = process.env.HOME || process.env.USERPROFILE || '.'
-    return path.join(homeDir, '.matrix-account', 'cookie_files', `${accountId}_${platform}.json`)
+    return path.join(homeDir, '.agenthunt', 'cookie_files', `${accountId}_${platform}.json`)
 }
 
 // 将登录过程中生成的账号文件用自增id改文件名，并返回最终路径
@@ -36,9 +41,16 @@ function finalizeAccountFile(accountFile, accountId, platform) {
 // 登录并创建远程账号
 async function loginAndCreateRemoteAccount(platform, accountFile, parentWindow,
     runLogin, syncNickname) {
+    const partitionStore = createPartitionStore()
+    // 登录新账号时远程账号 ID 尚不存在，先用草稿 key 绑定本次登录窗口 partition。
+    const draftPartitionAccountId = `draft:${platform}:${path.basename(accountFile)}`
+    const partition = resolvePartitionForAccount(partitionStore, draftPartitionAccountId)
+
     try {
         await runLogin({
+            accountId: draftPartitionAccountId,
             accountFile,
+            partition,
             timeoutMs: 120000,
             parentWindow,
         })
@@ -52,9 +64,11 @@ async function loginAndCreateRemoteAccount(platform, accountFile, parentWindow,
             status: 'online',
         })
         const finalizedAccountFile = finalizeAccountFile(accountFile, remoteAccountId, platform)
+        const accountPartition = movePartitionMapping(partitionStore, draftPartitionAccountId, String(remoteAccountId))
         await updatePublishAccount(remoteAccountId, {
             attributes: {
                 cookieFilePath: finalizedAccountFile,
+                browserPartition: accountPartition,
             },
         })
 
@@ -71,6 +85,7 @@ async function loginAndCreateRemoteAccount(platform, accountFile, parentWindow,
             updatedAt: null,
         })
     } catch (error) {
+        deletePartitionMapping(partitionStore, draftPartitionAccountId)
         const message = error instanceof Error ? error.message : String(error)
         throw new Error(`${platform} login or remote account creation failed: ${message}`)
     }
@@ -86,6 +101,7 @@ async function updateRemoteAccount(account, runCookieAuth) {
     }
 
     const accountFile = resolveAccountFilePath(accountId, platform)
+    resolvePartitionForAccount(createPartitionStore(), accountId)
     console.log('账号文件存在:', accountFile)
 
     const isValid = await runCookieAuth(accountFile)

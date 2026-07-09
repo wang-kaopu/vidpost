@@ -16,32 +16,6 @@ import type { PublishAccountItem, PlatformOption, BackendPlatform } from "@/api/
 import { useNotificationCenter } from "@/notifications";
 import { useDialogLayer } from "../composables/useDialogLayer";
 
-// declare global {
-//   interface Window {
-//     electronAPI?: {
-//       openExternal: (url: string) => Promise<void>;
-//       startPlatformLogin: (payload: {
-//         platform: string;
-//         timeoutMs?: number;
-//         token?: string;
-//       }) => Promise<{
-//         draft: { draft_id: string; status: string };
-//         account: {
-//           id: string;
-//           ulid: string;
-//           nickname: string;
-//           platform: string;
-//           status: string;
-//           phoneNumber: string;
-//           tags: string[];
-//           createdAt: string;
-//           updatedAt: string;
-//         };
-//       }>;
-//     };
-//   }
-// }
-
 const loading = ref(false);
 const errorMessage = ref("");
 const allAccounts = ref<PublishAccountItem[]>([]);

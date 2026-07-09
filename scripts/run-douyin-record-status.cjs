@@ -2,7 +2,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const { pathToFileURL } = require('node:url')
 
-const COOKIE_DIR = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.matrix-account', 'cookie_files')
+const COOKIE_DIR = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.agenthunt', 'cookie_files')
 
 function resolveLatestDouyinAccountFile() {
   const entries = fs.readdirSync(COOKIE_DIR, { withFileTypes: true })

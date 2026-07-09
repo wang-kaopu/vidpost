@@ -112,7 +112,10 @@ const createWindow = () => {
     height: 630,
     autoHideMenuBar: true,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.cjs')
+      preload: path.join(__dirname, 'preload.cjs'),
+      partition: 'persist:app-main',
+      contextIsolation: true,
+      nodeIntegration: false,
     }
   })
 
