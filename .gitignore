@@ -34,6 +34,7 @@ src/script/sohu-video-state-success.cjs
 src/script/bilibili-video-state-success copy.cjs
 
 
-app/.DS_Store
-
 out/
+
+# macOS Finder metadata
+.DS_Store
