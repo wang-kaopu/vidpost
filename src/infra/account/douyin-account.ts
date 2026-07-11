@@ -34,6 +34,15 @@ import fs2 from "node:fs/promises";
 import path from "node:path";
 import { chromium } from "playwright";
 
+interface DouyinBrowserIdentity {
+  acceptLanguage: string;
+  browserPlatform: "MacIntel" | "Win32";
+  language: "zh-CN";
+  secChUa: string;
+  secChUaPlatform: '"macOS"' | '"Windows"';
+  userAgent: string;
+}
+
 var PLAYWRIGHT_HEADLESS_CONFIG = {
   default: false,
   probe: false,
@@ -332,178 +341,45 @@ import fs4 from "node:fs/promises";
 import path3 from "node:path";
 import { fileURLToPath } from "node:url";
 var { BrowserWindow: ElectronBrowserWindow, shell } = electron;
-var LOGIN_BROWSER_FINGERPRINT = {
-  webdriver: false,
-  userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
-  platform: "Win32",
-  webglVendor: "Google Inc. (Intel)",
-  webglRenderer: "ANGLE (Intel, Intel(R) UHD Graphics 730 (0x00004682) Direct3D11 vs_5_0 ps_5_0, D3D11)",
-  hardwareConcurrency: 16,
-  deviceMemory: 32,
-  screen: "1920x1080",
-  pixelRatio: 1,
-  timezone: "Asia/Shanghai",
-  language: "zh-CN",
-  languages: "zh-CN, zh",
-  cookieEnabled: true,
-  online: true,
-  plugins: "PDF Viewer | Chrome PDF Viewer | Chromium PDF Viewer | Microsoft Edge PDF Viewer | WebKit built-in PDF",
-  mimeTypes: "application/pdf | text/pdf",
-  fonts: "Douyin Sans Zh | Douyin Sans | DOUYINSANSBOLD-GB | Douyin Sans"
-};
-var LOGIN_ACCEPT_LANGUAGE = "zh-CN,zh;q=0.9";
-var LOGIN_FINGERPRINT_SCRIPT = `
-(() => {
-  const fingerprint = ${JSON.stringify(LOGIN_BROWSER_FINGERPRINT)};
-  const languages = fingerprint.languages.split(",").map((item) => item.trim()).filter(Boolean);
-  const pluginNames = fingerprint.plugins.split("|").map((item) => item.trim()).filter(Boolean);
-  const mimeTypeNames = fingerprint.mimeTypes.split("|").map((item) => item.trim()).filter(Boolean);
-  const fontNames = fingerprint.fonts.split("|").map((item) => item.trim()).filter(Boolean);
-  const [screenWidth, screenHeight] = fingerprint.screen.split("x").map((item) => Number.parseInt(item, 10));
 
-  const defineGetter = (target, property, value) => {
-    try {
-      Object.defineProperty(target, property, {
-        get: () => value,
-        configurable: true,
-      });
-    } catch {}
-  };
+/**
+ * 从应用 assets 中严格读取当前系统对应的抖音 Chrome 138 身份。
+ *
+ * @returns 当前 Windows 或 macOS 固定浏览器身份
+ */
+async function loadDouyinBrowserIdentity(): Promise<DouyinBrowserIdentity> {
+  const fileName = process.platform === "win32"
+    ? "browser-identity.windows.json"
+    : process.platform === "darwin" ? "browser-identity.macos.json" : null;
+  if (!fileName) throw new Error(`当前系统 ${process.platform} 不支持抖音浏览器身份`);
 
-  defineGetter(Navigator.prototype, "webdriver", fingerprint.webdriver);
-  defineGetter(Navigator.prototype, "userAgent", fingerprint.userAgent);
-  defineGetter(Navigator.prototype, "platform", fingerprint.platform);
-  defineGetter(Navigator.prototype, "hardwareConcurrency", fingerprint.hardwareConcurrency);
-  defineGetter(Navigator.prototype, "deviceMemory", fingerprint.deviceMemory);
-  defineGetter(Navigator.prototype, "language", fingerprint.language);
-  defineGetter(Navigator.prototype, "languages", languages);
-  defineGetter(Navigator.prototype, "cookieEnabled", fingerprint.cookieEnabled);
-  defineGetter(Navigator.prototype, "onLine", fingerprint.online);
-  defineGetter(window, "devicePixelRatio", fingerprint.pixelRatio);
-
-  const screenValues = {
-    width: screenWidth,
-    height: screenHeight,
-    availWidth: screenWidth,
-    availHeight: screenHeight,
-    colorDepth: 24,
-    pixelDepth: 24,
-  };
-  for (const [property, value] of Object.entries(screenValues)) {
-    defineGetter(window.screen, property, value);
-    if (typeof Screen !== "undefined") {
-      defineGetter(Screen.prototype, property, value);
-    }
+  const identityPath = path3.join(electron.app.getAppPath(), "assets", "douyin", fileName);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await fs4.readFile(identityPath, "utf8"));
+  } catch (error) {
+    throw new Error(`读取抖音浏览器身份失败: ${identityPath}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(`抖音浏览器身份格式无效: ${identityPath}`);
   }
 
-  const createMimeType = (type, plugin) => {
-    const mimeType = {
-      type,
-      suffixes: type === "application/pdf" ? "pdf" : "",
-      description: type === "application/pdf" ? "Portable Document Format" : type,
-      enabledPlugin: plugin,
-    };
-    Object.defineProperty(mimeType, Symbol.toStringTag, { value: "MimeType" });
-    return mimeType;
-  };
-
-  const createPlugin = (name) => {
-    const plugin = {
-      name,
-      filename: "internal-pdf-viewer",
-      description: "Portable Document Format",
-      length: mimeTypeNames.length,
-      item(index) {
-        return this[index] ?? null;
-      },
-      namedItem(type) {
-        return this[type] ?? null;
-      },
-    };
-    mimeTypeNames.forEach((type, index) => {
-      const mimeType = createMimeType(type, plugin);
-      plugin[index] = mimeType;
-      plugin[type] = mimeType;
-    });
-    Object.defineProperty(plugin, Symbol.toStringTag, { value: "Plugin" });
-    return plugin;
-  };
-
-  const createNamedArray = (items, nameKey, tag) => {
-    const array = [];
-    items.forEach((item, index) => {
-      array[index] = item;
-      array[item[nameKey]] = item;
-    });
-    Object.defineProperty(array, "item", {
-      value(index) {
-        return array[index] ?? null;
-      },
-      configurable: true,
-    });
-    Object.defineProperty(array, "namedItem", {
-      value(name) {
-        return array[name] ?? null;
-      },
-      configurable: true,
-    });
-    Object.defineProperty(array, Symbol.toStringTag, { value: tag });
-    return array;
-  };
-
-  const plugins = createNamedArray(pluginNames.map(createPlugin), "name", "PluginArray");
-  const mimeTypes = createNamedArray(
-    mimeTypeNames.map((type) => createMimeType(type, plugins[0] ?? null)),
-    "type",
-    "MimeTypeArray",
-  );
-  Object.defineProperty(plugins, "refresh", { value() {}, configurable: true });
-  defineGetter(Navigator.prototype, "plugins", plugins);
-  defineGetter(Navigator.prototype, "mimeTypes", mimeTypes);
-
-  const originalResolvedOptions = Intl.DateTimeFormat.prototype.resolvedOptions;
-  Object.defineProperty(Intl.DateTimeFormat.prototype, "resolvedOptions", {
-    value() {
-      return { ...originalResolvedOptions.call(this), timeZone: fingerprint.timezone, locale: fingerprint.language };
-    },
-    configurable: true,
-  });
-
-  const overrideWebgl = (context) => {
-    if (!context?.prototype?.getParameter) {
-      return;
-    }
-    const originalGetParameter = context.prototype.getParameter;
-    Object.defineProperty(context.prototype, "getParameter", {
-      value(parameter) {
-        if (parameter === 37445) {
-          return fingerprint.webglVendor;
-        }
-        if (parameter === 37446) {
-          return fingerprint.webglRenderer;
-        }
-        return originalGetParameter.call(this, parameter);
-      },
-      configurable: true,
-    });
-  };
-  overrideWebgl(window.WebGLRenderingContext);
-  overrideWebgl(window.WebGL2RenderingContext);
-
-  const originalFontCheck = document.fonts?.check?.bind(document.fonts);
-  if (originalFontCheck) {
-    Object.defineProperty(document.fonts, "check", {
-      value(font, text) {
-        if (fontNames.some((fontName) => String(font).includes(fontName))) {
-          return true;
-        }
-        return originalFontCheck(font, text);
-      },
-      configurable: true,
-    });
+  const identity = parsed as Record<string, unknown>;
+  const expectedPlatform = process.platform === "win32" ? "Win32" : "MacIntel";
+  const expectedSecChUaPlatform = process.platform === "win32" ? '"Windows"' : '"macOS"';
+  if (
+    typeof identity.acceptLanguage !== "string" || !identity.acceptLanguage.trim() ||
+    identity.browserPlatform !== expectedPlatform ||
+    identity.language !== "zh-CN" ||
+    typeof identity.secChUa !== "string" || !identity.secChUa.trim() ||
+    !identity.secChUa.includes('"Chromium";v="138"') ||
+    identity.secChUaPlatform !== expectedSecChUaPlatform ||
+    typeof identity.userAgent !== "string" || !identity.userAgent.includes("Chrome/138.0.0.0")
+  ) {
+    throw new Error(`抖音浏览器身份字段不完整或与当前系统不匹配: ${identityPath}`);
   }
-})();
-`;
+  return identity as unknown as DouyinBrowserIdentity;
+}
 function resolveRuntimeAssetPath(candidates, description) {
   for (const candidate of candidates) {
     if (syncFs.existsSync(candidate)) {
@@ -711,7 +587,7 @@ var loadCloseButtonCss = () => {
   }
   return closeButtonCssPromise;
 };
-var createPlatformLoginWindow = (title, partition, parentWindow) => {
+var createPlatformLoginWindow = (title, partition, parentWindow, identity: DouyinBrowserIdentity) => {
   const loginWindow = new ElectronBrowserWindow({
     width: 1200,
     height: 900,
@@ -734,23 +610,40 @@ var createPlatformLoginWindow = (title, partition, parentWindow) => {
       nodeIntegration: false
     }
   });
-  loginWindow.webContents.setUserAgent(LOGIN_BROWSER_FINGERPRINT.userAgent);
+  loginWindow.webContents.setUserAgent(identity.userAgent);
   loginWindow.webContents.setWindowOpenHandler(({ url }) => {
     void shell.openExternal(url);
     return { action: "deny" };
   });
   return loginWindow;
 };
-var configurePlatformLoginWindow = async (loginWindow) => {
+var configurePlatformLoginWindow = async (loginWindow, identity: DouyinBrowserIdentity) => {
   const loginSession = loginWindow.webContents.session;
-  loginWindow.webContents.setUserAgent(LOGIN_BROWSER_FINGERPRINT.userAgent);
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Shanghai";
+  const fingerprintScript = `
+(() => {
+  const identity = ${JSON.stringify(identity)};
+  const defineGetter = (target, property, value) => {
+    try {
+      Object.defineProperty(target, property, { get: () => value, configurable: true });
+    } catch {}
+  };
+  defineGetter(Navigator.prototype, "webdriver", false);
+  defineGetter(Navigator.prototype, "userAgent", identity.userAgent);
+  defineGetter(Navigator.prototype, "platform", identity.browserPlatform);
+})();
+`;
+  loginWindow.webContents.setUserAgent(identity.userAgent);
   await loginSession.setProxy({ mode: "direct" });
   loginSession.webRequest.onBeforeSendHeaders((details, callback) => {
     callback({
       requestHeaders: {
         ...details.requestHeaders,
-        "User-Agent": LOGIN_BROWSER_FINGERPRINT.userAgent,
-        "Accept-Language": LOGIN_ACCEPT_LANGUAGE
+        "User-Agent": identity.userAgent,
+        "Accept-Language": identity.acceptLanguage,
+        "sec-ch-ua": identity.secChUa,
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": identity.secChUaPlatform
       }
     });
   });
@@ -763,15 +656,15 @@ var configurePlatformLoginWindow = async (loginWindow) => {
   }
   await debuggerApi.sendCommand("Network.enable");
   await debuggerApi.sendCommand("Network.setUserAgentOverride", {
-    userAgent: LOGIN_BROWSER_FINGERPRINT.userAgent,
-    acceptLanguage: LOGIN_ACCEPT_LANGUAGE,
-    platform: LOGIN_BROWSER_FINGERPRINT.platform
+    userAgent: identity.userAgent,
+    acceptLanguage: identity.acceptLanguage,
+    platform: identity.browserPlatform
   });
   await debuggerApi.sendCommand("Emulation.setTimezoneOverride", {
-    timezoneId: LOGIN_BROWSER_FINGERPRINT.timezone
+    timezoneId: timezone
   });
   await debuggerApi.sendCommand("Page.addScriptToEvaluateOnNewDocument", {
-    source: LOGIN_FINGERPRINT_SCRIPT
+    source: fingerprintScript
   });
 };
 var wireCloseControls = (loginWindow, closeButtonScript, options) => {
@@ -815,13 +708,14 @@ async function completeLoginState(options) {
   };
 }
 async function runPlatformLoginFlow(hooks, options) {
+  const browserIdentity = await loadDouyinBrowserIdentity();
   return new Promise((resolve, reject) => {
     let settled = false;
     let pollTimer;
     let inFlight = false;
     let closingAsPartOfFlow = false;
     const partition = options.partition || resolvePartitionForAccount(createPartitionStore(), options.accountId || options.accountFile);
-    const loginWindow = createPlatformLoginWindow(hooks.title, partition, options.parentWindow);
+    const loginWindow = createPlatformLoginWindow(hooks.title, partition, options.parentWindow, browserIdentity);
     const context = {
       platform: hooks.partitionPrefix.replace(/-login$/, ""),
       accountId: options.accountId || "",
@@ -924,7 +818,7 @@ async function runPlatformLoginFlow(hooks, options) {
         loginWindow.show();
       }
     };
-    void configurePlatformLoginWindow(loginWindow).then(() => injectCookiesIntoAccountSession(loginWindow, hooks.loginUrl, options.cookies)).then(() => {
+    void configurePlatformLoginWindow(loginWindow, browserIdentity).then(() => injectCookiesIntoAccountSession(loginWindow, hooks.loginUrl, options.cookies)).then(() => {
       loginWindow.webContents.once("dom-ready", showLoginWindow);
       loginWindow.webContents.once("did-finish-load", showLoginWindow);
       return loginWindow.loadURL(hooks.loginUrl);

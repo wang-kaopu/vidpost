@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { Buffer } from "node:buffer";
 import { createHash, createHmac, randomUUID, sign as signEcdsa } from "node:crypto";
 import { open, readFile, stat, access } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
@@ -16,6 +17,15 @@ import type { PublishedStatePayload, PublishedStateResult, Video, VideoRuntime, 
 
 interface LogEvent { message?: string; type: string; [key: string]: unknown }
 interface SerializedAxiosResponse { body: unknown; headers: unknown; status: number; statusText: string }
+
+interface DouyinBrowserIdentity {
+  acceptLanguage: string;
+  browserPlatform: "MacIntel" | "Win32";
+  language: "zh-CN";
+  secChUa: string;
+  secChUaPlatform: '"macOS"' | '"Windows"';
+  userAgent: string;
+}
 
 /** 安全输出结构化日志，日志失败不影响业务。 */
 async function emitLog(target: Logger, event: LogEvent): Promise<void> {
@@ -37,6 +47,46 @@ const REQUEST_TIMEOUT = 10 * 60 * 1000;
 const BDMS_READY_TIMEOUT = 60_000;
 const SIGNING_TIMEOUT = 30_000;
 
+/**
+ * 从指定应用目录的 assets 中严格读取当前系统对应的抖音 Chrome 138 身份。
+ *
+ * @param appPath - Electron `app.getAppPath()` 返回的应用目录
+ * @returns 当前 Windows 或 macOS 固定浏览器身份
+ */
+async function loadDouyinBrowserIdentity(appPath: string): Promise<DouyinBrowserIdentity> {
+  const fileName = process.platform === "win32"
+    ? "browser-identity.windows.json"
+    : process.platform === "darwin" ? "browser-identity.macos.json" : null;
+  if (!fileName) throw new Error(`当前系统 ${process.platform} 不支持抖音浏览器身份`);
+
+  const identityPath = join(appPath, "assets", "douyin", fileName);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await readFile(identityPath, "utf8"));
+  } catch (error) {
+    throw new Error(`读取抖音浏览器身份失败: ${identityPath}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(`抖音浏览器身份格式无效: ${identityPath}`);
+  }
+
+  const identity = parsed as Record<string, unknown>;
+  const expectedPlatform = process.platform === "win32" ? "Win32" : "MacIntel";
+  const expectedSecChUaPlatform = process.platform === "win32" ? '"Windows"' : '"macOS"';
+  if (
+    typeof identity.acceptLanguage !== "string" || !identity.acceptLanguage.trim() ||
+    identity.browserPlatform !== expectedPlatform ||
+    identity.language !== "zh-CN" ||
+    typeof identity.secChUa !== "string" || !identity.secChUa.trim() ||
+    !identity.secChUa.includes('"Chromium";v="138"') ||
+    identity.secChUaPlatform !== expectedSecChUaPlatform ||
+    typeof identity.userAgent !== "string" || !identity.userAgent.includes("Chrome/138.0.0.0")
+  ) {
+    throw new Error(`抖音浏览器身份字段不完整或与当前系统不匹配: ${identityPath}`);
+  }
+  return identity as unknown as DouyinBrowserIdentity;
+}
+
 export interface DouyinVideoOptions {
   browserPartition: string;
   coverPath: string;
@@ -47,6 +97,7 @@ export interface DouyinVideoOptions {
 }
 
 interface DouyinWorkerOptions {
+  browserIdentity: DouyinBrowserIdentity;
   browserPartition: string;
   coverPath: string;
   electronRendererPath: string;
@@ -313,9 +364,11 @@ const DOUYIN_CHUNK_SIZE = 5 * 1024 * 1024;
 export interface MachineProfile {
   language: "zh-CN";
   platform: "MacIntel" | "Win32";
+  secChUa: string;
+  secChUaPlatform: '"macOS"' | '"Windows"';
   screenHeight: number;
   screenWidth: number;
-  timezone: "Asia/Shanghai";
+  timezone: string;
   userAgent: string;
 }
 
@@ -341,40 +394,41 @@ export interface ChunkDescriptor {
 }
 
 /**
- * 根据当前操作系统选择 UA、平台、语言和屏幕尺寸相互一致的设备配置。
+ * 使用固定浏览器身份，并补充当前 renderer 的屏幕尺寸和宿主时区。
  *
- * @param platform - Node.js 平台标识
- * @returns macOS 或 Windows 的固定 Chrome 138 配置
+ * @param identity - 从 assets 读取的当前系统固定 Chrome 138 身份
+ * @returns 发布链路统一使用的浏览器配置
  */
-function createMachineProfile(platform: NodeJS.Platform = process.platform): MachineProfile {
-  const shared = {
-    language: "zh-CN" as const,
-    screenHeight: 1080,
-    screenWidth: 1920,
-    timezone: "Asia/Shanghai" as const,
-  };
+export function createMachineProfile(
+  identity: DouyinBrowserIdentity,
+): MachineProfile {
+  const expectedSecChUaPlatform = identity.browserPlatform === "MacIntel"
+    ? '"macOS"'
+    : identity.browserPlatform === "Win32" ? '"Windows"' : null;
+  if (!expectedSecChUaPlatform || identity.secChUaPlatform !== expectedSecChUaPlatform) {
+    throw new Error(`不支持的抖音浏览器身份平台: ${String(identity.browserPlatform)}`);
+  }
+  const hostScreen = (globalThis as typeof globalThis & {
+    screen?: { height?: number; width?: number };
+  }).screen;
+  const screenHeight = Number.isFinite(hostScreen?.height) && Number(hostScreen?.height) > 0
+    ? Math.round(Number(hostScreen?.height))
+    : 1080;
+  const screenWidth = Number.isFinite(hostScreen?.width) && Number(hostScreen?.width) > 0
+    ? Math.round(Number(hostScreen?.width))
+    : 1920;
 
-  if (platform === "darwin") {
-    return {
-      ...shared,
-      platform: "MacIntel",
-      userAgent:
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) " +
-        "AppleWebKit/537.36 (KHTML, like Gecko) " +
-        "Chrome/138.0.0.0 Safari/537.36",
-    };
-  }
-  if (platform === "win32") {
-    return {
-      ...shared,
-      platform: "Win32",
-      userAgent:
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
-        "AppleWebKit/537.36 (KHTML, like Gecko) " +
-        "Chrome/138.0.0.0 Safari/537.36",
-    };
-  }
-  throw new Error(`当前系统 ${platform} 不支持抖音本机发布 Service`);
+  const shared = {
+    language: identity.language,
+    platform: identity.browserPlatform,
+    secChUa: identity.secChUa,
+    secChUaPlatform: identity.secChUaPlatform,
+    screenHeight,
+    screenWidth,
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Shanghai",
+    userAgent: identity.userAgent,
+  };
+  return shared;
 }
 
 /**
@@ -886,6 +940,68 @@ function describeResponseShape(value: unknown, depth = 0): unknown {
   return Object.fromEntries(
     Object.entries(value).map(([key, nested]) => [key, describeResponseShape(nested, depth + 1)]),
   );
+}
+
+/**
+ * 从 create_v2 响应头识别抖音安全网关的账号身份验证要求。
+ *
+ * @param headers - Axios 正常响应或异常响应携带的响应头
+ * @returns 身份验证错误文本；未命中验证流程时返回 null
+ */
+export function getDouyinVerificationErrorMessage(headers: unknown): string | null {
+  if (!headers || typeof headers !== "object") return null;
+
+  const headerRecord = headers as Record<string, unknown> & { get?: (name: string) => unknown };
+  let headerValue = typeof headerRecord.get === "function"
+    ? headerRecord.get("x-tt-verify-passport-decision")
+    : undefined;
+  if (headerValue === undefined) {
+    const headerEntry = Object.entries(headerRecord).find(
+      ([name]) => name.toLowerCase() === "x-tt-verify-passport-decision",
+    );
+    headerValue = headerEntry?.[1];
+  }
+  if (Array.isArray(headerValue)) headerValue = headerValue[0];
+  if (typeof headerValue !== "string" || !headerValue.trim()) return null;
+
+  let decision: Record<string, unknown>;
+  try {
+    const parsed: unknown = JSON.parse(headerValue);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    decision = parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+  if (decision.account_flow !== "verify") return null;
+
+  const fields: string[] = [];
+  const userInfo = decision.user_info && typeof decision.user_info === "object" && !Array.isArray(decision.user_info)
+    ? decision.user_info as Record<string, unknown>
+    : null;
+  let nickname = typeof userInfo?.nickname === "string" ? userInfo.nickname.trim() : "";
+  if (nickname && !/\p{Script=Han}/u.test(nickname)) {
+    const decodedNickname = Buffer.from(nickname, "latin1").toString("utf8");
+    if (!decodedNickname.includes("\uFFFD") && /\p{Script=Han}/u.test(decodedNickname)) {
+      nickname = decodedNickname;
+    }
+  }
+  if (nickname) fields.push(`账号=${nickname}`);
+
+  const eventParams = decision.event_params && typeof decision.event_params === "object" && !Array.isArray(decision.event_params)
+    ? decision.event_params as Record<string, unknown>
+    : null;
+  const verifyReason = typeof eventParams?.verify_reason === "string" ? eventParams.verify_reason.trim() : "";
+  const verifyScene = typeof eventParams?.verify_scene === "string" ? eventParams.verify_scene.trim() : "";
+  if (verifyReason) fields.push(`验证原因=${verifyReason}`);
+  if (verifyScene) fields.push(`验证场景=${verifyScene}`);
+
+  const rawVerifyWays = decision.verify_way_name_list;
+  const verifyWays = Array.isArray(rawVerifyWays)
+    ? rawVerifyWays.filter((value): value is string => typeof value === "string" && Boolean(value.trim())).map((value) => value.trim()).join(",")
+    : typeof rawVerifyWays === "string" ? rawVerifyWays.trim() : "";
+  if (verifyWays) fields.push(`验证方式=${verifyWays}`);
+
+  return fields.length > 0 ? `账号需要身份验证：${fields.join("，")}` : "账号需要身份验证";
 }
 
 /**
@@ -1520,7 +1636,7 @@ async function searchTopics(input: {
 
 async function prepareInRenderer(options: DouyinWorkerOptions): Promise<DouyinPreparedContext> {
   const responseStart = RENDERER_RESPONSES.length;
-  const profile = createMachineProfile();
+  const profile = createMachineProfile(options.browserIdentity);
   const commonParams = buildCommonParams(profile);
   const state = await RENDERER_IPC.invoke(RENDERER_CHANNELS.getSessionState) as DouyinSessionState;
   const { cookieHeader, msToken } = state;
@@ -1698,17 +1814,28 @@ async function publishInRenderer(prepared: DouyinPreparedContext): Promise<Douyi
     message: `[17/17] 提交发布（可见性：${prepared.visibility}）`,
     type: "info",
   });
-  const response = await RENDERER_HTTP.post(prepared.signed.signedUrl, prepared.bodyText, {
-    headers: {
-      ...prepared.signed.ticketHeaders,
-      Cookie: prepared.cookieHeader,
-      "Content-Type": "application/json",
-      Referer: CREATOR_REFERER,
-      "User-Agent": prepared.profile.userAgent,
-      "X-Secsdk-Csrf-Token": prepared.csrfToken,
-    },
-    transformRequest: [() => prepared.bodyText],
-  });
+  let response;
+  try {
+    response = await RENDERER_HTTP.post(prepared.signed.signedUrl, prepared.bodyText, {
+      headers: {
+        ...prepared.signed.ticketHeaders,
+        Cookie: prepared.cookieHeader,
+        "Content-Type": "application/json",
+        Referer: CREATOR_REFERER,
+        "User-Agent": prepared.profile.userAgent,
+        "X-Secsdk-Csrf-Token": prepared.csrfToken,
+      },
+      transformRequest: [() => prepared.bodyText],
+    });
+  } catch (error) {
+    const verificationMessage = axios.isAxiosError(error)
+      ? getDouyinVerificationErrorMessage(error.response?.headers)
+      : null;
+    if (verificationMessage) throw new Error(verificationMessage);
+    throw error;
+  }
+  const verificationMessage = getDouyinVerificationErrorMessage(response.headers);
+  if (verificationMessage) throw new Error(verificationMessage);
   const result = response.data as {
     item_id?: string | number;
     status_code?: number;
@@ -1737,13 +1864,19 @@ async function publishInRenderer(prepared: DouyinPreparedContext): Promise<Douyi
  * 安装原包 `_setRequestHeaders` 还原逻辑，只处理 Service renderer 主动标记的请求。
  *
  * @param accountSession - 两个隐藏窗口共享的账号 Session
+ * @param identity - 本次发布从 assets 读取的固定浏览器身份
  */
-function installRequestHeaderBridge(accountSession: Session): void {
+function installRequestHeaderBridge(accountSession: Session, identity: DouyinBrowserIdentity): void {
   accountSession.webRequest.onBeforeSendHeaders((details, callback) => {
     const headers = details.requestHeaders;
     const markerName = Object.keys(headers).find((name) => name.toLowerCase() === "_setrequestheaders");
     if (!markerName) {
-      callback({ cancel: false, requestHeaders: details.requestHeaders });
+      Object.assign(headers, {
+        "sec-ch-ua": identity.secChUa,
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": identity.secChUaPlatform,
+      });
+      callback({ cancel: false, requestHeaders: headers });
       return;
     }
 
@@ -1754,9 +1887,9 @@ function installRequestHeaderBridge(accountSession: Session): void {
         headers[name] = value;
       }
       Object.assign(headers, {
-        "sec-ch-ua": '"Not)A;Brand";v="8", "Chromium";v="138", "Google Chrome";v="138"',
+        "sec-ch-ua": identity.secChUa,
         "sec-ch-ua-mobile": "?0",
-        "sec-ch-ua-platform": process.platform === "darwin" ? '"macOS"' : '"Windows"',
+        "sec-ch-ua-platform": identity.secChUaPlatform,
       });
       callback({ cancel: false, requestHeaders: headers });
     } catch {
@@ -2044,9 +2177,13 @@ async function captureSignedUrl(
  * 创建只加载官方 Creator 页面的远程签名窗口。
  *
  * @param accountSession - 账号 Session
+ * @param identity - 本次发布从 assets 读取的固定浏览器身份
  * @returns 完成 BDMS 初始化的隐藏窗口
  */
-async function createSignerWindow(accountSession: Session): Promise<BrowserWindow> {
+async function createSignerWindow(
+  accountSession: Session,
+  identity: DouyinBrowserIdentity,
+): Promise<BrowserWindow> {
   const window = new MAIN_ELECTRON.BrowserWindow({
     show: false,
     width: 1280,
@@ -2060,7 +2197,7 @@ async function createSignerWindow(accountSession: Session): Promise<BrowserWindo
     },
   });
   try {
-    window.webContents.setUserAgent(createMachineUserAgent());
+    window.webContents.setUserAgent(identity.userAgent);
     await window.loadURL(CREATOR_HOME);
     await waitForBdms(window);
     return window;
@@ -2071,36 +2208,18 @@ async function createSignerWindow(accountSession: Session): Promise<BrowserWindo
 }
 
 /**
- * 返回与当前运行系统匹配的固定 Chrome 138 UA。
- *
- * @returns Windows 或 macOS UA
- */
-function createMachineUserAgent(): string {
-  if (process.platform === "win32") {
-    return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
-      "AppleWebKit/537.36 (KHTML, like Gecko) " +
-      "Chrome/138.0.0.0 Safari/537.36";
-  }
-  if (process.platform === "darwin") {
-    return "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) " +
-      "AppleWebKit/537.36 (KHTML, like Gecko) " +
-      "Chrome/138.0.0.0 Safari/537.36";
-  }
-  throw new Error(`当前系统 ${process.platform} 不支持抖音本机发布 Service`);
-}
-
-
-/**
  * 创建本地 renderer 窗口并加载独立构建产物。
  *
  * @param accountSession - 与签名窗口共享的 Session
  * @param rendererPath - renderer IIFE 产物
+ * @param identity - 本次发布从 assets 读取的固定浏览器身份
  * @returns renderer 窗口
  */
 async function createServiceNetworkWindow(
   accountSession: Session,
   rendererPath: string,
   channelPrefix: string,
+  identity: DouyinBrowserIdentity,
   onCreated?: (window: BrowserWindow) => void,
 ): Promise<BrowserWindow> {
   const window = new MAIN_ELECTRON.BrowserWindow({
@@ -2118,7 +2237,7 @@ async function createServiceNetworkWindow(
     },
   });
   onCreated?.(window);
-  window.webContents.setUserAgent(createMachineUserAgent());
+  window.webContents.setUserAgent(identity.userAgent);
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   const scriptUrl = pathToFileURL(rendererPath).href;
   const html = `<!doctype html><html><body><script src="${scriptUrl}"></script></body></html>`;
@@ -2293,8 +2412,8 @@ async function createInProcessWorker(options: DouyinWorkerOptions, logger: Logge
   };
   const accountSession = electron.session.fromPartition(options.browserPartition, { cache: true });
   await accountSession.setProxy({ mode: "direct" });
-  accountSession.setUserAgent(createMachineUserAgent(), "zh-CN");
-  installRequestHeaderBridge(accountSession);
+  accountSession.setUserAgent(options.browserIdentity.userAgent, options.browserIdentity.acceptLanguage);
+  installRequestHeaderBridge(accountSession, options.browserIdentity);
   let signerWindow: BrowserWindow | undefined;
   let networkWindow: BrowserWindow | undefined;
   const pending = new Map<string, { reject(error: Error): void; resolve(value: unknown): void }>();
@@ -2325,7 +2444,7 @@ async function createInProcessWorker(options: DouyinWorkerOptions, logger: Logge
   };
 
   try {
-    signerWindow = await createSignerWindow(accountSession);
+    signerWindow = await createSignerWindow(accountSession, options.browserIdentity);
     electron.ipcMain.handle(channels.getSessionState, async (event) => {
       if (event.sender.id !== networkWindow?.webContents.id) throw new Error("非法抖音 Session 请求来源");
       const storage = await readSecurityStorage(signerWindow as BrowserWindow);
@@ -2352,7 +2471,7 @@ async function createInProcessWorker(options: DouyinWorkerOptions, logger: Logge
     electron.ipcMain.on(channels.ready, readyListener);
     electron.ipcMain.on(channels.log, logListener);
     electron.ipcMain.on(channels.result, resultListener);
-    networkWindow = await createServiceNetworkWindow(accountSession, options.electronRendererPath, channelPrefix, (created) => {
+    networkWindow = await createServiceNetworkWindow(accountSession, options.electronRendererPath, channelPrefix, options.browserIdentity, (created) => {
       networkWindow = created;
     });
     networkWindow.once("closed", () => {
@@ -2437,8 +2556,12 @@ export async function prepare(input: VideoUploadPayload): Promise<DouyinPrepared
   if (visibility !== "self" && visibility !== "friends" && visibility !== "public") {
     throw new Error("抖音 visibility 只支持 self、friends 或 public");
   }
+  const electron = publishElectron;
+  if (!electron) throw new Error("抖音发布运行时尚未配置");
+  const browserIdentity = await loadDouyinBrowserIdentity(electron.app.getAppPath());
   const rendererPath = join(dirname(fileURLToPath(import.meta.url)), "douyin-publish-renderer.js");
   const options: DouyinWorkerOptions = {
+    browserIdentity,
     browserPartition,
     coverPath: isAbsolute(coverFile) ? coverFile : resolve(process.cwd(), coverFile),
     electronRendererPath: rendererPath,

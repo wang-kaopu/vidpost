@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import test from "node:test";
 
 import {
@@ -13,9 +15,20 @@ import {
 } from "../src/infra/video/baijiahao-video.ts";
 import {
   DouyinVideo,
+  createMachineProfile,
   dispose as disposeDouyin,
   prepare as prepareDouyin,
 } from "../src/infra/video/douyin-video.ts";
+
+const projectRoot = process.cwd();
+const windowsIdentity = JSON.parse(fs.readFileSync(
+  path.join(projectRoot, "assets", "douyin", "browser-identity.windows.json"),
+  "utf8",
+));
+const macosIdentity = JSON.parse(fs.readFileSync(
+  path.join(projectRoot, "assets", "douyin", "browser-identity.macos.json"),
+  "utf8",
+));
 
 test("migrated platforms expose prepare and dispose functions plus class upload", () => {
   for (const lifecycle of [
@@ -56,4 +69,46 @@ test("dispose is safe when prepare did not produce a context", async () => {
   await assert.doesNotReject(disposeBilibili());
   await assert.doesNotReject(disposeBaijiahao());
   await assert.doesNotReject(disposeDouyin());
+});
+
+test("douyin fixed identity assets contain complete Chrome 138 fields", () => {
+  for (const identity of [windowsIdentity, macosIdentity]) {
+    assert.deepEqual(Object.keys(identity).sort(), [
+      "acceptLanguage",
+      "browserPlatform",
+      "language",
+      "secChUa",
+      "secChUaPlatform",
+      "userAgent",
+    ]);
+    assert.equal(typeof identity.acceptLanguage, "string");
+    assert.ok(identity.acceptLanguage.length > 0);
+    assert.equal(identity.language, "zh-CN");
+    assert.equal(typeof identity.browserPlatform, "string");
+    assert.equal(typeof identity.secChUaPlatform, "string");
+    assert.match(identity.userAgent, /Chrome\/138\.0\.0\.0/u);
+    assert.match(identity.secChUa, /"Chromium";v="138"/u);
+  }
+});
+
+test("douyin publish profile consumes the same fixed identities used by login", () => {
+  for (const [identity, browserPlatform, secChUaPlatform] of [
+    [windowsIdentity, "Win32", '"Windows"'],
+    [macosIdentity, "MacIntel", '"macOS"'],
+  ]) {
+    const profile = createMachineProfile(identity);
+    assert.equal(identity.browserPlatform, browserPlatform);
+    assert.equal(identity.secChUaPlatform, secChUaPlatform);
+    assert.equal(profile.userAgent, identity.userAgent);
+    assert.equal(profile.platform, identity.browserPlatform);
+    assert.equal(profile.secChUa, identity.secChUa);
+    assert.equal(profile.secChUaPlatform, identity.secChUaPlatform);
+  }
+});
+
+test("douyin publish profile rejects an unsupported identity platform", () => {
+  assert.throws(
+    () => createMachineProfile({ ...windowsIdentity, browserPlatform: "Linux" }),
+    /不支持的抖音浏览器身份平台/u,
+  );
 });

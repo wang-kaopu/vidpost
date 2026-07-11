@@ -88,6 +88,8 @@ Bilibili、百家号和抖音的发布逻辑已分别内联到 `src/infra/video`
 - Bilibili 必须按账号动态查询并选择投稿分区 `humanTypeId`。
 - 抖音必须逐任务选择 `public`、`friends` 或 `self`，默认 `public`。
 - 抖音 HTTP 上传复用当前应用的账号级 Electron partition，不启动第二个 Electron Profile；该链路仅支持 macOS 和 Windows。
+- 抖音登录与发布根据宿主 OS 读取 `assets/douyin` 下对应的固定 Chrome 138 身份文件，并统一使用其中的 UA、平台及 Client Hints；不支持通过环境变量或运行参数自定义指纹。GPU、CPU、内存和屏幕信息仍由当前宿主 Chromium 提供。
+- 抖音最终投稿被安全网关要求身份验证时，任务会直接失败并报告账号昵称、验证原因、验证场景和可用验证方式；完成同一账号 partition 中的身份验证后再重新发布。
 - `prepare()` 返回可检查的完整平台上下文。单独调用 Bilibili 或百家号 `prepare()` 后不执行最终投稿会遗留已上传的远端素材；抖音应将返回上下文传给 `dispose()` 关闭隐藏窗口、IPC 和 Session 资源。`dispose()` 清理失败只记录日志，不向调用方抛错。
 - 最终投稿请求和整条发布流程不会自动重试，只对可安全重复的探测请求及视频分片做有限重试。
 - HTTP 调试日志按原 Service 行为输出完整 Header、Cookie、Token 和响应，请勿把生产日志交给无关人员。

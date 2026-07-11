@@ -34,6 +34,8 @@ The Bilibili, Baijiahao, and Douyin publishing implementations now live directly
 - Every Bilibili task must select an account-specific `humanTypeId` fetched from Bilibili.
 - Every Douyin task selects `public`, `friends`, or `self`; the default is `public`.
 - Douyin reuses the current Electron account partition instead of opening the same profile in a second Electron process. Douyin publishing is available on macOS and Windows only.
+- Douyin login and publish select the corresponding fixed Chrome 138 identity file under `assets/douyin` from the host OS, then consistently use its UA, platform, and Client Hints. Fingerprint overrides through environment variables or runtime arguments are unsupported. GPU, CPU, memory, and screen information still comes from the host Chromium runtime.
+- When Douyin's security gateway requires identity verification for the final submission, the task fails directly and reports the account nickname, verification reason, scene, and available methods. Complete verification in the same account partition before publishing again.
 - `prepare()` returns the complete inspectable platform context. Calling Bilibili or Baijiahao `prepare()` without the final publish can leave uploaded remote assets behind. Pass a standalone Douyin context to `dispose()` to close hidden windows, IPC, and session resources. Cleanup failures are logged and never thrown.
 - Final publish requests and complete workflows are never retried automatically. Only safe probes and media chunks have bounded retries.
 - HTTP debug logs intentionally include full headers, cookies, tokens, and responses. Treat production logs as sensitive.
