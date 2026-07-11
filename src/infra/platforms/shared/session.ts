@@ -4,7 +4,6 @@ import path from "node:path";
 
 import type { BrowserContextOptions } from "playwright";
 
-import type { DatabaseStore } from "../../db/contracts";
 import { readStorageState, writeStorageState } from "./session/storage-state.ts";
 
 // 描述 Playwright cookie 的最小输入。
@@ -131,15 +130,6 @@ export async function exportStorageState(
   const storageState = buildPlaywrightStorageState(storageWindow.webContents.getURL(), cookies, localStorageEntries);
   await fs.mkdir(path.dirname(accountFile), { recursive: true });
   await writeStorageState(accountFile, storageState);
-}
-
-// 读取账号并确保存在。
-export async function requireAccountById(store: DatabaseStore, accountId: string) {
-  const account = await store.getAccountById(accountId);
-  if (!account) {
-    throw new Error(`账号不存在: ${accountId}`);
-  }
-  return account;
 }
 
 export { readStorageState, writeStorageState };

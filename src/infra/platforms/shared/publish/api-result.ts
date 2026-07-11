@@ -1,6 +1,6 @@
 import type { Page } from "playwright";
 
-import type { PlatformUploadResult } from "../../contracts";
+import type { PlatformUploadResult } from "../../contracts.ts";
 
 export type PublishApiMatcher = (url: string) => boolean;
 

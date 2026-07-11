@@ -1,4 +1,4 @@
-import { PlatformManualVerificationError, PlatformUserAbortedError } from "../errors.ts";
+import { PlatformUserAbortedError } from "../errors.ts";
 
 export const MAX_UPLOAD_ATTEMPTS = 3;
 export const UPLOAD_ATTEMPT_TIMEOUT_MS = 90_000;
@@ -26,7 +26,7 @@ export function isContextClosedError(error: unknown): boolean {
 }
 
 export function normalizeUploadAttemptError(platformLabel: string, error: unknown): Error {
-  if (error instanceof PlatformUserAbortedError || error instanceof PlatformManualVerificationError) {
+  if (error instanceof PlatformUserAbortedError) {
     return error;
   }
   if (error instanceof Error && /上传单轮超时/i.test(error.message)) {
@@ -85,9 +85,6 @@ export async function withUploadRetry<T>(
       return await runner(attempt);
     } catch (error) {
       lastError = options.normalizeError ? options.normalizeError(error) : error;
-      if (lastError instanceof PlatformManualVerificationError) {
-        throw lastError;
-      }
     }
   }
 

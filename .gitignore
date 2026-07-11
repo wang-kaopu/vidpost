@@ -35,6 +35,7 @@ src/script/bilibili-video-state-success copy.cjs
 
 
 out/
+.build/
 
 # macOS Finder metadata
 .DS_Store

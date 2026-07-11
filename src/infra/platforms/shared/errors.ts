@@ -26,13 +26,6 @@ export class PlatformTimeoutError extends PlatformInfraError {
   }
 }
 
-export class PlatformManualVerificationError extends PlatformInfraError {
-  constructor(message: string) {
-    super(message);
-    this.name = "PlatformManualVerificationError";
-  }
-}
-
 export class PlatformUserAbortedError extends PlatformInfraError {
   constructor(message: string) {
     super(message);

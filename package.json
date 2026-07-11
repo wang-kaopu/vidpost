@@ -3,26 +3,27 @@
   "version": "1.0.0",
   "description": "矩阵特工队",
   "productName": "矩阵特工队",
-  "authors": "kelvinwww", 
-  "main": "main.cjs",
+  "authors": "kelvinwww",
+  "type": "module",
+  "main": ".build/main.js",
+  "workspaces": [
+    "app"
+  ],
   "scripts": {
-    "build:renderer": "pnpm --dir app run build",
-    "test": "node --test",
-    "start": "node ./scripts/start-electron.cjs",
-    "forge start": "pnpm exec electron-forge start",
-    "forge package": "pnpm run build:renderer && pnpm exec electron-forge package",
-    "forge make": "pnpm run build:renderer && pnpm exec electron-forge make"
+    "build:electron": "tsx scripts/build-electron.ts",
+    "build:renderer": "npm run build --workspace app",
+    "build": "npm run build:electron && npm run build:renderer",
+    "typecheck": "tsc --noEmit && npm run typecheck --workspace app",
+    "test": "tsx --test test/*.test.ts",
+    "start": "npm run build:electron && tsx scripts/start-electron.ts",
+    "forge:start": "npm run build:electron && electron-forge start",
+    "forge:package": "npm run build && electron-forge package",
+    "forge:make": "npm run build && electron-forge make"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "packageManager": "pnpm@10.33.0",
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "electron",
-      "electron-winstaller"
-    ]
-  },
+  "packageManager": "npm@10.9.8",
   "dependencies": {
     "axios": "^1.15.2",
     "electron-squirrel-startup": "^1.0.1",
@@ -36,7 +37,12 @@
     "@electron-forge/maker-zip": "^7.11.1",
     "@electron-forge/plugin-auto-unpack-natives": "^7.11.1",
     "@electron-forge/plugin-fuses": "^7.11.1",
+    "@electron-forge/shared-types": "^7.11.1",
     "@electron/fuses": "^1.8.0",
-    "electron": "41.5.0"
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.25.0",
+    "electron": "41.5.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.8.0"
   }
 }

@@ -1,6 +1,6 @@
 import { chromium, type Browser, type Page } from "playwright";
 
-import { createPartitionStore, resolvePartitionForAccount } from "../../../../db/partition-store.cjs";
+import { createPartitionStore, resolvePartitionForAccount } from "../../../../db/partition-store.ts";
 import { importAccountCookies, exportAccountCookies } from "./electron-cookie-state.ts";
 import { getElectronPublishRuntime } from "./electron-publish-runtime.ts";
 
@@ -139,7 +139,7 @@ async function connectMarkedPage(markerUrl: string, timeoutMs: number): Promise<
       return { browser, page };
     }
 
-    browser.disconnect();
+    await browser.close();
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
 
@@ -171,7 +171,7 @@ export async function acquireElectronPublishSession(options: ElectronPublishSess
 
   let settled = false;
   const cleanupConnection = async () => {
-    browser.disconnect();
+    await browser.close();
   };
 
   return {

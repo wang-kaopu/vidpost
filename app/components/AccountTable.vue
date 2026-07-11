@@ -368,7 +368,7 @@ const createPlatformAccount = async (platform: PlatformOption) => {
     // if (!window.electronAPI?.login(platform.key)) {
     //   throw new Error("当前环境未注入 Electron 平台登录能力");
     // }
-    await window.electronAPI.login(platform.key);
+    await window.electronAPI?.login(platform.key);
     await loadAccounts();
     platformDialogVisible.value = false;
   } catch {

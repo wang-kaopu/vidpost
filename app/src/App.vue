@@ -1,6 +1,6 @@
 <!-- <script setup>
 import { onMounted, ref } from 'vue'
-import { registerSse } from './scripts/sse-register.js'
+import { registerSse } from './scripts/sse-register.ts'
 
 const VIDEO_PATH = '/Users/wkp/Downloads/olivia.mp4'
 const COVER_PATH = '/Users/wkp/Downloads/olivia.jpg'

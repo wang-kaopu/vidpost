@@ -5,20 +5,17 @@ import type { Locator, Page } from "playwright";
 import type { InteractionRecoveryContext } from "../shared/browser/page-helpers.ts";
 
 import type { PlatformUploadPayload, PlatformUploadResult } from "../contracts.ts";
-import type { PublishVerificationStore } from "../../runtime/publish-verification-store.ts";
 import { acquireElectronPublishSession } from "../shared/browser.ts";
 import { clickWithDomFallback, fillWithRecovery, firstVisibleLocator, pickFileWithChooser, runOnAbort, waitForCondition } from "../shared/browser/page-helpers.ts";
-import { PlatformCookieInvalidError, PlatformManualVerificationError } from "../shared/errors.ts";
+import { PlatformCookieInvalidError } from "../shared/errors.ts";
 import {
   buildFailureOutcome,
   buildSuccessOutcome,
-  createManualVerificationRequest,
   MAX_UPLOAD_ATTEMPTS,
   normalizeUploadAttemptError,
   parseScheduledTimeInput,
   runUploadAttemptWithTimeout,
   UPLOAD_ATTEMPT_TIMEOUT_MS,
-  waitForManualVerificationCode,
   withUploadRetry,
 } from "../shared/publish/index.ts";
 import {
@@ -69,7 +66,6 @@ type DouyinUploadPayload = PlatformUploadPayload & {
   subtaskId?: string;
   accountId?: string;
   accountName?: string;
-  publishVerificationStore?: PublishVerificationStore;
 };
 
 type DouyinPublishButtonCandidate = {
@@ -1083,47 +1079,11 @@ async function fillPublishSmsCodeFromEnv(page: Page): Promise<boolean> {
   return true;
 }
 
-async function fillPublishSmsCodeManually(page: Page, payload: DouyinUploadPayload): Promise<boolean> {
-  const store = payload.publishVerificationStore;
-  if (!store) {
-    return false;
-  }
-
-  const input = await firstVisibleLocator(page, DOUYIN_SMS_INPUT_SELECTORS, 1_000);
-  if (!input) {
-    return false;
-  }
-
-  const request = createManualVerificationRequest(store, {
-    platform: "douyin",
-    subtaskId: payload.subtaskId,
-    accountId: payload.accountId,
-    accountName: payload.accountName,
-    title: payload.title,
-    prompt: "抖音发布需要短信验证码",
-    codeLength: 6,
-    timeoutMs: 60_000,
-  });
-  const verificationCode = await waitForManualVerificationCode(store, request.requestId, 60_000);
-
-  await focusLocatorForTyping(page, input, "sms-manual").catch(() => false);
-  const filled = await fillWithRecovery(input, verificationCode, {
-    timeoutMs: 3_000,
-    attempts: DOUYIN_INTERACTION_RETRY_ATTEMPTS,
-    onInterference: (context) => recoverFromInteractionInterference(page, context),
-  });
-  if (!filled) {
-    await page.keyboard.type(verificationCode);
-  }
-  return true;
-}
-
-async function waitForPublishSuccess(page: Page, payload: DouyinUploadPayload): Promise<void> {
+async function waitForPublishSuccess(page: Page): Promise<void> {
   const deadline = Date.now() + PUBLISH_SUCCESS_TIMEOUT_MS;
   let smsTriggerClicked = false;
   let smsTriggerLastAttemptAt = 0;
   let smsCodeHandled = false;
-  let smsManualAttempted = false;
   let manageUrlObservedAt: number | null = null;
 
   while (Date.now() < deadline) {
@@ -1159,20 +1119,6 @@ async function waitForPublishSuccess(page: Page, payload: DouyinUploadPayload): 
       if (smsFilled) {
         smsCodeHandled = true;
         console.info("[douyin:publish] sms code auto-filled from env");
-      } else if (!smsManualAttempted) {
-        smsManualAttempted = true;
-        try {
-          const manualFilled = await fillPublishSmsCodeManually(page, payload);
-          if (manualFilled) {
-            smsCodeHandled = true;
-            console.info("[douyin:publish] sms code filled from desktop dialog");
-          }
-        } catch (error) {
-          if (error instanceof PlatformManualVerificationError) {
-            throw error;
-          }
-          console.info(`[douyin:publish] manual sms code wait failed error=${error instanceof Error ? error.message : String(error)}`);
-        }
       }
     }
 
@@ -1250,12 +1196,12 @@ async function uploadOnce(payload: DouyinUploadPayload, attempt: number, signal?
 
     await waitForPublishButtonReady(page, publishButton);
     await clickPublishButton(page, publishButton);
-    await waitForPublishSuccess(page, payload);
+    await waitForPublishSuccess(page);
     await session.complete();
 
     return buildSuccessOutcome({ detail: "抖音发布成功" });
   } catch (error) {
-    if (finalAttempt || error instanceof PlatformManualVerificationError) {
+    if (finalAttempt) {
       await session.fail(error);
     } else {
       await session.release();

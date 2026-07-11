@@ -1,36 +1,30 @@
-# MatrixAccDeploy_Backend
+# AgentHunt
 
-#### Description
-{**When you're done, you can delete the content in this README and update the file with details for others getting started with your repository**}
+An Electron and Vue desktop client for publishing videos to multiple platforms. The Electron main process, services, scripts, and tests use TypeScript with ESM. The Vue renderer is built with Vite.
 
-#### Software Architecture
-Software architecture description
+## Setup
 
-#### Installation
+The repository uses npm workspaces and keeps a single root `package-lock.json`.
 
-1.  xxxx
-2.  xxxx
-3.  xxxx
+```bash
+nvm use
+npm install
+```
 
-#### Instructions
+## Commands
 
-1.  xxxx
-2.  xxxx
-3.  xxxx
+```bash
+npm run dev --workspace app
+npm start
+npm run typecheck
+npm test
+npm run build
+npm run forge:start
+npm run forge:package
+```
 
-#### Contribution
+The Electron main process is emitted as `.build/main.js` in ESM format. `preload.ts` uses TypeScript and ESM syntax in source, but is emitted as `.build/preload.cjs` to preserve Electron sandbox support.
 
-1.  Fork the repository
-2.  Create Feat_xxx branch
-3.  Commit your code
-4.  Create Pull Request
+`app/App.vue` is the production renderer entry. `app/src/App.vue` and `app/src/scripts/sse-register.ts` are the backend integration demo and must be retained.
 
-
-#### Gitee Feature
-
-1.  You can use Readme\_XXX.md to support different languages, such as Readme\_en.md, Readme\_zh.md
-2.  Gitee blog [blog.gitee.com](https://blog.gitee.com)
-3.  Explore open source project [https://gitee.com/explore](https://gitee.com/explore)
-4.  The most valuable open source project [GVP](https://gitee.com/gvp)
-5.  The manual of Gitee [https://gitee.com/help](https://gitee.com/help)
-6.  The most popular members  [https://gitee.com/gitee-stars/](https://gitee.com/gitee-stars/)
+The obsolete manual-verification store integration was removed because its runtime store did not exist. Douyin SMS verification can still read `MATRIX_DOUYIN_PUBLISH_SMS_CODE` from the environment.

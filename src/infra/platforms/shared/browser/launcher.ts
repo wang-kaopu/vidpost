@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { chromium, type Browser, type BrowserContext, type BrowserContextOptions, type BrowserType, type LaunchOptions, type Page } from "playwright";
-import { resolvePlaywrightHeadlessMode, type PlaywrightHeadlessScenario } from "./headless-config.js";
+import { resolvePlaywrightHeadlessMode, type PlaywrightHeadlessScenario } from "./headless-config.ts";
 
 const ENV_BROWSER_PATH_KEYS = [
   "PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH",

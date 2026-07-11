@@ -1,4 +1,4 @@
-import electron from "electron";
+import electron, { type BrowserWindow } from "electron";
 import syncFs from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -7,10 +7,10 @@ import { fileURLToPath } from "node:url";
 import {
   createPartitionStore,
   resolvePartitionForAccount,
-} from "../db/partition-store.cjs";
-import type { PlatformLoginFlowContext } from "./types";
+} from "../db/partition-store.ts";
+import type { PlatformLoginFlowContext } from "./types.ts";
 
-const { BrowserWindow, shell } = electron;
+const { BrowserWindow: ElectronBrowserWindow, shell } = electron;
 
 const LOGIN_BROWSER_FINGERPRINT = {
   webdriver: false,
@@ -260,9 +260,9 @@ const CLOSE_BUTTON_CSS_PATH = resolveRuntimeAssetPath(
 
 const PLATFORM_LOGIN_PRELOAD_PATH = resolveRuntimeAssetPath(
   [
-    path.join(SHARED_DIRNAME, "../preload.cjs"),
-    path.join(SHARED_DIRNAME, "../../preload.cjs"),
-    path.join(process.cwd(), "preload.cjs"),
+    path.join(SHARED_DIRNAME, "preload.cjs"),
+    path.join(process.cwd(), ".build", "preload.cjs"),
+    path.join(process.cwd(), "preload.ts"),
   ],
   "平台登录 preload",
 );
@@ -524,7 +524,7 @@ export const createPlatformLoginWindow = (
   partition: string,
   parentWindow?: BrowserWindow | null,
 ) => {
-  const loginWindow = new BrowserWindow({
+  const loginWindow = new ElectronBrowserWindow({
     width: 1200,
     height: 900,
     minWidth: 1100,

@@ -20,6 +20,7 @@ interface ElectronAPI {
   ping: (payload: unknown) => Promise<unknown>;
   getLaunchIntent: () => Promise<LaunchIntent | null>;
   onLaunchIntent: (handler: (payload: LaunchIntent) => void) => () => void;
+  openExternal: (url: string) => Promise<void>;
   syncTaskStateBg: () => void;
 }
 

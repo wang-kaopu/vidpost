@@ -1,4 +1,4 @@
-import type { PlatformUploadResult } from "../../contracts";
+import type { PlatformUploadResult } from "../../contracts.ts";
 
 export interface PublishOutcomeOptions {
   detail?: string;

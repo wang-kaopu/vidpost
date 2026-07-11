@@ -1,4 +1,4 @@
-import axios, { AxiosError, type AxiosInstance, type AxiosRequestConfig, type AxiosResponse, type RawAxiosRequestHeaders } from "axios";
+import axios, { AxiosError, AxiosHeaders, type AxiosInstance, type AxiosRequestConfig, type AxiosResponse } from "axios";
 import { frontendEnv, getAccessToken } from "@/config";
 import type { ApiEnvelope } from "./types";
 
@@ -74,7 +74,7 @@ apiClient.interceptors.request.use((config) => {
   if (!authorization) {
     return config;
   }
-  const headers = (config.headers || {}) as RawAxiosRequestHeaders;
+  const headers = AxiosHeaders.from(config.headers);
   headers.Authorization = authorization;
   config.headers = headers;
   return config;

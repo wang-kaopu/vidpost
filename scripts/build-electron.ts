@@ -1,0 +1,42 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { build } from "esbuild";
+
+const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const outputDirectory = path.join(projectRoot, ".build");
+
+/**
+ * 构建 Electron 主进程 ESM 和 sandbox preload CommonJS 产物。
+ */
+export async function buildElectron(): Promise<void> {
+  await fs.rm(outputDirectory, { recursive: true, force: true });
+
+  await Promise.all([
+    build({
+      bundle: true,
+      entryPoints: [path.join(projectRoot, "main.ts")],
+      external: ["electron", "electron/*"],
+      format: "esm",
+      outfile: path.join(outputDirectory, "main.js"),
+      packages: "external",
+      platform: "node",
+      sourcemap: true,
+      target: "node22",
+    }),
+    build({
+      bundle: true,
+      entryPoints: [path.join(projectRoot, "preload.ts")],
+      external: ["electron", "electron/*"],
+      format: "cjs",
+      outfile: path.join(outputDirectory, "preload.cjs"),
+      packages: "external",
+      platform: "node",
+      sourcemap: true,
+      target: "node22",
+    }),
+  ]);
+}
+
+await buildElectron();

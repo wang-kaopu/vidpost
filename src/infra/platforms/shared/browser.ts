@@ -4,7 +4,7 @@ import { type BrowserContext, type BrowserContextOptions, type Page } from "play
 import { loadContextStorageState } from "./session/storage-state.ts";
 import { PlatformTimeoutError } from "./errors.ts";
 import { createBrowserSession } from "./browser/launcher.ts";
-import { resolvePlaywrightHeadlessMode, type PlaywrightHeadlessScenario } from "./browser/headless-config.js";
+import { resolvePlaywrightHeadlessMode, type PlaywrightHeadlessScenario } from "./browser/headless-config.ts";
 import { sleep } from "./browser/page-helpers.ts";
 
 // 平台浏览器操作的默认超时时间。

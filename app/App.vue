@@ -51,7 +51,7 @@ const currentView = computed(() => {
   if (activeMenu.value === "works") {
     return Work;
   }
-  // return WorksPlaceholder;
+  return Work;
 });
 
 const mapLaunchIntentToMenu = (intent: LaunchIntent): MenuKey => intent.page;

@@ -1,13 +1,13 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import type { Cookie } from "electron";
+import type { Cookie, CookiesGetFilter, CookiesSetDetails } from "electron";
 
 import { readStorageState, writeStorageState, type PlaywrightStorageState } from "../session/storage-state.ts";
 
 export interface ElectronCookieStoreLike {
-  get(filter: Record<string, unknown>): Promise<Cookie[]>;
-  set(details: Record<string, unknown>): Promise<void>;
+  get(filter: CookiesGetFilter): Promise<Cookie[]>;
+  set(details: CookiesSetDetails): Promise<void>;
 }
 
 function cookieUrl(cookie: PlaywrightStorageState["cookies"][number]): string {
@@ -53,7 +53,7 @@ export async function importAccountCookies(cookies: ElectronCookieStoreLike, acc
       continue;
     }
 
-    const details: Record<string, unknown> = {
+    const details: CookiesSetDetails = {
       url: cookieUrl(cookie),
       name: cookie.name,
       value: cookie.value,

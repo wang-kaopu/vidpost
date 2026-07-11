@@ -1,5 +1,5 @@
 // 定义 server 侧平台登录、ping、昵称同步与 upload 的统一契约。
-import type { MemoryStore } from "../../db/memory-store";
+import type { MemoryStore } from "../../db/memory-store.ts";
 
 // 描述登录上下文。
 export interface PlatformLoginContext {
