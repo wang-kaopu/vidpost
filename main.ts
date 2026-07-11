@@ -119,32 +119,30 @@ function handleProtocolUrl(rawUrl: string): void {
 // 单例锁，确保把 URL 交给现有窗口，而不是打开新窗口
 const hasSingletonLock = getSingletonLock(app, () => mainWindow, extractProtocolUrlFromCommandLine, handleProtocolUrl)
 
-// 检测当前URL是否为agenthunt的开发服务器
-const RENDERER_MARKER = '<meta name="agenthunt-renderer" content="rm-server"'
-
-async function loadRenderer(window: BrowserWindow, devServerUrl: string, builtAppPath: string): Promise<void> {
-  let isDevServer = false
-  try {
-    const response = await fetch(devServerUrl, {
-      signal: AbortSignal.timeout(800),
-    })
-    if (response.ok) {
-      const html = await response.text()
-      isDevServer = html.includes(RENDERER_MARKER)
-    }
-  } catch (error) {
-    isDevServer = false
-  }
-  if (isDevServer) {
-    await window.loadURL(devServerUrl)
+/**
+ * 根据运行环境加载渲染进程页面。
+ * @param window - Electron 主窗口
+ * @param builtAppPath - 前端构建入口文件路径
+ */
+async function loadRenderer(window: BrowserWindow, builtAppPath: string): Promise<void> {
+  const devServerUrl = process.env.RENDERER_DEV_SERVER_URL
+  if (app.isPackaged || !devServerUrl) {
+    await window.loadFile(builtAppPath)
     return
   }
+
+  try {
+    await window.loadURL(devServerUrl)
+    return
+  } catch {
+    // 显式启动的 Vite 异常退出时允许使用最近一次构建的前端产物。
+  }
+
   await window.loadFile(builtAppPath)
 }
 
 // 创建主窗口
 const createWindow = (): BrowserWindow => {
-  const devServerUrl = 'http://localhost:5173'
   const builtAppPath = path.join(projectRoot, 'app', 'dist', 'index.html')
 
   // 创建浏览器窗口
@@ -158,10 +156,6 @@ const createWindow = (): BrowserWindow => {
       contextIsolation: true,
       nodeIntegration: false,
     }
-  })
-
-  mainWindow.webContents.once('did-fail-load', () => {
-    mainWindow.loadFile(builtAppPath)
   })
 
   // 注册事件，页面加载成功后将后门access_token写到localStorage（仅在用例时需要）
@@ -180,7 +174,7 @@ const createWindow = (): BrowserWindow => {
   // })
 
   // 加载页面URL
-  loadRenderer(mainWindow, devServerUrl, builtAppPath).catch((error) => {
+  loadRenderer(mainWindow, builtAppPath).catch((error) => {
     console.error('[renderer] failed to load renderer:', error)
     mainWindow.loadFile(builtAppPath)
   })

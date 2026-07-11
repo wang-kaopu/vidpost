@@ -14,10 +14,10 @@ npm install
 ## 开发与验证
 
 ```bash
-# 启动 Vue 开发服务器
-npm run dev --workspace app
+# 构建 Electron，并为当前实例启动专属 Vite 开发服务器
+npm run dev
 
-# 构建 Electron 后启动桌面应用
+# 构建 Electron 后启动桌面应用，只加载已有前端构建产物
 npm start
 
 # 类型检查、测试和完整构建
@@ -32,6 +32,8 @@ npm run forge:make
 ```
 
 Electron 主进程构建为 `.build/main.js` ESM。`preload.ts` 仍在源码层使用 TypeScript 和 ESM 语法，但为了保留 sandbox，构建产物为 `.build/preload.cjs`。
+
+`npm run dev` 会选择空闲端口启动当前项目的 Vite，并通过 `RENDERER_DEV_SERVER_URL` 将准确地址交给 Electron。Electron 不再探测固定端口，因此不会连接其他项目或工作区的开发服务器。`npm start` 和打包后的应用只加载 `app/dist/index.html`。
 
 `app/App.vue` 是正式渲染入口；`app/src/App.vue` 和 `app/src/scripts/sse-register.ts` 是后端联调 Demo，不能作为废弃目录删除。
 

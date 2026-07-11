@@ -15,6 +15,7 @@
     "build": "npm run build:electron && npm run build:renderer",
     "typecheck": "tsc --noEmit && npm run typecheck --workspace app",
     "test": "tsx --test test/*.test.ts",
+    "dev": "npm run build:electron && tsx scripts/start-development.ts",
     "start": "npm run build:electron && tsx scripts/start-electron.ts",
     "forge:start": "npm run build:electron && electron-forge start",
     "forge:package": "npm run build && electron-forge package",
@@ -40,9 +41,10 @@
     "@electron-forge/shared-types": "^7.11.1",
     "@electron/fuses": "^1.8.0",
     "@types/node": "^22.0.0",
-    "esbuild": "^0.25.0",
     "electron": "41.5.0",
+    "esbuild": "^0.25.0",
     "tsx": "^4.20.0",
-    "typescript": "^5.8.0"
+    "typescript": "^5.8.0",
+    "vite": "^7.3.6"
   }
 }
