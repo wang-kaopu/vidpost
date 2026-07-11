@@ -5,6 +5,7 @@ import { createTaskPageModel } from '../page-model/task-page-model.ts'
 import { resolveAccountFilePath } from './account-service.ts'
 import { PublishAssetCache } from './publish-asset-cache.ts'
 import type { Video } from '../infra/video/video.ts'
+import { logger } from '../utils/logger.ts'
 const publishAssetCache = new PublishAssetCache()
 
 type AccountTask<T> = () => Promise<T>
@@ -240,7 +241,7 @@ export async function publishAndUpdateRemoteTask(
                     },
                 },
             }).catch((updateError) => {
-                console.error('更新远端发布任务失败状态失败:', updateError)
+                logger.error('更新远端发布任务失败状态失败:', updateError)
             })
         }
 

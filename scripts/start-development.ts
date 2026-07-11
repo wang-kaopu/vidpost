@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { createServer } from 'vite'
 
 import { buildElectronLaunchConfig } from './start-electron.ts'
+import { logger } from '../src/utils/logger.ts'
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url))
 
@@ -61,7 +62,7 @@ export async function startDevelopment(): Promise<void> {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   startDevelopment().catch((error) => {
-    console.error('[start-development] 启动失败：', error)
+    logger.error('[start-development] 启动失败：', error)
     process.exitCode = 1
   })
 }

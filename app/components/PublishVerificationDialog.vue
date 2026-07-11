@@ -77,7 +77,7 @@ useDialogLayer(() => props.visible && Boolean(props.request));
 <template>
   <teleport to="body">
     <transition name="dialog-layer" appear>
-      <div v-if="visible && request" class="platform-dialog-mask" @click.self>
+      <div v-if="visible && request" class="platform-dialog-mask">
         <section class="platform-dialog verification-dialog dialog-surface">
           <header class="platform-dialog-header">
             <div>

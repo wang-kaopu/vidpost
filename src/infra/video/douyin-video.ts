@@ -8,17 +8,19 @@ import axios, { AxiosHeaders, type AxiosInstance } from "axios";
 import CRC32 from "crc-32";
 import pLimit from "p-limit";
 import type { BrowserWindow, Event as ElectronEvent, IpcMainEvent, IpcRenderer, Session } from "electron";
-import { chromium, type BrowserContext, type Page, type Response } from "playwright";
+import { chromium, type BrowserContext, type Response } from "playwright";
+
+import { logger, type Logger } from "../../utils/logger.ts";
 
 import type { PublishedStatePayload, PublishedStateResult, Video, VideoRuntime, VideoUploadPayload, VideoUploadResult } from "./video.ts";
 
 interface LogEvent { message?: string; type: string; [key: string]: unknown }
-interface Logger { log(event: LogEvent): void | Promise<void> }
 interface SerializedAxiosResponse { body: unknown; headers: unknown; status: number; statusText: string }
 
 /** 安全输出结构化日志，日志失败不影响业务。 */
-async function emitLog(logger: Logger, event: LogEvent): Promise<void> {
-  try { await logger.log(event); } catch (error) { console.error("Logger 执行失败：", error); }
+async function emitLog(target: Logger, event: LogEvent): Promise<void> {
+  if (event.type === "error" || event.type === "http-error") target.error(event);
+  else target.info(event);
 }
 
 const DOUYIN_SERVICE_PROTOCOL_VERSION = 1;
@@ -2143,9 +2145,16 @@ function runElectronRenderer(): void {
   };
   RENDERER_RESPONSES = [];
   RENDERER_LOGGER = {
-    log(event: LogEvent): void {
+    info(event): void {
       RENDERER_IPC.send(RENDERER_CHANNELS.log, {
-        event,
+        event: event as LogEvent,
+        kind: "log",
+        version: SERVICE_PROTOCOL_VERSION,
+      } satisfies WorkerEnvelope);
+    },
+    error(event): void {
+      RENDERER_IPC.send(RENDERER_CHANNELS.log, {
+        event: { ...(event as LogEvent), type: "error" },
         kind: "log",
         version: SERVICE_PROTOCOL_VERSION,
       } satisfies WorkerEnvelope);
@@ -2265,12 +2274,6 @@ function formatError(error: unknown): string {
 let publishElectron: typeof import("electron") | undefined;
 const preparedWorkers = new WeakMap<DouyinPreparedContext, InProcessWorker>();
 const activeWorkers = new Set<InProcessWorker>();
-const douyinLogger: Logger = {
-  log(event): void {
-    if (event.type === "info") console.log(event.message ?? "");
-    else console.log(JSON.stringify(event, null, 2));
-  },
-};
 
 /** 创建与当前 Electron 进程共享 Session 的发布窗口和 IPC 通道。 */
 async function createInProcessWorker(options: DouyinWorkerOptions, logger: Logger): Promise<InProcessWorker> {
@@ -2448,7 +2451,7 @@ export async function prepare(input: VideoUploadPayload): Promise<DouyinPrepared
   });
   let worker: InProcessWorker | undefined;
   try {
-    worker = await createInProcessWorker(options, douyinLogger);
+    worker = await createInProcessWorker(options, logger);
     await worker.ready;
     const prepared = {
       ...await sendInProcessCommand<Omit<DouyinPreparedContext, "workerId">>(worker, "prepare", options),
@@ -2457,7 +2460,7 @@ export async function prepare(input: VideoUploadPayload): Promise<DouyinPrepared
     preparedWorkers.set(prepared, worker);
     return prepared;
   } catch (error) {
-    if (worker) await disposeWorker(worker).catch((cleanupError: unknown) => console.error("Douyin prepare 失败后的清理也失败：", cleanupError));
+    if (worker) await disposeWorker(worker).catch((cleanupError: unknown) => logger.error("Douyin prepare 失败后的清理也失败：", cleanupError));
     throw error;
   }
 }
@@ -2479,7 +2482,7 @@ export async function dispose(prepared?: DouyinPreparedContext): Promise<void> {
   try {
     await disposeWorker(worker);
   } catch (error) {
-    console.error("Douyin 发布资源清理失败：", error);
+    logger.error("Douyin 发布资源清理失败：", error);
   }
 }
 
@@ -2561,7 +2564,7 @@ export function configureDouyinVideoRuntime(runtime: VideoRuntime): void {
 /** 关闭仍然存活的抖音发布窗口。 */
 export function destroyDouyinVideoWindows(): void {
   for (const worker of activeWorkers) {
-    void disposeWorker(worker).catch((error: unknown) => console.error("关闭抖音发布窗口失败：", error));
+    void disposeWorker(worker).catch((error: unknown) => logger.error("关闭抖音发布窗口失败：", error));
   }
 }
 
@@ -2609,8 +2612,8 @@ export class DouyinVideo implements Video {
       }
       return { status: "reviewing", link: payload.link ?? null, raw: null, matchedBy: "unknown", reason: "douyin work list did not match current publish task" };
     } finally {
-      await context.close().catch((error: unknown) => console.error("关闭抖音状态查询上下文失败：", error));
-      await browser?.close().catch((error: unknown) => console.error("关闭抖音状态查询浏览器失败：", error));
+      await context.close().catch((error: unknown) => logger.error("关闭抖音状态查询上下文失败：", error));
+      await browser?.close().catch((error: unknown) => logger.error("关闭抖音状态查询浏览器失败：", error));
     }
   }
 }

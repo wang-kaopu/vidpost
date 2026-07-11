@@ -7,6 +7,8 @@ import { fileTypeFromBuffer } from "file-type";
 import pLimit from "p-limit";
 import { chromium, type BrowserContext, type Page, type Response } from "playwright";
 
+import { logger } from "../../utils/logger.ts";
+
 import type {
   PublishedStatePayload,
   PublishedStateResult,
@@ -16,30 +18,11 @@ import type {
   VideoRuntime,
 } from "./video.ts";
 
-interface Logger {
-  log(event: unknown): void | Promise<void>;
-}
-
 interface SerializedAxiosResponse {
   body: unknown;
   headers: unknown;
   status: number;
   statusText: string;
-}
-
-const consoleLogger: Logger = {
-  log(event): void {
-    console.log(JSON.stringify(event, null, 2));
-  },
-};
-
-/** 安全输出结构化日志，日志失败不影响发布。 */
-async function emitLog(logger: Logger, event: unknown): Promise<void> {
-  try {
-    await logger.log(event);
-  } catch (error) {
-    console.error("Logger 执行失败：", error);
-  }
 }
 
 const BILIBILI_REFERER = "https://member.bilibili.com/platform/upload/video/frame";
@@ -138,7 +121,6 @@ export interface BilibiliPublishResponse {
  */
 function createHttpClient(
   retryEnabled: boolean,
-  logger: Logger,
   responses: SerializedAxiosResponse[],
 ): AxiosInstance {
   const client = axios.create({
@@ -147,7 +129,7 @@ function createHttpClient(
     timeout: 120_000,
   });
   client.interceptors.request.use(async (config) => {
-    await emitLog(logger, { type: "http-request", request: { data: config.data, headers: config.headers, method: config.method, params: config.params, url: axios.getUri(config) } });
+    logger.info({ type: "http-request", request: { data: config.data, headers: config.headers, method: config.method, params: config.params, url: axios.getUri(config) } });
     return config;
   });
   client.interceptors.response.use(async (response) => {
@@ -158,10 +140,10 @@ function createHttpClient(
       statusText: response.statusText,
     };
     responses.push(serialized);
-    await emitLog(logger, { type: "http-response", response: serialized });
+    logger.info({ type: "http-response", response: serialized });
     return response;
   }, async (error) => {
-    await emitLog(logger, { type: "http-error", error });
+    logger.error({ type: "http-error", error });
     throw error;
   });
   if (retryEnabled) {
@@ -260,9 +242,8 @@ async function fetchHumanTypes(cookie: CookieContext, http: AxiosInstance): Prom
  */
 export async function getBilibiliHumanTypes(
   cookiesPath: string,
-  logger: Logger = consoleLogger,
 ): Promise<HumanType[]> {
-  const http = createHttpClient(true, logger, []);
+  const http = createHttpClient(true, []);
   const cookie = await loadCookieContext(isAbsolute(cookiesPath) ? cookiesPath : resolve(process.cwd(), cookiesPath));
   return fetchHumanTypes(cookie, http);
 }
@@ -301,7 +282,6 @@ async function initializeVideoUpload(
   videoPath: string,
   retryableHttp: AxiosInstance,
   nonRetryableHttp: AxiosInstance,
-  logger: Logger,
 ): Promise<BilibiliUploadContext> {
   const videoInfo = await stat(videoPath);
   if (!videoInfo.isFile() || videoInfo.size <= 0) {
@@ -309,7 +289,7 @@ async function initializeVideoUpload(
   }
 
   const videoName = videoPath.split(/[\\/]/u).at(-1) ?? "video.mp4";
-  await emitLog(logger, { message: "[1/4] 获取 meta 上传信息", type: "info" });
+  logger.info({ message: "[1/4] 获取 meta 上传信息", type: "info" });
   const metaProbe = await probeUpload(cookie, {
     build: "2140000",
     name: "file_meta.txt",
@@ -328,7 +308,7 @@ async function initializeVideoUpload(
     throw new Error("meta preupload 未返回 upos_uri");
   }
 
-  await emitLog(logger, { message: "[2/4] 获取视频上传信息并初始化 multipart", type: "info" });
+  logger.info({ message: "[2/4] 获取视频上传信息并初始化 multipart", type: "info" });
   const videoProbe = await probeUpload(cookie, {
     build: "2140000",
     name: videoName,
@@ -389,7 +369,6 @@ async function uploadAndCompleteVideo(
   videoPath: string,
   retryableHttp: AxiosInstance,
   nonRetryableHttp: AxiosInstance,
-  logger: Logger,
 ): Promise<void> {
   const videoInfo = await stat(videoPath);
   const videoName = videoPath.split(/[\\/]/u).at(-1) ?? "video.mp4";
@@ -403,7 +382,7 @@ async function uploadAndCompleteVideo(
   const file = await open(videoPath, "r");
   let completed = 0;
 
-  await emitLog(logger, { message: `[3/4] 上传 ${chunks.length} 个视频分片（并发 2）`, type: "info" });
+  logger.info({ message: `[3/4] 上传 ${chunks.length} 个视频分片（并发 2）`, type: "info" });
   try {
     const tasks: Array<Promise<{ eTag: string; partNumber: number }>> = [];
     for (const chunk of chunks) {
@@ -433,7 +412,7 @@ async function uploadAndCompleteVideo(
             },
           });
           completed += 1;
-          await emitLog(logger, { message: `      分片进度 ${completed}/${chunks.length}`, type: "info" });
+          logger.info({ message: `      分片进度 ${completed}/${chunks.length}`, type: "info" });
           return { eTag: "etag", partNumber: chunk.partNumber };
         }),
       );
@@ -473,7 +452,6 @@ async function uploadCover(
   cookie: CookieContext,
   coverPath: string,
   http: AxiosInstance,
-  logger: Logger,
 ): Promise<string> {
   const cover = await readFile(coverPath);
   const detected = await fileTypeFromBuffer(cover);
@@ -484,7 +462,7 @@ async function uploadCover(
   form.append("cover", `data:${detected.mime};base64,${cover.toString("base64")}`);
   form.append("csrf", cookie.csrf);
 
-  await emitLog(logger, { message: "[4/4] 上传封面", type: "info" });
+  logger.info({ message: "[4/4] 上传封面", type: "info" });
   const response = await http.post(COVER_UPLOAD_URL, form, {
     headers: { Cookie: cookie.header, Referer: BILIBILI_REFERER },
     params: { csrf: cookie.csrf, t: Date.now() },
@@ -515,10 +493,9 @@ export async function prepare(input: VideoUploadPayload): Promise<BilibiliPrepar
   const coverPath = isAbsolute(coverFile) ? coverFile : resolve(process.cwd(), coverFile);
   const videoPath = isAbsolute(videoFile) ? videoFile : resolve(process.cwd(), videoFile);
 
-  const logger = consoleLogger;
   const responses: SerializedAxiosResponse[] = [];
-  const retryableHttp = createHttpClient(true, logger, responses);
-  const nonRetryableHttp = createHttpClient(false, logger, responses);
+  const retryableHttp = createHttpClient(true, responses);
+  const nonRetryableHttp = createHttpClient(false, responses);
   const cookie = await loadCookieContext(cookiesPath);
   const humanTypes = await fetchHumanTypes(cookie, retryableHttp);
   const humanType = humanTypes.find((type) => type.id === humanTypeId);
@@ -533,11 +510,11 @@ export async function prepare(input: VideoUploadPayload): Promise<BilibiliPrepar
     tags: [...new Set(tags)],
     title,
   };
-  const upload = await initializeVideoUpload(cookie, videoPath, retryableHttp, nonRetryableHttp, logger);
-  await uploadAndCompleteVideo(upload, videoPath, retryableHttp, nonRetryableHttp, logger);
+  const upload = await initializeVideoUpload(cookie, videoPath, retryableHttp, nonRetryableHttp);
+  await uploadAndCompleteVideo(upload, videoPath, retryableHttp, nonRetryableHttp);
   const uploaded: BilibiliUploadedResources = {
     ...upload,
-    coverUrl: await uploadCover(cookie, coverPath, nonRetryableHttp, logger),
+    coverUrl: await uploadCover(cookie, coverPath, nonRetryableHttp),
   };
   const prepared: BilibiliPreparedContext = {
     cookie,
@@ -701,8 +678,8 @@ export class BilibiliVideo implements Video {
       }
       return { ...parsed, matchedBy: matched.matchedBy, link: parsed.link ?? payload.link ?? null };
     } finally {
-      await context?.close().catch((error: unknown) => console.error("关闭 Bilibili 状态查询上下文失败：", error));
-      await browser.close().catch((error: unknown) => console.error("关闭 Bilibili 状态查询浏览器失败：", error));
+      await context?.close().catch((error: unknown) => logger.error("关闭 Bilibili 状态查询上下文失败：", error));
+      await browser.close().catch((error: unknown) => logger.error("关闭 Bilibili 状态查询浏览器失败：", error));
     }
   }
 }

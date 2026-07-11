@@ -1,8 +1,10 @@
-import { spawn, type SpawnOptions } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import electronModule from 'electron'
+
+import { logger } from '../src/utils/logger.ts'
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url))
 const electronBinary = electronModule as unknown as string
@@ -38,7 +40,7 @@ export function startElectron(): void {
   const child = spawn(command, args, spawnOptions)
 
   child.on('error', (error) => {
-    console.error('[start-electron] failed to launch Electron:', error)
+    logger.error('[start-electron] failed to launch Electron:', error)
     process.exit(1)
   })
 

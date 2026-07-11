@@ -1,6 +1,8 @@
 // 原生http实现sse服务器
 import http, { type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 
+import { logger } from '../utils/logger.ts'
+
 const SSE_HOST = '127.0.0.1'
 const SSE_PORT = 3001
 const SSE_PATH = '/notify'
@@ -48,7 +50,7 @@ export function startSseServer(): Server {
   server = http.createServer(requestListener)
 
   server.listen(SSE_PORT, SSE_HOST, () => {
-    console.log(`[sse] listening on http://${SSE_HOST}:${SSE_PORT}${SSE_PATH}`)
+    logger.info(`[sse] listening on http://${SSE_HOST}:${SSE_PORT}${SSE_PATH}`)
   })
 
   return server

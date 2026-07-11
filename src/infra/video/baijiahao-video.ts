@@ -9,6 +9,8 @@ import pLimit from "p-limit";
 import sharp from "sharp";
 import { chromium, type BrowserContext, type Page, type Response } from "playwright";
 
+import { logger } from "../../utils/logger.ts";
+
 import type {
   PublishedStatePayload,
   PublishedStateResult,
@@ -18,30 +20,11 @@ import type {
   VideoUploadResult,
 } from "./video.ts";
 
-interface Logger {
-  log(event: unknown): void | Promise<void>;
-}
-
 interface SerializedAxiosResponse {
   body: unknown;
   headers: unknown;
   status: number;
   statusText: string;
-}
-
-const consoleLogger: Logger = {
-  log(event): void {
-    console.log(JSON.stringify(event, null, 2));
-  },
-};
-
-/** 安全输出结构化日志，日志失败不影响发布。 */
-async function emitLog(logger: Logger, event: unknown): Promise<void> {
-  try {
-    await logger.log(event);
-  } catch (error) {
-    console.error("Logger 执行失败：", error);
-  }
 }
 
 const BAIJIAHAO_ORIGIN = "https://baijiahao.baidu.com";
@@ -657,7 +640,6 @@ async function uploadVideoChunks(
   context: BaijiahaoRunContext,
   uploadKey: string,
   http: AxiosInstance,
-  logger: Logger,
 ): Promise<number> {
   const chunks: ChunkDescriptor[] = [];
   for (let start = 0, index = 0; start < context.metadata.size; start += CHUNK_SIZE, index += 1) {
@@ -687,7 +669,7 @@ async function uploadVideoChunks(
         videoName: context.videoName,
       }, http);
       completed += 1;
-      await emitLog(logger, { message: `[视频分片] ${completed}/${chunks.length} 上传成功`, type: "info" });
+      logger.info({ message: `[视频分片] ${completed}/${chunks.length} 上传成功`, type: "info" });
     })));
     const failure = settled.find((result) => result.status === "rejected");
     if (failure?.status === "rejected") throw failure.reason;
@@ -773,7 +755,6 @@ export async function prepare(input: VideoUploadPayload): Promise<BaijiahaoPrepa
   const cookiesPath = isAbsolute(accountFile) ? accountFile : resolve(process.cwd(), accountFile);
   const coverPath = isAbsolute(coverFile) ? coverFile : resolve(process.cwd(), coverFile);
   const videoPath = isAbsolute(videoFile) ? videoFile : resolve(process.cwd(), videoFile);
-  const logger = consoleLogger;
   const responses: SerializedAxiosResponse[] = [];
   const http = axios.create({
     maxBodyLength: Number.POSITIVE_INFINITY,
@@ -781,7 +762,7 @@ export async function prepare(input: VideoUploadPayload): Promise<BaijiahaoPrepa
     timeout: 120_000,
   });
   http.interceptors.request.use(async (config) => {
-    await emitLog(logger, { type: "http-request", request: { data: config.data, headers: config.headers, method: config.method, params: config.params, url: axios.getUri(config) } });
+    logger.info({ type: "http-request", request: { data: config.data, headers: config.headers, method: config.method, params: config.params, url: axios.getUri(config) } });
     return config;
   });
   http.interceptors.response.use(async (response) => {
@@ -792,10 +773,10 @@ export async function prepare(input: VideoUploadPayload): Promise<BaijiahaoPrepa
       statusText: response.statusText,
     };
     responses.push(serialized);
-    await emitLog(logger, { type: "http-response", response: serialized });
+    logger.info({ type: "http-response", response: serialized });
     return response;
   }, async (error) => {
-    await emitLog(logger, { type: "http-error", error });
+    logger.error({ type: "http-error", error });
     throw error;
   });
   const topicPattern = /#([^#\s]+)(?=\s|#|$)/gu;
@@ -824,19 +805,19 @@ export async function prepare(input: VideoUploadPayload): Promise<BaijiahaoPrepa
     videoName: basename(videoPath),
   };
 
-  await emitLog(logger, { message: `[1/7] 获取账号 app_id（${metadata.width}×${metadata.height}，${metadata.videoType}）`, type: "info" });
+  logger.info({ message: `[1/7] 获取账号 app_id（${metadata.width}×${metadata.height}，${metadata.videoType}）`, type: "info" });
   context.appId = await fetchAppId(cookieHeader, http);
-  await emitLog(logger, { message: "[2/7] 创建视频预上传任务", type: "info" });
+  logger.info({ message: "[2/7] 创建视频预上传任务", type: "info" });
   const uploadContext = await preUploadVideo(context, http);
-  await emitLog(logger, { message: "[3/7] 从单一封面生成竖版和横版 JPEG，并依次上传", type: "info" });
+  logger.info({ message: "[3/7] 从单一封面生成竖版和横版 JPEG，并依次上传", type: "info" });
   const covers = await generateCovers(coverPath);
   const verticalCover = await uploadCover(cookieHeader, covers.vertical, http);
   const horizontalCover = await uploadCover(cookieHeader, covers.horizontal, http);
-  await emitLog(logger, { message: "[4/7] 上传 2 MiB 视频分片", type: "info" });
-  const chunks = await uploadVideoChunks(videoPath, context, uploadContext.uploadKey, http, logger);
-  await emitLog(logger, { message: "[5/7] 汇总视频上传信息", type: "info" });
+  logger.info({ message: "[4/7] 上传 2 MiB 视频分片", type: "info" });
+  const chunks = await uploadVideoChunks(videoPath, context, uploadContext.uploadKey, http);
+  logger.info({ message: "[5/7] 汇总视频上传信息", type: "info" });
   await completeVideoUpload(context, uploadContext.uploadKey, chunks, http);
-  await emitLog(logger, { message: "[6/7] 搜索话题并构造最终发布参数", type: "info" });
+  logger.info({ message: "[6/7] 搜索话题并构造最终发布参数", type: "info" });
   const topicResults = await Promise.allSettled(
     publication.topicNames.map((name) => searchTopic(cookieHeader, name, http)),
   );
@@ -1030,8 +1011,8 @@ export class BaijiahaoVideo implements Video {
       }
       return { status: "reviewing", link: payload.link ?? null, raw: null, matchedBy: "unknown", reason: "baijiahao article list did not match current publish task" };
     } finally {
-      await context?.close().catch((error: unknown) => console.error("关闭百家号状态查询上下文失败：", error));
-      await browser.close().catch((error: unknown) => console.error("关闭百家号状态查询浏览器失败：", error));
+      await context?.close().catch((error: unknown) => logger.error("关闭百家号状态查询上下文失败：", error));
+      await browser.close().catch((error: unknown) => logger.error("关闭百家号状态查询浏览器失败：", error));
     }
   }
 }

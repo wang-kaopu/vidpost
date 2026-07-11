@@ -1,4 +1,5 @@
 import type { PublishedStatePayload, PublishedStateResult, Video, VideoUploadPayload, VideoUploadResult } from "./video.ts";
+import { logger } from "../../utils/logger.ts";
 
 import fs5 from "node:fs/promises";
 
@@ -337,7 +338,7 @@ async function retryTriggerUntil(page, selectors, predicate, options) {
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     const target = await firstVisibleLocator(page, selectors);
     if (!target) {
-      console.log(`[${logPrefix}] attempt=${attempt} no trigger found`);
+      logger.info(`[${logPrefix}] attempt=${attempt} no trigger found`);
       if (attempt < attempts) {
         await page.waitForTimeout(intervalMs);
       }
@@ -346,12 +347,12 @@ async function retryTriggerUntil(page, selectors, predicate, options) {
     const tag = await target.evaluate((node) => node.tagName).catch(() => "");
     const className = await target.getAttribute("class").catch(() => "");
     const text = await target.innerText().catch(() => "");
-    console.log(`[${logPrefix}] attempt=${attempt} tag=${tag} class=${className} text=${String(text || "").replace(/\s+/g, " ").slice(0, 120)}`);
+    logger.info(`[${logPrefix}] attempt=${attempt} tag=${tag} class=${className} text=${String(text || "").replace(/\s+/g, " ").slice(0, 120)}`);
     const clicked = await clickWithDomFallback(target, { timeoutMs: 5e3, force: true });
-    console.log(`[${logPrefix}] attempt=${attempt} clicked=${clicked}`);
+    logger.info(`[${logPrefix}] attempt=${attempt} clicked=${clicked}`);
     await page.waitForTimeout(intervalMs);
     const ok = await predicate();
-    console.log(`[${logPrefix}] attempt=${attempt} predicate=${ok}`);
+    logger.info(`[${logPrefix}] attempt=${attempt} predicate=${ok}`);
     if (ok) {
       return true;
     }
@@ -645,7 +646,7 @@ async function acquireElectronPublishSession(options) {
       managed.win.focus();
       await cleanupConnection();
       if (error instanceof Error) {
-        console.error(`[publish-window:${accountId}] ${error.message}`);
+        logger.error(`[publish-window:${accountId}] ${error.message}`);
       }
     }
   };
@@ -960,7 +961,7 @@ var buildCloseButtonScript = (buttonId, messageSource) => `
     window.__matrixLoginCloseHandlerBound = true;
     window.addEventListener("message", (event) => {
       if (event?.data?.source === ${JSON.stringify(messageSource)} && event?.data?.action === "close") {
-        console.log("__matrix_login_close__");
+        logger.info("__matrix_login_close__");
       }
     });
   }
@@ -1240,7 +1241,7 @@ async function clickByMouse(page, locator, label) {
   await locator.scrollIntoViewIfNeeded({ timeout: 2e3 }).catch(() => void 0);
   const box = await locator.boundingBox({ timeout: 2e3 }).catch(() => null);
   if (!box) {
-    console.log(`[sohu:category] ${label} no bounding box`);
+    logger.info(`[sohu:category] ${label} no bounding box`);
     return false;
   }
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -1253,7 +1254,7 @@ async function waitForSohuDropdownCommit(dropdown, pickedText) {
   while (Date.now() - startedAt < 3e3) {
     const selectedText = await readSohuDropdownText(dropdown);
     if (selectedText === pickedText || isSohuDropdownSelected(selectedText)) {
-      console.log(`[sohu:category] selection committed selected=${selectedText}`);
+      logger.info(`[sohu:category] selection committed selected=${selectedText}`);
       return true;
     }
     await dropdown.page().waitForTimeout(200);
@@ -1310,12 +1311,12 @@ async function selectSohuDropdownByMouse(page, selector, preferredText, label) {
       throw new Error(`\u641C\u72D0${label}\u4E0B\u62C9\u6846\u4E0D\u53EF\u89C1`);
     }
     const currentText = await readSohuDropdownText(dropdown);
-    console.log(`[sohu:category] ${label} attempt=${attempt} current=${currentText}`);
+    logger.info(`[sohu:category] ${label} attempt=${attempt} current=${currentText}`);
     if (isSohuDropdownSelected(currentText)) {
       return;
     }
     const opened = await clickByMouse(page, dropdown, `${label} dropdown`);
-    console.log(`[sohu:category] ${label} attempt=${attempt} opened=${opened}`);
+    logger.info(`[sohu:category] ${label} attempt=${attempt} opened=${opened}`);
     if (!opened) {
       await page.waitForTimeout(300);
       continue;
@@ -1326,7 +1327,7 @@ async function selectSohuDropdownByMouse(page, selector, preferredText, label) {
       const option = await findVisibleSohuOption(page, preferredText);
       if (option?.exact) {
         const picked = await clickByMouse(page, option.locator, `${label} option ${option.text}`);
-        console.log(`[sohu:category] ${label} picked preferred=${option.text} result=${picked}`);
+        logger.info(`[sohu:category] ${label} picked preferred=${option.text} result=${picked}`);
         if (picked && await waitForSohuDropdownCommit(dropdown, option.text)) {
           return;
         }
@@ -1338,7 +1339,7 @@ async function selectSohuDropdownByMouse(page, selector, preferredText, label) {
     const fallback = await findVisibleSohuOption(page, preferredText);
     if (fallback) {
       const picked = await clickByMouse(page, fallback.locator, `${label} fallback ${fallback.text}`);
-      console.log(`[sohu:category] ${label} picked fallback=${fallback.text} result=${picked}`);
+      logger.info(`[sohu:category] ${label} picked fallback=${fallback.text} result=${picked}`);
       if (picked && await waitForSohuDropdownCommit(dropdown, fallback.text)) {
         return;
       }
@@ -1353,7 +1354,7 @@ async function ensureSecondaryCategory(page) {
   await selectSohuDropdownByMouse(page, SOHU_CATEGORY_DROPDOWN_SELECTOR, SOHU_PREFERRED_CATEGORY, "\u5206\u7C7B");
 }
 async function findCoverFileInput(page) {
-  return findFileInput(page, SOHU_COVER_IMAGE_INPUT_SELECTORS, (message) => console.log(`[sohu:cover] ${message}`), "image");
+  return findFileInput(page, SOHU_COVER_IMAGE_INPUT_SELECTORS, (message) => logger.info(`[sohu:cover] ${message}`), "image");
 }
 async function triggerCoverUpload(page) {
   return retryTriggerUntil(
@@ -1362,7 +1363,7 @@ async function triggerCoverUpload(page) {
     async () => {
       const imageInput = await findCoverFileInput(page);
       const dialogVisible = await page.locator("div.el-dialog__wrapper.select-dialog").first().isVisible().catch(() => false);
-      console.log(`[sohu:cover] post-click dialogVisible=${dialogVisible} imageInputFound=${Boolean(imageInput)}`);
+      logger.info(`[sohu:cover] post-click dialogVisible=${dialogVisible} imageInputFound=${Boolean(imageInput)}`);
       return Boolean(imageInput);
     },
     {
@@ -1373,35 +1374,35 @@ async function triggerCoverUpload(page) {
   );
 }
 async function setThumbnail(page, coverPath) {
-  console.log(`[sohu:cover] start coverPath=${coverPath || "<empty>"}`);
+  logger.info(`[sohu:cover] start coverPath=${coverPath || "<empty>"}`);
   if (!coverPath) {
-    console.log("[sohu:cover] skip because coverPath is empty");
+    logger.info("[sohu:cover] skip because coverPath is empty");
     return;
   }
   try {
     const stat = await fs5.stat(coverPath);
-    console.log(`[sohu:cover] file exists size=${stat.size}`);
+    logger.info(`[sohu:cover] file exists size=${stat.size}`);
   } catch (error) {
-    console.log(`[sohu:cover] file access failed error=${error instanceof Error ? error.message : String(error)}`);
+    logger.info(`[sohu:cover] file access failed error=${error instanceof Error ? error.message : String(error)}`);
     return;
   }
   const triggerReady = await triggerCoverUpload(page);
   if (!triggerReady) {
-    console.log("[sohu:cover] trigger retries exhausted");
+    logger.info("[sohu:cover] trigger retries exhausted");
     return;
   }
   const dialogVisible = await page.locator("div.el-dialog__wrapper.select-dialog").first().isVisible().catch(() => false);
   const dialogText = await page.locator("div.el-dialog__wrapper.select-dialog").first().innerText().catch(() => "");
-  console.log(`[sohu:cover] dialog visible=${dialogVisible} text=${String(dialogText || "").replace(/\s+/g, " ").slice(0, 200)}`);
+  logger.info(`[sohu:cover] dialog visible=${dialogVisible} text=${String(dialogText || "").replace(/\s+/g, " ").slice(0, 200)}`);
   const imageInput = await findCoverFileInput(page);
-  console.log(`[sohu:cover] image input found=${Boolean(imageInput)}`);
+  logger.info(`[sohu:cover] image input found=${Boolean(imageInput)}`);
   if (imageInput) {
     const inputTag = await imageInput.evaluate((node) => node.tagName).catch(() => "");
     const inputClass = await imageInput.getAttribute("class").catch(() => "");
     const inputAccept = await imageInput.getAttribute("accept").catch(() => "");
-    console.log(`[sohu:cover] image input tag=${inputTag} class=${inputClass} accept=${inputAccept}`);
+    logger.info(`[sohu:cover] image input tag=${inputTag} class=${inputClass} accept=${inputAccept}`);
     await imageInput.setInputFiles(coverPath);
-    console.log("[sohu:cover] setInputFiles completed");
+    logger.info("[sohu:cover] setInputFiles completed");
   } else {
     const chooserPicked = await pickFileWithChooser(
       page,
@@ -1420,44 +1421,44 @@ async function setThumbnail(page, coverPath) {
       coverPath,
       5e3
     );
-    console.log(`[sohu:cover] chooser fallback used=${chooserPicked}`);
+    logger.info(`[sohu:cover] chooser fallback used=${chooserPicked}`);
     if (!chooserPicked) {
-      console.log("[sohu:cover] chooser fallback failed, stop thumbnail flow");
+      logger.info("[sohu:cover] chooser fallback failed, stop thumbnail flow");
       return;
     }
   }
   await waitForCondition(SOHU_PLATFORM_LABEL, "cover-selected", COVER_APPLY_TIMEOUT_MS, async () => {
     const selected = await firstVisibleLocator(page, SOHU_COVER_SELECTED_COUNT_SELECTORS, 500);
     if (!selected) {
-      console.log("[sohu:cover] selected counter not found yet");
+      logger.info("[sohu:cover] selected counter not found yet");
       return false;
     }
     const text = String(await selected.innerText().catch(() => "") || "").trim();
-    console.log(`[sohu:cover] selected text=${text}`);
+    logger.info(`[sohu:cover] selected text=${text}`);
     return text.includes("\u5DF2\u9009\u62E91\u5F20");
   }, 500);
   const confirm = await firstVisibleLocator(page, SOHU_COVER_CONFIRM_SELECTORS);
-  console.log(`[sohu:cover] confirm found=${Boolean(confirm)}`);
+  logger.info(`[sohu:cover] confirm found=${Boolean(confirm)}`);
   if (!confirm) {
     throw new Error("\u672A\u627E\u5230\u641C\u72D0\u5C01\u9762\u5F39\u7A97\u786E\u8BA4\u6309\u94AE");
   }
   const confirmText = await confirm.innerText().catch(() => "");
   const confirmClass = await confirm.getAttribute("class").catch(() => "");
-  console.log(`[sohu:cover] confirm text=${confirmText} class=${confirmClass}`);
+  logger.info(`[sohu:cover] confirm text=${confirmText} class=${confirmClass}`);
   let confirmClicked = false;
   try {
     const clicked = await clickWithDomFallback(confirm, { timeoutMs: 3e3, force: true });
     confirmClicked = clicked;
-    console.log(`[sohu:cover] confirm clicked by helper=${clicked}`);
+    logger.info(`[sohu:cover] confirm clicked by helper=${clicked}`);
   } catch (error) {
-    console.log(`[sohu:cover] confirm playwright click failed error=${error instanceof Error ? error.message : String(error)}`);
+    logger.info(`[sohu:cover] confirm playwright click failed error=${error instanceof Error ? error.message : String(error)}`);
     const handle = await confirm.elementHandle();
     if (!handle) {
       throw new Error("\u641C\u72D0\u5C01\u9762\u5F39\u7A97\u786E\u8BA4\u6309\u94AE\u65E0\u6CD5\u83B7\u53D6 element handle");
     }
     const domClicked = await page.evaluate("(node) => { try { node.click(); return true; } catch { return false; } }", handle).catch(() => false);
     confirmClicked = Boolean(domClicked);
-    console.log(`[sohu:cover] confirm dom click result=${confirmClicked}`);
+    logger.info(`[sohu:cover] confirm dom click result=${confirmClicked}`);
   }
   if (!confirmClicked) {
     throw new Error("\u641C\u72D0\u5C01\u9762\u5F39\u7A97\u786E\u8BA4\u6309\u94AE\u70B9\u51FB\u5931\u8D25");
@@ -1472,7 +1473,7 @@ async function setThumbnail(page, coverPath) {
     const coverButtonText = await coverButton.innerText().catch(() => "");
     const picCoverText = await picCover.innerText().catch(() => "");
     const picCoverStyle = await picCover.getAttribute("style").catch(() => "");
-    console.log(`[sohu:cover] applied dialogVisible=${dialogVisibleNow} changeCoverVisible=${changeCoverVisible} changeCoverText=${changeCoverText} coverButtonText=${coverButtonText} picCoverText=${picCoverText} picCoverStyle=${picCoverStyle}`);
+    logger.info(`[sohu:cover] applied dialogVisible=${dialogVisibleNow} changeCoverVisible=${changeCoverVisible} changeCoverText=${changeCoverText} coverButtonText=${coverButtonText} picCoverText=${picCoverText} picCoverStyle=${picCoverStyle}`);
     if (!dialogVisibleNow && changeCoverVisible) {
       return true;
     }
@@ -1487,10 +1488,10 @@ async function setThumbnail(page, coverPath) {
     }
     return false;
   }, 500);
-  console.log("[sohu:cover] thumbnail applied successfully");
+  logger.info("[sohu:cover] thumbnail applied successfully");
 }
 async function clickPublish(page) {
-  console.log(`[sohu:publish] start at=${Date.now()}`);
+  logger.info(`[sohu:publish] start at=${Date.now()}`);
   const domClickSelectors = [
     "li.publish-report-btn.positive-button.active",
     "ul.button-list li.publish-report-btn.positive-button"
@@ -1498,17 +1499,17 @@ async function clickPublish(page) {
   for (const selector of domClickSelectors) {
     const locator = page.locator(selector).first();
     const count = await locator.count().catch(() => 0);
-    console.log(`[sohu:publish] dom selector=${selector} count=${count}`);
+    logger.info(`[sohu:publish] dom selector=${selector} count=${count}`);
     if (!count) {
       continue;
     }
     const handle = await locator.elementHandle();
     if (!handle) {
-      console.log(`[sohu:publish] dom selector=${selector} no handle`);
+      logger.info(`[sohu:publish] dom selector=${selector} no handle`);
       continue;
     }
     const domClicked = await page.evaluate("(node) => { try { node.click(); return true; } catch { return false; } }", handle).catch(() => false);
-    console.log(`[sohu:publish] dom selector=${selector} clicked=${domClicked}`);
+    logger.info(`[sohu:publish] dom selector=${selector} clicked=${domClicked}`);
     if (domClicked) {
       return;
     }
@@ -1516,12 +1517,12 @@ async function clickPublish(page) {
   for (const selector of SOHU_PUBLISH_CLICK_SELECTORS) {
     const locator = page.locator(selector).first();
     const count = await locator.count().catch(() => 0);
-    console.log(`[sohu:publish] selector=${selector} count=${count}`);
+    logger.info(`[sohu:publish] selector=${selector} count=${count}`);
     if (!count) {
       continue;
     }
     const clicked = await clickWithDomFallback(locator, { timeoutMs: 5e3, force: true });
-    console.log(`[sohu:publish] selector=${selector} clicked by helper=${clicked}`);
+    logger.info(`[sohu:publish] selector=${selector} clicked by helper=${clicked}`);
     if (clicked) {
       return;
     }
@@ -1552,10 +1553,10 @@ async function captureInitialPageDiagnostics(page) {
   const bodyText = await page.locator("body").innerText().catch(() => "");
   const htmlPreview = html.replace(/\s+/g, " ").slice(0, DIAGNOSTIC_HTML_PREVIEW_LENGTH);
   const textPreview = String(bodyText || "").replace(/\s+/g, " ").slice(0, DIAGNOSTIC_HTML_PREVIEW_LENGTH);
-  console.log(`[sohu:diagnostic] url=${currentUrl}`);
-  console.log(`[sohu:diagnostic] title=${title}`);
-  console.log(`[sohu:diagnostic] text=${textPreview}`);
-  console.log(`[sohu:diagnostic] html=${htmlPreview}`);
+  logger.info(`[sohu:diagnostic] url=${currentUrl}`);
+  logger.info(`[sohu:diagnostic] title=${title}`);
+  logger.info(`[sohu:diagnostic] text=${textPreview}`);
+  logger.info(`[sohu:diagnostic] html=${htmlPreview}`);
 }
 async function uploadOnce(payload, attempt, maxAttempts, signal) {
   const finalAttempt = attempt >= maxAttempts;
@@ -1567,7 +1568,7 @@ async function uploadOnce(payload, attempt, maxAttempts, signal) {
     viewport: { width: 1440, height: 900 }
   });
   const detachAbortHandler = runOnAbort(signal, async () => {
-    console.log("[sohu:upload] timeout abort received");
+    logger.info("[sohu:upload] timeout abort received");
     if (finalAttempt) {
       await session.fail(new Error("\u641C\u72D0\u4E0A\u4F20\u8D85\u65F6"));
       return;

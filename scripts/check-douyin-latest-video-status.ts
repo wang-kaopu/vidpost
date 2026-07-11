@@ -8,6 +8,7 @@ import {
   parseDouyinRecordStatus,
 } from '../src/infra/video/douyin-video.ts'
 import { createContextFromAccountFile } from '../src/infra/video/douyin-video.ts'
+import { logger } from '../src/utils/logger.ts'
 
 const COOKIE_DIR = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.agenthunt', 'cookie_files')
 
@@ -132,15 +133,14 @@ async function main() {
       rawStatus: statusPayload,
     }
 
-    console.info('[douyin:latest-video-status] result=')
-    console.info(JSON.stringify(result, null, 2))
+    logger.info('[douyin:latest-video-status] result=', result)
   } finally {
     await context.close().catch(() => undefined)
-    await browser && browser.close().catch(() => undefined)
+    if (browser) await browser.close().catch(() => undefined)
   }
 }
 
 main().catch((error) => {
-  console.error('[douyin:latest-video-status] failed:', error)
+  logger.error('[douyin:latest-video-status] failed:', error)
   process.exitCode = 1
 })

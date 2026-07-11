@@ -1,4 +1,6 @@
 <script setup lang="ts">
+defineOptions({ name: "WorkView" });
+
 import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from "vue";
 import { message } from "ant-design-vue";
 import {

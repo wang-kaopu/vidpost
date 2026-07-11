@@ -2,6 +2,7 @@ import { listPublishTasks, updatePublishTask } from '../api/task-api.ts'
 import { createVideo } from '../infra/video/video.ts'
 import type { PlatformType } from '../infra/account/account.ts'
 import { resolveAccountFilePath } from './account-service.ts'
+import { logger } from '../utils/logger.ts'
 
 const REVIEWING_STATUS = 'reviewing'
 const PUBLIC_STATUS = 'public'
@@ -154,7 +155,7 @@ export async function syncSingleTaskState(task) {
         const nextStatus = normalizeString(fetchResult?.status) ?? REVIEWING_STATUS
         const nextLink = fetchResult?.link ?? task.link ?? null
 
-        console.log(`[syncTaskState] taskId=${taskId} platform=${platform} nextStatus=${nextStatus} link=${nextLink}`)
+        logger.info(`[syncTaskState] taskId=${taskId} platform=${platform} nextStatus=${nextStatus} link=${nextLink}`)
 
         await updatePublishTask(taskId, {
             status: nextStatus,
@@ -255,7 +256,7 @@ export function syncTaskStateBg(options: { limit?: number } = {}) {
         }
     })()
     promise.catch((error) => {
-        console.error('后台巡检 task state 失败:', error)
+        logger.error('后台巡检 task state 失败:', error)
     })
     return {
         started: true,

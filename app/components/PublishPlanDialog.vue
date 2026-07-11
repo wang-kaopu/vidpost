@@ -28,19 +28,6 @@ type PublishPlanGroup = {
 
 const IMMEDIATE_PUBLISH_VALUE = "0";
 
-const padDatePart = (value: number): string => String(value).padStart(2, "0");
-const getDefaultScheduledAtValue = (): string => {
-  const date = new Date();
-  date.setHours(date.getHours() + 2, date.getMinutes(), 0, 0);
-  if (date.getMinutes() > 0) {
-    date.setHours(date.getHours() + 1, 0, 0, 0);
-  } else {
-    date.setMinutes(0, 0, 0);
-  }
-
-  return `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}-${padDatePart(date.getDate())} ${padDatePart(date.getHours())}:${padDatePart(date.getMinutes())}`;
-};
-
 const props = withDefaults(
   defineProps<{
     visible: boolean;
@@ -96,19 +83,8 @@ const applyAll = (): void => {
 };
 
 const isRowTimedPublishEnabled = (scheduledAt: string): boolean => scheduledAt !== IMMEDIATE_PUBLISH_VALUE;
-const getScheduledAtDisplayText = (scheduledAt: string): string =>
-  isRowTimedPublishEnabled(scheduledAt) ? scheduledAt : "立即发布";
 
 const toDatetimeLocal = (str: string): string => str.replace(" ", "T").slice(0, 16);
-const fromDatetimeLocal = (str: string): string => str.replace("T", " ");
-
-const toggleRowTimedPublish = (row: PublishPlanRow): void => {
-  emit("update-row-field", {
-    rowId: row.id,
-    field: "scheduledAt",
-    value: isRowTimedPublishEnabled(row.scheduledAt) ? IMMEDIATE_PUBLISH_VALUE : getDefaultScheduledAtValue(),
-  });
-};
 
 watch(
   () => props.visible,

@@ -3,6 +3,7 @@ import path from 'node:path'
 
 import { createAccount } from '../src/infra/account/account.ts'
 import { createVideo } from '../src/infra/video/video.ts'
+import { logger } from '../src/utils/logger.ts'
 
 const COOKIE_DIR = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.agenthunt', 'cookie_files')
 const VIDEO_PATH = '/Users/wkp/Downloads/olivia.mp4'
@@ -70,17 +71,17 @@ async function main() {
     timeoutMs: 10 * 60 * 1000,
   }
 
-  console.info('[bilibili:real-publish] start')
-  console.info(`[bilibili:real-publish] accountFile=${accountFile}`)
-  console.info(`[bilibili:real-publish] scheduledAt=${scheduledAt}`)
-  console.info(`[bilibili:real-publish] videoPath=${VIDEO_PATH}`)
-  console.info(`[bilibili:real-publish] coverPath=${COVER_PATH}`)
+  logger.info('[bilibili:real-publish] start')
+  logger.info(`[bilibili:real-publish] accountFile=${accountFile}`)
+  logger.info(`[bilibili:real-publish] scheduledAt=${scheduledAt}`)
+  logger.info(`[bilibili:real-publish] videoPath=${VIDEO_PATH}`)
+  logger.info(`[bilibili:real-publish] coverPath=${COVER_PATH}`)
 
   const result = await createVideo('bilibili').upload(payload)
-  console.info('[bilibili:real-publish] result=', result)
+  logger.info('[bilibili:real-publish] result=', result)
 }
 
 main().catch((error) => {
-  console.error('[bilibili:real-publish] failed:', error)
+  logger.error('[bilibili:real-publish] failed:', error)
   process.exitCode = 1
 })

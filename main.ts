@@ -16,9 +16,9 @@ import {
 } from './src/deep-link.ts'
 import { getSingletonLock } from './src/utils/lock.ts'
 import { setApiClientWindow } from './src/api/api-client.ts'
-import { startSseServer, stopSseServer } from './src/sse/sse-server.ts'
 import { syncTaskStateBg } from './src/service/task-state-service.ts'
 import { configureVideoRuntime, destroyVideoWindows } from './src/infra/video/video.ts'
+import { logger } from './src/utils/logger.ts'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const projectRoot = path.resolve(__dirname, '..')
@@ -28,8 +28,6 @@ const projectRoot = path.resolve(__dirname, '..')
 if (squirrelStartup) {
   app.quit()
 }
-const BACKDOOR_TOKEN = process.env.RM_SERVER_ACCESS_TOKEN || 'b0ffc1de8f3f49340697dc140fcad274'
-
 // 注册自定义协议的辅助处理函数
 let mainWindow: BrowserWindow | null = null
 let pendingLaunchIntent: LaunchIntent | null = null
@@ -77,7 +75,7 @@ function registerIpcListener(channel: string, handler: (event: IpcMainEvent, ...
     Promise.resolve()
       .then(() => handler(event, ...args))
       .catch((error) => {
-        console.error(`[ipc:${channel}]`, error)
+        logger.error(`[ipc:${channel}]`, error)
       })
   })
 }
@@ -88,7 +86,7 @@ function registerIpcHandler(channel: string, handler: (event: IpcMainInvokeEvent
     return Promise.resolve()
       .then(() => handler(event, ...args))
       .catch((error) => {
-        console.error(`[ipc:${channel}]`, error)
+        logger.error(`[ipc:${channel}]`, error)
         throw error
       })
   })
@@ -158,24 +156,9 @@ const createWindow = (): BrowserWindow => {
     }
   })
 
-  // 注册事件，页面加载成功后将后门access_token写到localStorage（仅在用例时需要）
-  // mainWindow.webContents.once('did-finish-load', async () => {
-  //   try {
-  //     await mainWindow.webContents.executeJavaScript(
-  //       `
-  //         window.localStorage.setItem('access_token', ${JSON.stringify(BACKDOOR_TOKEN)});
-  //       `,
-  //       true,
-  //     )
-  //     console.log('写入localStorage access_token 成功：', BACKDOOR_TOKEN)
-  //   } catch (error) {
-  //     console.error('写入localStorage access_token 失败：', error)
-  //   }
-  // })
-
   // 加载页面URL
   loadRenderer(mainWindow, builtAppPath).catch((error) => {
-    console.error('[renderer] failed to load renderer:', error)
+    logger.error('[renderer] failed to load renderer:', error)
   })
 
   // 将主窗口传给 API 客户端模块以便通信，如获取token
@@ -198,9 +181,6 @@ async function startApplication(): Promise<void> {
 
   // 应用准备就绪后注册 IPC 监听器并创建窗口
   app.whenReady().then(() => {
-    // 启动 SSE 服务器
-    // startSseServer()
-
     // 注册 IPC 监听器和处理器
     registerIpcHandler('login', login)
     registerIpcListener('publish', publish)
@@ -216,7 +196,7 @@ async function startApplication(): Promise<void> {
     // 注册自定义协议，优先使用 Electron 内置的注册方式
     const registration = resolveProtocolClientRegistration(process.argv, process.defaultApp)
     if (registration && !app.setAsDefaultProtocolClient(AGENTHUNT_PROTOCOL, registration.path, registration.args)) {
-      console.warn(`[deep-link] failed to register protocol client for ${AGENTHUNT_PROTOCOL}`)
+      logger.error(`[deep-link] failed to register protocol client for ${AGENTHUNT_PROTOCOL}`)
     }
 
     // 处理可能的初始协议 URL（例如在 macOS 上通过 `open` 命令启动应用时）
@@ -232,7 +212,7 @@ async function startApplication(): Promise<void> {
 
 if (hasSingletonLock) {
   startApplication().catch((error) => {
-    console.error('[startup] failed to initialize application:', error)
+    logger.error('[startup] failed to initialize application:', error)
     app.quit()
   })
 
@@ -244,7 +224,6 @@ if (hasSingletonLock) {
   app.on('before-quit', () => {
     willQuitApp = true
     destroyVideoWindows()
-    // stopSseServer()
   })
 
   app.on('window-all-closed', () => {

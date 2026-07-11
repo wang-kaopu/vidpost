@@ -1,3 +1,5 @@
+import { logger } from '../utils/logger.ts'
+
 const DEFAULT_SSE_URL = 'http://127.0.0.1:3001/notify'
 
 export interface RegisterSseOptions {
@@ -23,7 +25,7 @@ function reportSseError(title: string, message: string): void {
  * 注册后端联调 Demo 使用的 SSE 连接。
  */
 export function registerSse({ url = DEFAULT_SSE_URL, onMessage, onError }: RegisterSseOptions = {}): EventSource {
-    console.log('Registering SSE...');
+    logger.info('Registering SSE...');
 
     const eventSource = new EventSource(url); // 是服务器端提供SSE的端点
 
@@ -45,10 +47,10 @@ export function registerSse({ url = DEFAULT_SSE_URL, onMessage, onError }: Regis
     eventSource.onerror = function (event) {
         if (eventSource.readyState === EventSource.CLOSED) {
             // 处理连接关闭的情况，例如显示错误信息或重新连接
-            console.log('Connection closed.');
+            logger.info('Connection closed.');
         } else {
             // 处理其他错误，例如网络问题
-            console.error('EventSource error:', event);
+            logger.error('EventSource error:', event);
             reportSseError('通知服务连接异常', '实时通知暂时不可用，请稍后重试')
             onError?.(event)
         }

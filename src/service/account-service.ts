@@ -1,5 +1,4 @@
 // 账号服务，负责处理账号相关的业务逻辑，如登录、创建发布账号等。
-import { log } from 'node:console'
 import { randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -13,6 +12,7 @@ import {
 } from '../db/partition-store.ts'
 import { createAccountPageModel } from '../page-model/account-page-model.ts'
 import type { Account } from '../infra/account/account.ts'
+import { logger } from '../utils/logger.ts'
 
 // 拼接账号文件路径，用于正在新增过程中、未获取数据自增ID的账号文件命名
 export function resolveDraftAccountFilePath(platform) {
@@ -56,7 +56,7 @@ export async function loginAndCreateRemoteAccount(platform, accountFile, parentW
         })
 
         const nickname = await account.syncNickname(accountFile, 6000)
-        console.log(`登录完成，获取到的 ${platform} 昵称为: ${nickname}`)
+        logger.info(`登录完成，获取到的 ${platform} 昵称为: ${nickname}`)
 
         const { remoteAccountId } = await createPublishAccount({
             nickname,
@@ -72,7 +72,7 @@ export async function loginAndCreateRemoteAccount(platform, accountFile, parentW
             },
         })
 
-        console.log('创建发布账号成功，远程账号ID:', remoteAccountId)
+        logger.info('创建发布账号成功，远程账号ID:', remoteAccountId)
 
         return createAccountPageModel({
             id: remoteAccountId,
@@ -102,10 +102,10 @@ export async function updateRemoteAccount(account, accountResource: Account) {
 
     const accountFile = resolveAccountFilePath(accountId, platform)
     resolvePartitionForAccount(createPartitionStore(), accountId)
-    console.log('账号文件存在:', accountFile)
+    logger.info('账号文件存在:', accountFile)
 
     const isValid = await accountResource.ping(accountFile)
-    console.log(`${platform}检测结果：`, isValid)
+    logger.info(`${platform}检测结果：`, isValid)
 
     const nextStatus = isValid ? 'online' : 'offline'
     await updatePublishAccount(accountId, { status: nextStatus })

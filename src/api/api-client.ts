@@ -1,6 +1,8 @@
 import axios, { AxiosHeaders } from 'axios'
 import type { BrowserWindow } from 'electron'
 
+import { logger } from '../utils/logger.ts'
+
 const API_BASE_URL = 'https://testai.reelsagent.com/api'
 const DEFAULT_AUTHORIZATION = '6c4ff3a4df0cdeb07ed4d2ea0fd3db69'
 
@@ -21,7 +23,7 @@ async function getAccessToken() {
     )
     return accessToken ? `Bearer ${accessToken}` : DEFAULT_AUTHORIZATION
   } catch (error) {
-    console.error('Failed to retrieve access token from renderer process:', error)
+    logger.error('Failed to retrieve access token from renderer process:', error)
     return DEFAULT_AUTHORIZATION
   }
 }
@@ -38,7 +40,7 @@ apiClient.interceptors.request.use(async (config) => {
   const accessToken = await getAccessToken()
   config.headers = AxiosHeaders.from(config.headers)
   config.headers.Authorization = accessToken
-  console.log('[apiClient][request]', {
+  logger.info('[apiClient][request]', {
     method: config.method,
     url: `${config.baseURL || ''}${config.url || ''}`,
     params: config.params,
@@ -49,7 +51,7 @@ apiClient.interceptors.request.use(async (config) => {
 
 apiClient.interceptors.response.use(
   (response) => {
-    console.log('[apiClient][response]', {
+    logger.info('[apiClient][response]', {
       method: response.config?.method,
       url: `${response.config?.baseURL || ''}${response.config?.url || ''}`,
       status: response.status,
@@ -58,7 +60,7 @@ apiClient.interceptors.response.use(
     return response
   },
   (error) => {
-    console.log('[apiClient][response:error]', {
+    logger.error('[apiClient][response:error]', {
       method: error.config?.method,
       url: `${error.config?.baseURL || ''}${error.config?.url || ''}`,
       status: error.response?.status,

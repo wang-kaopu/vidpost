@@ -1,7 +1,5 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import path from 'node:path'
-
 import { buildElectronLaunchConfig } from '../scripts/start-electron.ts'
 
 test('start-electron clears ELECTRON_RUN_AS_NODE before launch', () => {

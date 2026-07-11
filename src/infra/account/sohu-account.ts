@@ -1,4 +1,5 @@
 import type { Account, AccountLoginOptions, AccountLoginResult } from "./account.ts";
+import { logger } from "../../utils/logger.ts";
 
 import "playwright";
 
@@ -550,7 +551,7 @@ var buildCloseButtonScript = (buttonId, messageSource) => `
     window.__matrixLoginCloseHandlerBound = true;
     window.addEventListener("message", (event) => {
       if (event?.data?.source === ${JSON.stringify(messageSource)} && event?.data?.action === "close") {
-        console.log("__matrix_login_close__");
+        logger.info("__matrix_login_close__");
       }
     });
   }
@@ -674,9 +675,9 @@ var exportStorageState = async (loginWindow, accountFile, logPrefix = "login") =
       throw error;
     }
     const detail = error instanceof Error ? error.message : String(error);
-    console.warn(`[${logPrefix}] localStorage export skipped, fallback to cookies only: ${detail}`);
+    logger.info(`[${logPrefix}] localStorage export skipped, fallback to cookies only: ${detail}`);
   }
-  console.log(
+  logger.info(
     `[${logPrefix}] storage snapshot before clone ${formatStoragePreview(
       accountFile,
       currentUrl,
@@ -788,9 +789,10 @@ var wireCloseControls = (loginWindow, closeButtonScript, options) => {
     event.preventDefault();
     loginWindow.close();
   });
-  loginWindow.webContents.on("console-message", (_event, _level, message) => {
+  loginWindow.webContents.on("console-message", (_event, level, message) => {
     if (options?.consolePrefix) {
-      console.log(`[${options.consolePrefix}][page-console] ${message}`);
+      if (level === 3) logger.error(`[${options.consolePrefix}][page-console] ${message}`);
+      else logger.info(`[${options.consolePrefix}][page-console] ${message}`);
     }
     if (message === "__matrix_login_close__") {
       loginWindow.close();
@@ -1106,15 +1108,15 @@ function normalizeNickname(value) {
 async function pickSohuNickname(page) {
   const primaryNickname = await pickNicknameFromSelectors(page, [SOHU_PRIMARY_NICKNAME_SELECTOR]);
   if (primaryNickname) {
-    console.info(`[sohu] primary selector matched: ${SOHU_PRIMARY_NICKNAME_SELECTOR}`);
+    logger.info(`[sohu] primary selector matched: ${SOHU_PRIMARY_NICKNAME_SELECTOR}`);
     return primaryNickname;
   }
-  console.warn(`[sohu] primary selector missed, falling back to generic selectors`);
+  logger.info(`[sohu] primary selector missed, falling back to generic selectors`);
   const genericNickname = await pickNicknameFromSelectors(page, SOHU_NICKNAME_SELECTORS.slice(1));
   if (genericNickname) {
     return genericNickname;
   }
-  console.warn("[sohu] generic selectors missed, falling back to heuristic scan");
+  logger.info("[sohu] generic selectors missed, falling back to heuristic scan");
   return page.evaluate((blockedTexts) => {
     const blocked = new Set(blockedTexts);
     const normalize = (value) => String(value || "").replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").replace(/[▼▽▾▿⏷⌄]+/g, "").trim();
@@ -1183,7 +1185,7 @@ async function syncSohuNickname(accountFile, timeoutMs) {
     const page = await context.newPage();
     page.setDefaultTimeout(timeoutMs);
     page.setDefaultNavigationTimeout(timeoutMs);
-    console.info(`[sohu] opening nickname page: ${SOHU_HOME_URL}`);
+    logger.info(`[sohu] opening nickname page: ${SOHU_HOME_URL}`);
     await page.goto(SOHU_HOME_URL, { waitUntil: "domcontentloaded", timeout: timeoutMs });
     await page.waitForLoadState("domcontentloaded", { timeout: timeoutMs }).catch(() => void 0);
     await page.waitForLoadState("networkidle", { timeout: Math.min(timeoutMs, 15e3) }).catch(() => void 0);

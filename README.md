@@ -23,6 +23,7 @@ npm run dev
 npm start
 
 # 类型检查、测试和完整构建
+npm run lint
 npm run typecheck
 npm test
 npm run build
@@ -38,6 +39,21 @@ Electron 主进程构建为 `.build/main.js` ESM。`preload.ts` 仍在源码层�
 `npm run dev` 会选择空闲端口启动当前项目的 Vite，并通过 `RENDERER_DEV_SERVER_URL` 将准确地址交给 Electron。Electron 不再探测固定端口，因此不会连接其他项目或工作区的开发服务器。`npm start` 和打包后的应用只加载 `app/dist/index.html`。
 
 `app/App.vue` 是正式渲染入口；`app/src/App.vue` 和 `app/src/scripts/sse-register.ts` 是后端联调 Demo，不能作为废弃目录删除。
+
+## 日志规范
+
+项目源码统一通过 logger 输出控制台日志。Node、Electron 和脚本使用 `src/utils/logger.ts`，浏览器代码使用 `app/src/utils/logger.ts`；两个实现只暴露 `logger.info(...values)` 和 `logger.error(...values)`，业务代码禁止直接调用 `console.*`。
+
+日志使用运行机器的本地时区和 24 小时制，格式固定为：
+
+```text
+[2026-07-11 14:30:05] - [agenthunt] - [INFO] - 开始发布
+[2026-07-11 14:30:06] - [agenthunt] - [ERROR] - 发布失败
+```
+
+对象会压缩为单行 JSON；普通字符串及错误堆栈中的换行保持不变，并且每次 logger 调用只添加一次前缀。`Buffer`、ArrayBuffer、TypedArray 和 DataView 会显示 Base64 编码后的前 100 个字符，同时记录类型、原始字节数和截断状态。Blob、File 只记录名称、MIME 和字节数；FormData 会展开字段并按相同规则描述其中的文件。
+
+日志不会脱敏，HTTP Header、Cookie、Token 和请求数据可能完整显示。生产日志不得交给无关人员。ESLint 对业务源码启用 `no-console`，仅两个 logger 实现及其契约测试允许访问原生 console。平台账号模块和搜狐视频模块保留迁移生成风格，因此只对其关闭 `no-var` 与遗留未使用变量检查，其余推荐规则和日志约束仍然生效。
 
 ## 平台资源基础设施
 

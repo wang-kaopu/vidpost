@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import { createVideo } from '../src/infra/video/video.ts'
+import { logger } from '../src/utils/logger.ts'
 
 const COOKIE_DIR = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.agenthunt', 'cookie_files')
 
@@ -59,18 +60,17 @@ async function main() {
     },
   }
 
-  console.info('[douyin:record-status] start')
-  console.info(`[douyin:record-status] accountFile=${accountFile}`)
-  console.info(`[douyin:record-status] title=${title || ''}`)
-  console.info(`[douyin:record-status] link=${link || ''}`)
-  console.info(`[douyin:record-status] workId=${platformWorkId || ''}`)
+  logger.info('[douyin:record-status] start')
+  logger.info(`[douyin:record-status] accountFile=${accountFile}`)
+  logger.info(`[douyin:record-status] title=${title || ''}`)
+  logger.info(`[douyin:record-status] link=${link || ''}`)
+  logger.info(`[douyin:record-status] workId=${platformWorkId || ''}`)
 
   const result = await createVideo('douyin').fetchPublishedState(payload)
-  console.info('[douyin:record-status] result=')
-  console.info(JSON.stringify(result, null, 2))
+  logger.info('[douyin:record-status] result=', result)
 }
 
 main().catch((error) => {
-  console.error('[douyin:record-status] failed:', error)
+  logger.error('[douyin:record-status] failed:', error)
   process.exitCode = 1
 })

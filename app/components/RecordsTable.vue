@@ -197,15 +197,6 @@ const onDateBlurEnd = (e: Event) => {
   if (!scheduledEnd.value) el.type = "text";
 };
 
-const openLink = (url: string | null | undefined) => {
-  if (!url) return;
-  if (window.electronAPI) {
-    void window.electronAPI.openExternal(url);
-    return;
-  }
-  window.open(url, "_blank", "noopener,noreferrer");
-};
-
 const handleDelete = async (item: PublishTask) => {
   if (!window.confirm(`确认删除发布任务 #${item.id} 吗？`)) return;
   try {

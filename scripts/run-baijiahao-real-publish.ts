@@ -3,6 +3,7 @@ import path from 'node:path'
 
 import { createAccount } from '../src/infra/account/account.ts'
 import { createVideo } from '../src/infra/video/video.ts'
+import { logger } from '../src/utils/logger.ts'
 
 const COOKIE_DIR = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.agenthunt', 'cookie_files')
 const VIDEO_PATH = '/Users/wkp/Downloads/olivia.mp4'
@@ -85,17 +86,17 @@ async function main() {
     timeoutMs: 10 * 60 * 1000,
   }
 
-  console.info('[baijiahao:real-publish] start')
-  console.info(`[baijiahao:real-publish] accountFile=${accountFile}`)
-  console.info(`[baijiahao:real-publish] scheduledAt=${scheduledAt}`)
-  console.info(`[baijiahao:real-publish] videoPath=${VIDEO_PATH}`)
-  console.info(`[baijiahao:real-publish] coverPath=${COVER_PATH}`)
+  logger.info('[baijiahao:real-publish] start')
+  logger.info(`[baijiahao:real-publish] accountFile=${accountFile}`)
+  logger.info(`[baijiahao:real-publish] scheduledAt=${scheduledAt}`)
+  logger.info(`[baijiahao:real-publish] videoPath=${VIDEO_PATH}`)
+  logger.info(`[baijiahao:real-publish] coverPath=${COVER_PATH}`)
 
   const result = await createVideo('baijiahao').upload(payload)
-  console.info('[baijiahao:real-publish] result=', result)
+  logger.info('[baijiahao:real-publish] result=', result)
 }
 
 main().catch((error) => {
-  console.error('[baijiahao:real-publish] failed:', error)
+  logger.error('[baijiahao:real-publish] failed:', error)
   process.exitCode = 1
 })
