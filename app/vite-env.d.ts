@@ -22,6 +22,8 @@ interface ElectronAPI {
   onLaunchIntent: (handler: (payload: LaunchIntent) => void) => () => void;
   openExternal: (url: string) => Promise<void>;
   syncTaskStateBg: () => void;
+  getBilibiliHumanTypes: (payload: { accountId: string }) => Promise<Array<{ id: number; name: string }>>;
+  getVideoPublishCapabilities: () => Promise<{ douyin: { enabled: boolean; reason: string | null } }>;
 }
 
 interface Window {

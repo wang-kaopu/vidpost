@@ -33,6 +33,11 @@ type PublishPlanRow = {
   accountName: string;
   scheduledAt: string;
   summary: string;
+  humanTypeId: number | null;
+  humanTypes: Array<{ id: number; name: string }>;
+  humanTypesError: string;
+  humanTypesLoading: boolean;
+  visibility: "public" | "friends" | "self";
 };
 
 type PublishPlanGroup = {
@@ -44,10 +49,11 @@ type PublishPlanDraft = {
   title: string;
   summary: string;
   scheduledAt: string;
+  humanTypeId: number | null;
+  visibility: "public" | "friends" | "self";
 };
 
 const IMMEDIATE_PUBLISH_VALUE = "0";
-const SCHEDULED_AT_PATTERN = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/;
 
 const works = ref<WorkItem[]>([]);
 const loading = ref(false);
@@ -99,6 +105,9 @@ const activePublishWorkRowId = ref("");
 const publishPlatformAccountSummary = ref("");
 const publishPlanDialogVisible = ref(false);
 const publishPlanDrafts = ref<Record<string, PublishPlanDraft>>({});
+const bilibiliHumanTypesByAccount = ref<Record<string, Array<{ id: number; name: string }>>>({});
+const bilibiliHumanTypesErrors = ref<Record<string, string>>({});
+const bilibiliHumanTypesLoading = ref<Record<string, boolean>>({});
 const publishPlanSubmitting = ref(false);
 const notificationCenter = useNotificationCenter();
 
@@ -124,7 +133,9 @@ const selectedWorks = computed<SelectedWorkRow[]>(() =>
 );
 const selectedWorkMap = computed(() => new Map(worksList.value.map((item) => [item.id, item])));
 const selectedLoginSuccessPublishAccounts = computed(() =>
-  publishPlatformAccounts.value.filter((account) => account.rawStatus === "login_success" || account.rawStatus === "online"),
+  publishPlatformAccounts.value.filter((account) =>
+    (account.rawStatus === "login_success" || account.rawStatus === "online") && !account.disabledReason
+  ),
 );
 const publishPlanGroups = computed<PublishPlanGroup[]>(() => {
   const selectedAccountMap = new Map(
@@ -161,6 +172,11 @@ const publishPlanGroups = computed<PublishPlanGroup[]>(() => {
         accountName: account.nickname,
         scheduledAt: draft?.scheduledAt || IMMEDIATE_PUBLISH_VALUE,
         summary: draft?.summary || `同步到${account.platform}账号「${account.nickname}」的默认简介`,
+        humanTypeId: draft?.humanTypeId ?? null,
+        humanTypes: bilibiliHumanTypesByAccount.value[account.id] || [],
+        humanTypesError: bilibiliHumanTypesErrors.value[account.id] || "",
+        humanTypesLoading: bilibiliHumanTypesLoading.value[account.id] || false,
+        visibility: draft?.visibility || "public",
       });
     }
   }
@@ -198,6 +214,8 @@ const syncPublishPlanDrafts = (rowAccountSelections: Record<string, string[]>): 
         title: currentDraft?.title || sourceWork?.title || work.title,
         summary: currentDraft?.summary || `同步到${account.platform}账号「${account.nickname}」的默认简介`,
         scheduledAt: currentDraft?.scheduledAt || IMMEDIATE_PUBLISH_VALUE,
+        humanTypeId: currentDraft?.humanTypeId ?? null,
+        visibility: currentDraft?.visibility || "public",
       };
     }
   }
@@ -219,7 +237,10 @@ const openPublishPlatformAccountDialog = async (): Promise<void> => {
   syncPublishPlanDrafts(nextSelections);
 
   try {
-    const res = await getPublishAccounts({ limit: 999 });
+    const [res, capabilities] = await Promise.all([
+      getPublishAccounts({ limit: 999 }),
+      window.electronAPI?.getVideoPublishCapabilities?.() ?? Promise.resolve({ douyin: { enabled: true, reason: null } }),
+    ]);
     publishPlatformAccounts.value = (res.list || []).map((raw) => {
       const normalized = normalizePublishAccount(raw);
       return {
@@ -231,6 +252,9 @@ const openPublishPlatformAccountDialog = async (): Promise<void> => {
         rawStatus: normalized.status,
         phone: normalized.phoneNumber,
         tag: normalized.tags.join(" / ") || "--",
+        disabledReason: normalized.platformKey === "douyin" && !capabilities.douyin.enabled
+          ? capabilities.douyin.reason
+          : null,
       } as AccountItem;
     });
   } catch {
@@ -252,12 +276,45 @@ const closePublishPlanDialog = (): void => {
   publishPlanDialogVisible.value = false;
 };
 
-const handlePublishPlatformAccountConfirm = (rowAccountSelections: Record<string, string[]>): void => {
+const handlePublishPlatformAccountConfirm = async (rowAccountSelections: Record<string, string[]>): Promise<void> => {
   publishWorkAccountSelections.value = rowAccountSelections;
   syncPublishPlanDrafts(rowAccountSelections);
   publishPlatformAccountSummary.value = buildPublishPlatformAccountSummary(rowAccountSelections);
   closePublishPlatformAccountDialog();
+  const selectedAccountIds = Array.from(new Set(Object.values(rowAccountSelections).flat()));
+  const bilibiliAccounts = selectedLoginSuccessPublishAccounts.value.filter((account) =>
+    selectedAccountIds.includes(account.id) && account.platformKey === "bilibili"
+  );
+  const query = window.electronAPI?.getBilibiliHumanTypes;
+  bilibiliHumanTypesLoading.value = {
+    ...bilibiliHumanTypesLoading.value,
+    ...Object.fromEntries(bilibiliAccounts.map((account) => [account.id, true])),
+  };
   publishPlanDialogVisible.value = true;
+  await Promise.all(bilibiliAccounts.map(async (account) => {
+    if (!query) {
+      bilibiliHumanTypesErrors.value = {
+        ...bilibiliHumanTypesErrors.value,
+        [account.id]: "当前环境未注入 Bilibili 投稿分区查询能力",
+      };
+      bilibiliHumanTypesLoading.value = { ...bilibiliHumanTypesLoading.value, [account.id]: false };
+      return;
+    }
+    try {
+      const types = await query({ accountId: account.id });
+      bilibiliHumanTypesByAccount.value = { ...bilibiliHumanTypesByAccount.value, [account.id]: types };
+      const nextErrors = { ...bilibiliHumanTypesErrors.value };
+      delete nextErrors[account.id];
+      bilibiliHumanTypesErrors.value = nextErrors;
+    } catch (error) {
+      bilibiliHumanTypesErrors.value = {
+        ...bilibiliHumanTypesErrors.value,
+        [account.id]: error instanceof Error ? error.message : String(error),
+      };
+    } finally {
+      bilibiliHumanTypesLoading.value = { ...bilibiliHumanTypesLoading.value, [account.id]: false };
+    }
+  }));
 };
 
 const handlePublishPlanRemove = (payload: { workId: string; accountId: string }): void => {
@@ -271,7 +328,11 @@ const handlePublishPlanRemove = (payload: { workId: string; accountId: string })
   publishPlatformAccountSummary.value = buildPublishPlatformAccountSummary(nextSelections);
 };
 
-const handlePublishPlanFieldUpdate = (payload: { rowId: string; field: keyof PublishPlanDraft; value: string }): void => {
+const handlePublishPlanFieldUpdate = (payload: {
+  rowId: string;
+  field: keyof PublishPlanDraft;
+  value: string | number | null;
+}): void => {
   const currentDraft = publishPlanDrafts.value[payload.rowId];
   if (!currentDraft) return;
 
@@ -292,41 +353,14 @@ const handlePublishPlanApplyAll = (payload: { title: string; summary: string; sc
       nextDrafts[row.id] = {
         title: payload.title,
         summary: payload.summary,
-        scheduledAt: payload.scheduledAt,
+        scheduledAt: IMMEDIATE_PUBLISH_VALUE,
+        humanTypeId: publishPlanDrafts.value[row.id]?.humanTypeId ?? null,
+        visibility: publishPlanDrafts.value[row.id]?.visibility || "public",
       };
     }
   }
 
   publishPlanDrafts.value = nextDrafts;
-};
-
-const parseScheduledAtValue = (value: string): Date | null => {
-  const normalized = String(value || "").trim();
-  const matched = normalized.match(SCHEDULED_AT_PATTERN);
-  if (!matched) {
-    return null;
-  }
-
-  const [, yearText, monthText, dayText, hourText, minuteText] = matched;
-  const year = Number(yearText);
-  const month = Number(monthText);
-  const day = Number(dayText);
-  const hour = Number(hourText);
-  const minute = Number(minuteText);
-  const date = new Date(year, month - 1, day, hour, minute, 0, 0);
-
-  if (
-    Number.isNaN(date.getTime())
-    || date.getFullYear() !== year
-    || date.getMonth() !== month - 1
-    || date.getDate() !== day
-    || date.getHours() !== hour
-    || date.getMinutes() !== minute
-  ) {
-    return null;
-  }
-
-  return date;
 };
 
 const buildPublishTaskScheduleValidationError = (task: {
@@ -336,36 +370,11 @@ const buildPublishTaskScheduleValidationError = (task: {
   title: string;
   scheduledAt: string;
 }): string | null => {
-  const normalizedPlatform = String(task.platform || "").trim().toLowerCase();
   const normalizedScheduledAt = String(task.scheduledAt || "").trim();
   const taskLabel = `${task.platformLabel}账号「${task.accountName}」`;
-
-  if (normalizedPlatform === "sohu") {
-    if (normalizedScheduledAt !== IMMEDIATE_PUBLISH_VALUE) {
-      return `${taskLabel} 暂不支持定时发布，请将《${task.title}》的发布时间设为立即发布`;
-    }
-    return null;
-  }
-
-  if (normalizedScheduledAt === IMMEDIATE_PUBLISH_VALUE) {
-    return null;
-  }
-
-  const scheduledDate = parseScheduledAtValue(normalizedScheduledAt);
-  if (!scheduledDate) {
-    return `${taskLabel} 的发布时间格式错误，应为字符串 "0" 或 YYYY-MM-DD HH:mm`;
-  }
-
-  const now = Date.now();
-  const minAllowed = now + 2 * 60 * 60 * 1000;
-  const maxAllowed = now + 7 * 24 * 60 * 60 * 1000;
-  const scheduledMs = scheduledDate.getTime();
-
-  if (scheduledMs < minAllowed || scheduledMs > maxAllowed) {
-    return `${taskLabel} 的发布时间需在当前时间 2 小时后且 7 天内`;
-  }
-
-  return null;
+  return normalizedScheduledAt === IMMEDIATE_PUBLISH_VALUE
+    ? null
+    : `${taskLabel} 当前仅支持立即发布，请将《${task.title}》的发布时间设为立即发布`;
 };
 
 const resetPublishPlanState = (): void => {
@@ -374,6 +383,9 @@ const resetPublishPlanState = (): void => {
   publishPlanSubmitting.value = false;
   publishWorkAccountSelections.value = {};
   publishPlanDrafts.value = {};
+  bilibiliHumanTypesByAccount.value = {};
+  bilibiliHumanTypesErrors.value = {};
+  bilibiliHumanTypesLoading.value = {};
   publishPlatformAccountSummary.value = "";
   activePublishWorkRowId.value = "";
   selectedWorkIds.value = new Set();
@@ -412,11 +424,19 @@ const handlePublishPlanConfirm = async (): Promise<void> => {
           scheduledAt: row.scheduledAt,
           videoType: workPayload.videoType,
           accountName: row.accountName,
+          humanTypeId: row.humanTypeId,
+          visibility: row.visibility,
         };
       }),
     );
 
     for (const task of publishTasks) {
+      if ((task.platform === "bilibili" || task.platform === "baijiahao" || task.platform === "douyin") && !task.coverUrl) {
+        throw new Error(`${task.platformLabel}账号「${task.accountName}」的任务缺少封面`);
+      }
+      if (task.platform === "bilibili" && (!Number.isSafeInteger(task.humanTypeId) || Number(task.humanTypeId) <= 0)) {
+        throw new Error(`Bilibili 账号「${task.accountName}」必须选择投稿分区`);
+      }
       const validationError = buildPublishTaskScheduleValidationError(task);
       if (validationError) {
         throw new Error(validationError);

@@ -1,1924 +1,1037 @@
-import type { PublishedStatePayload, PublishedStateResult, Video, VideoUploadPayload, VideoUploadResult } from "./video.ts";
+import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
+import { open, readFile, stat } from "node:fs/promises";
+import { basename, isAbsolute, resolve } from "node:path";
 
-import fs5 from "node:fs/promises";
-import path5 from "node:path";
+import axios, { type AxiosInstance } from "axios";
+import { createFile, type Movie } from "mp4box";
+import pLimit from "p-limit";
+import sharp from "sharp";
+import { chromium, type BrowserContext, type Page, type Response } from "playwright";
 
-import "playwright";
+import type {
+  PublishedStatePayload,
+  PublishedStateResult,
+  Video,
+  VideoRuntime,
+  VideoUploadPayload,
+  VideoUploadResult,
+} from "./video.ts";
 
-import fs from "node:fs/promises";
-import path from "node:path";
-async function readStorageState(accountFile) {
+interface Logger {
+  log(event: unknown): void | Promise<void>;
+}
+
+interface SerializedAxiosResponse {
+  body: unknown;
+  headers: unknown;
+  status: number;
+  statusText: string;
+}
+
+const consoleLogger: Logger = {
+  log(event): void {
+    console.log(JSON.stringify(event, null, 2));
+  },
+};
+
+/** 安全输出结构化日志，日志失败不影响发布。 */
+async function emitLog(logger: Logger, event: unknown): Promise<void> {
   try {
-    const content = await fs.readFile(accountFile, "utf8");
-    return JSON.parse(content);
-  } catch {
-    return null;
-  }
-}
-async function writeStorageState(accountFile, storageState) {
-  await fs.mkdir(path.dirname(accountFile), { recursive: true });
-  await fs.writeFile(accountFile, JSON.stringify(storageState, null, 2), "utf8");
-}
-async function loadContextStorageState(accountFile) {
-  const storageState = await readStorageState(accountFile);
-  return storageState ? { storageState } : {};
-}
-
-var PlatformInfraError = class extends Error {
-  constructor(message) {
-    super(message);
-    this.name = "PlatformInfraError";
-  }
-};
-var PlatformCookieInvalidError = class extends PlatformInfraError {
-  constructor(platform, accountFile) {
-    super(`${platform} \u8D26\u53F7\u6587\u4EF6\u767B\u5F55\u6001\u65E0\u6548: ${accountFile}`);
-    this.name = "PlatformCookieInvalidError";
-  }
-};
-var PlatformTimeoutError = class extends PlatformInfraError {
-  constructor(platform, step, timeoutMs) {
-    super(`${platform} \u5728\u6B65\u9AA4 ${step} \u4E0A\u7B49\u5F85\u8D85\u65F6: ${timeoutMs}ms`);
-    this.name = "PlatformTimeoutError";
-  }
-};
-var PlatformUserAbortedError = class extends PlatformInfraError {
-  constructor(message) {
-    super(message);
-    this.name = "PlatformUserAbortedError";
-  }
-};
-
-import fs2 from "node:fs/promises";
-import path2 from "node:path";
-import { chromium } from "playwright";
-
-var PLAYWRIGHT_HEADLESS_CONFIG = {
-  default: false,
-  probe: false,
-  "ping:douyin": true,
-  "ping:bilibili": true,
-  "ping:sohu": true,
-  "ping:baijiahao": true,
-  "login-success:douyin": true,
-  "login-success:bilibili": true,
-  "login-success:sohu": true,
-  "login-success:baijiahao": true,
-  "publish:douyin": false,
-  "publish:sohu": false,
-  "publish:baijiahao": false,
-  "record-status:douyin": true,
-  "record-status:bilibili": true,
-  "record-status:sohu": true,
-  "record-status:baijiahao": true,
-  "script:douyin-record-status": false,
-  "script:baijiahao-video-state-success": false,
-  "script:bilibili-video-state-success": false
-};
-function resolvePlaywrightHeadlessMode(scenario = "default") {
-  return PLAYWRIGHT_HEADLESS_CONFIG[scenario];
-}
-
-var ENV_BROWSER_PATH_KEYS = [
-  "PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH",
-  "GOOGLE_CHROME_BIN",
-  "CHROME_BIN",
-  "CHROME_PATH",
-  "CHROMIUM_BIN",
-  "CHROMIUM_PATH"
-];
-var PATH_BROWSER_COMMANDS = [
-  "google-chrome",
-  "google-chrome-stable",
-  "chrome",
-  "chromium",
-  "chromium-browser",
-  "msedge"
-];
-var LOCAL_BROWSER_PATH_CANDIDATES = [
-  "~/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-  "~/Applications/Chromium.app/Contents/MacOS/Chromium",
-  "/Applications/Chromium.app/Contents/MacOS/Chromium",
-  "~/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-  "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-  "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
-  "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
-  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
-  "/usr/bin/google-chrome",
-  "/usr/bin/google-chrome-stable",
-  "/usr/bin/chromium",
-  "/usr/bin/chromium-browser",
-  "/usr/bin/microsoft-edge"
-];
-function normalizeBrowserPath(candidate) {
-  const token = String(candidate ?? "").trim();
-  if (!token) {
-    return null;
-  }
-  const resolved = path2.resolve(token.replace(/^~(?=$|[\\/])/, process.env.HOME || "~"));
-  return resolved;
-}
-async function fileExists(targetPath) {
-  try {
-    await fs2.access(targetPath);
-    return true;
-  } catch {
-    return false;
-  }
-}
-async function resolveEnvBrowserPath() {
-  for (const envKey of ENV_BROWSER_PATH_KEYS) {
-    const normalized = normalizeBrowserPath(process.env[envKey]);
-    if (normalized && await fileExists(normalized)) {
-      return normalized;
-    }
-  }
-  for (const command of PATH_BROWSER_COMMANDS) {
-    const commandPath = process.platform === "win32" ? `${command}.exe` : command;
-    const envPath = process.env.PATH || "";
-    for (const segment of envPath.split(path2.delimiter)) {
-      const normalized = normalizeBrowserPath(path2.join(segment, commandPath));
-      if (normalized && await fileExists(normalized)) {
-        return normalized;
-      }
-    }
-  }
-  return null;
-}
-async function resolveLocalBrowserPath(configuredPath) {
-  const envBrowserPath = await resolveEnvBrowserPath();
-  if (envBrowserPath) {
-    return envBrowserPath;
-  }
-  const configured = normalizeBrowserPath(configuredPath);
-  if (configured && await fileExists(configured)) {
-    return configured;
-  }
-  for (const candidate of LOCAL_BROWSER_PATH_CANDIDATES) {
-    const normalized = normalizeBrowserPath(candidate);
-    if (normalized && await fileExists(normalized)) {
-      return normalized;
-    }
-  }
-  return null;
-}
-async function launchChromiumBrowser(browserType: any, options: any = {}) {
-  const { configuredExecutablePath, ...launchOptions } = options;
-  const explicitExecutablePath = normalizeBrowserPath(launchOptions.executablePath);
-  if (explicitExecutablePath) {
-    try {
-      return await browserType.launch({ ...launchOptions, executablePath: explicitExecutablePath });
-    } catch {
-    }
-  }
-  const localBrowserPath = await resolveLocalBrowserPath(configuredExecutablePath);
-  if (localBrowserPath) {
-    try {
-      return await browserType.launch({ ...launchOptions, executablePath: localBrowserPath });
-    } catch {
-    }
-  }
-  return browserType.launch(launchOptions);
-}
-async function createBrowserSession(options: any = {}) {
-  const browser = await launchChromiumBrowser(chromium, {
-    headless: resolvePlaywrightHeadlessMode(options.headlessMode),
-    configuredExecutablePath: options.configuredExecutablePath,
-    ...options.launchOptions
-  });
-  try {
-    const context = await browser.newContext(options.contextOptions);
-    const page = await context.newPage();
-    return { browser, context, page };
+    await logger.log(event);
   } catch (error) {
-    await browser.close().catch(() => void 0);
-    throw error;
+    console.error("Logger 执行失败：", error);
   }
 }
 
-var sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-function runOnAbort(signal, callback) {
-  if (!signal) {
-    return () => void 0;
+const BAIJIAHAO_ORIGIN = "https://baijiahao.baidu.com";
+const APP_INFO_URL = `${BAIJIAHAO_ORIGIN}/builder/app/appinfo`;
+const PREUPLOAD_URL = `${BAIJIAHAO_ORIGIN}/materialui/video/preuploadvideo`;
+const CHUNK_UPLOAD_URL = "https://rsbjh10.baidu.com/materialui/video/uploadvideo";
+const COMPLETE_UPLOAD_URL = `${BAIJIAHAO_ORIGIN}/materialui/video/compuploadvideo`;
+const COVER_UPLOAD_URL = `${BAIJIAHAO_ORIGIN}/pcui/picture/processproxy`;
+const TOPIC_SEARCH_URL = `${BAIJIAHAO_ORIGIN}/pcui/pcpublisher/searchtopic`;
+const PUBLISH_URL = `${BAIJIAHAO_ORIGIN}/pcui/article/publish`;
+const CHUNK_SIZE = 2 * 1024 * 1024;
+const CHUNK_CONCURRENCY = 3;
+const MP4_READ_SIZE = 1024 * 1024;
+const RETRY_DELAYS_MS = [1_000, 2_000, 4_000] as const;
+
+const IMAGE_EDIT_POINT = [
+  {
+    img_type: "cover",
+    img_num: { template: 0, font: 0, filter: 0, paster: 0, cut: 0, any: 0 },
+  },
+  {
+    img_type: "body",
+    img_num: { template: 0, font: 0, filter: 0, paster: 0, cut: 0, any: 0 },
+  },
+] as const;
+
+const HORIZONTAL_PUBLISH_DEFAULTS: Record<string, unknown> = {
+  type: "video",
+  title: "",
+  vertical_cover: "",
+  desc: "",
+  bjhtopic_id: "",
+  bjhtopic_info: "",
+  cover_image_source: {
+    wide_cover_image_source: "video_cut",
+    vertical_cover_image_source: "video_cut",
+  },
+  ducut_info: "",
+  content: [{ title: "", mediaId: "", videoName: "", local: 1, desc: "" }],
+  video_duration: 0,
+  nryx_mount_list: "",
+  activity_list: [{ id: "aigc_bjh_status", is_checked: 0 }],
+  source_reprinted_allow: 0,
+  is_auto_optimize_cover: 1,
+  bjh_video_finger_printing: { s2l: null, s2game: null, bjh: { duration: 35 } },
+  fe_from: "BJH_CMS_PC",
+  auto_mount_goods: 0,
+  is_consultant_card: 0,
+  usingImgFilter: false,
+  cover_layout: "one",
+  cover_images: [{ src: "", isLegal: 0, cover_source_tag: "smart_recommend" }],
+  _cover_images_map: [],
+  cover_source: "upload",
+  clue: "",
+  bjhmt: "",
+  order_id: "",
+  BJH_FE_NOUNCE: "",
+  aigc_rebuild: "",
+  pub_source_from: "pc_faburukou",
+  image_edit_point: JSON.stringify(IMAGE_EDIT_POINT),
+};
+
+const VERTICAL_PUBLISH_DEFAULTS: Record<string, unknown> = {
+  type: "ugc_video",
+  title: "",
+  bjhtopic_id: "",
+  bjhtopic_info: "",
+  cover_image_source: {
+    wide_cover_image_source: "video_cut",
+    vertical_cover_image_source: "video_cut",
+  },
+  ducut_info: "",
+  content: [{ title: "", mediaId: "" }],
+  video_duration: 0,
+  nryx_mount_list: "",
+  vertical_cover_images: [
+    {
+      content_original: "",
+      src: "",
+      cropData: { x: 0, y: 155, width: 608, height: 810 },
+      isLegal: 0,
+      cover_source_tag: "video_cut",
+    },
+  ],
+  size: 0,
+  width_in_pixel: 1920,
+  height_in_pixel: 1080,
+  cover_layout: "one",
+  cover_images: [
+    {
+      source: "local",
+      src: "",
+      cropData: { x: 0, y: 421, width: 608, height: 342 },
+      isLegal: 0,
+      cover_source_tag: "video_cut",
+    },
+  ],
+  _cover_images_map: [{ src: "", origin_src: "" }],
+  cover_source: "upload",
+  activity_list: [{ id: "aigc_bjh_status", is_checked: 0 }],
+  source_reprinted_allow: 0,
+  is_auto_optimize_cover: 1,
+  loadComplete: true,
+  fe_from: "BJH_CMS_PC",
+  auto_mount_goods: 0,
+  is_consultant_card: 0,
+  clue: "",
+  bjhmt: "",
+  order_id: "",
+  BJH_FE_NOUNCE: "",
+  aigc_rebuild: "",
+  pub_source_from: "pc_faburukou",
+  image_edit_point: JSON.stringify(IMAGE_EDIT_POINT),
+};
+
+const BAIJIAHAO_ERROR_MESSAGES: Record<string, string> = {
+  "您所在网络环境异常，请完成验证":
+    "出现验证码了，请先前往多开面板使用该账号发布一条内容，发布成功后即可继续在一键发布中操作",
+  "您的点击太快啦，还在努力处理中": "发布频率过快，请5分钟后重试",
+  "账号状态异常": "账号状态异常！请前往官方后台查看",
+  "需要验证通过才可发文":
+    "出现验证码了，请先前往多开面板使用该账号发布一条内容，发布成功后即可继续在一键发布中操作",
+};
+
+export interface StoredCookie {
+  domain: string;
+  expires: number;
+  name: string;
+  path: string;
+  value: string;
+}
+
+export interface PublicationText {
+  description: string;
+  title: string;
+  topicNames: string[];
+}
+
+export interface VideoMetadata {
+  duration: number;
+  height: number;
+  size: number;
+  videoType: "horizontal" | "vertical";
+  width: number;
+}
+
+export interface ChunkDescriptor {
+  end: number;
+  index: number;
+  partNumber: number;
+  size: number;
+  start: number;
+}
+
+export interface GeneratedCovers {
+  horizontal: Buffer;
+  vertical: Buffer;
+}
+
+export interface BaijiahaoTopic {
+  cover?: unknown;
+  guide?: unknown;
+  id?: unknown;
+  sv_small_images?: { https?: unknown };
+  title?: unknown;
+  [key: string]: unknown;
+}
+
+export interface PublishPayloadInput {
+  description: string;
+  duration: number;
+  height: number;
+  horizontalCoverUrl: string;
+  mediaId: string;
+  size: number;
+  title: string;
+  topic?: BaijiahaoTopic;
+  verticalCoverOriginalUrl: string;
+  verticalCoverUrl: string;
+  videoName: string;
+  videoType: "horizontal" | "vertical";
+  width: number;
+}
+
+export interface BaijiahaoVideoOptions {
+  cookiesPath: string;
+  coverPath: string;
+  textPath: string;
+  videoPath: string;
+}
+
+export interface BaijiahaoPreparedContext {
+  context: BaijiahaoRunContext;
+  horizontalCover: UploadedCover;
+  httpResponses: SerializedAxiosResponse[];
+  payload: Record<string, unknown>;
+  topic?: BaijiahaoTopic;
+  upload: { mediaId: string; uploadKey: string };
+  verticalCover: UploadedCover;
+}
+
+export interface BaijiahaoPublishResponse {
+  nid: string;
+  response: SerializedAxiosResponse;
+}
+
+interface AppInfoResponse {
+  data?: { user?: { app_id?: string | number } };
+  errno?: number;
+  errmsg?: string;
+}
+
+interface PreUploadResponse {
+  error_code?: number;
+  error_msg?: string;
+  mediaId?: string | number;
+  upload_key?: string;
+}
+
+interface BasicUploadResponse {
+  error_code?: number;
+  error_msg?: string;
+}
+
+interface CoverUploadResponse {
+  errno?: number;
+  errmsg?: string;
+  ret?: { original_url?: string; url?: string };
+}
+
+interface TopicSearchResponse {
+  data?: { hot?: BaijiahaoTopic[]; recommend?: BaijiahaoTopic[] };
+  errno?: number;
+  errmsg?: string;
+}
+
+interface PublishResponse {
+  errno?: number;
+  errmsg?: string;
+  error_msg?: string;
+  ret?: { nid?: string | number };
+}
+
+export interface UploadedCover {
+  originalUrl: string;
+  token: string;
+  url: string;
+}
+
+export interface BaijiahaoRunContext {
+  appId: string;
+  cookieHeader: string;
+  fileMd5: string;
+  fileModifiedAt: number;
+  metadata: VideoMetadata;
+  publication: PublicationText;
+  videoName: string;
+}
+
+/**
+ * 读取 Playwright storage-state 并生成百家号 Cookie Header。
+ *
+ * @param cookiesPath - storage-state JSON 路径
+ * @returns 可直接发送给百家号接口的 Cookie Header
+ */
+async function loadCookieHeader(cookiesPath: string): Promise<string> {
+  const parsed = JSON.parse(await readFile(cookiesPath, "utf8")) as unknown;
+  if (!parsed || typeof parsed !== "object" || !("cookies" in parsed) || !Array.isArray(parsed.cookies)) {
+    throw new Error("Cookie 文件必须是包含 cookies 数组的 Playwright storage-state JSON");
   }
-  let handled = false;
-  const onAbort = () => {
-    if (handled) {
-      return;
-    }
-    handled = true;
-    void Promise.resolve(callback()).catch(() => void 0);
+  const nowSeconds = Date.now() / 1_000;
+  const values = (parsed.cookies as StoredCookie[]).flatMap((cookie) => {
+    const domain = cookie.domain.trim().replace(/^\.+/u, "").toLowerCase();
+    const isBaiduCookie = domain === "baidu.com" || domain.endsWith(".baidu.com");
+    const isUnexpired = cookie.expires === -1 || cookie.expires > nowSeconds;
+    return isBaiduCookie && isUnexpired && cookie.name && cookie.value ? [`${cookie.name}=${cookie.value}`] : [];
+  });
+  if (values.length === 0) throw new Error("Cookie 文件中没有可用的 baidu.com Cookie");
+  return values.join("; ");
+}
+
+/**
+ * 使用 MP4Box 渐进解析 MP4 元数据，不保留媒体数据。
+ *
+ * @param videoPath - MP4 文件路径
+ * @returns 时长、尺寸、大小和横竖版判断
+ */
+async function inspectMp4(videoPath: string): Promise<VideoMetadata> {
+  const fileStats = await stat(videoPath);
+  if (!fileStats.isFile() || fileStats.size <= 0) {
+    throw new Error("视频路径不是非空文件");
+  }
+  const mp4File = createFile(false);
+  let movie: Movie | undefined;
+  let parserError: string | undefined;
+  mp4File.onReady = (info) => {
+    movie = info;
   };
-  if (signal.aborted) {
-    onAbort();
-    return () => void 0;
-  }
-  signal.addEventListener("abort", onAbort, { once: true });
-  return () => signal.removeEventListener("abort", onAbort);
-}
-async function pickFileWithChooser(page, trigger, filePath, timeoutMs = 1e4) {
+  mp4File.onError = (message) => {
+    parserError = String(message);
+  };
+
+  const handle = await open(videoPath, "r");
   try {
-    const chooserPromise = page.waitForEvent("filechooser", { timeout: timeoutMs });
-    await trigger();
-    const chooser = await chooserPromise;
-    await chooser.setFiles(filePath);
-    return true;
-  } catch {
-    return false;
+    for (let offset = 0; offset < fileStats.size && movie === undefined; offset += MP4_READ_SIZE) {
+      const length = Math.min(MP4_READ_SIZE, fileStats.size - offset);
+      const buffer = Buffer.allocUnsafe(length);
+      const { bytesRead } = await handle.read(buffer, 0, length, offset);
+      if (bytesRead === 0) break;
+      const arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + bytesRead) as ArrayBuffer & {
+        fileStart: number;
+      };
+      arrayBuffer.fileStart = offset;
+      mp4File.appendBuffer(arrayBuffer);
+      if (parserError) break;
+    }
+    if (movie === undefined && !parserError) {
+      mp4File.flush();
+    }
+  } finally {
+    await handle.close();
   }
+
+  if (parserError) {
+    throw new Error(`MP4 解析失败：${parserError}`);
+  }
+  if (!movie) {
+    throw new Error("MP4 解析失败：未找到 moov 元数据");
+  }
+  const videoTrack = movie.tracks.find((track) => track.video !== undefined);
+  const width = videoTrack?.video?.width ?? videoTrack?.track_width;
+  const height = videoTrack?.video?.height ?? videoTrack?.track_height;
+  const duration = movie.timescale > 0 ? movie.duration / movie.timescale : 0;
+  if (!width || !height || !Number.isFinite(duration) || duration <= 0) {
+    throw new Error("MP4 缺少有效的视频尺寸或时长");
+  }
+  return {
+    duration,
+    height,
+    size: fileStats.size,
+    videoType: width >= height ? "horizontal" : "vertical",
+    width,
+  };
 }
-async function clickWithDomFallback(target, options) {
-  const timeoutMs = options?.timeoutMs ?? 5e3;
-  const force = options?.force ?? true;
-  const attempts = Math.max(1, options?.attempts ?? 1);
-  const intervalMs = options?.intervalMs ?? 300;
-  const onInterference = options?.onInterference;
-  let lastError;
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+
+/**
+ * 流式计算视频文件 MD5，供百家号预上传和分片接口复用。
+ *
+ * @param videoPath - 视频文件路径
+ * @returns 小写十六进制 MD5
+ */
+async function calculateFileMd5(videoPath: string): Promise<string> {
+  const hash = createHash("md5");
+  for await (const chunk of createReadStream(videoPath) as AsyncIterable<Buffer>) {
+    hash.update(chunk);
+  }
+  return hash.digest("hex");
+}
+
+/**
+ * 从单个源封面生成固定尺寸的横版和竖版 JPEG Buffer。
+ *
+ * @param coverPath - 任意 Sharp 支持的源图片路径
+ * @returns 1280×720 横版和 1080×1440 竖版封面
+ */
+async function generateCovers(coverPath: string): Promise<GeneratedCovers> {
+  const source = await readFile(coverPath);
+  const image = sharp(source).rotate();
+  const [horizontal, vertical] = await Promise.all([
+    image
+      .clone()
+      .resize(1280, 720, { fit: "cover", position: sharp.strategy.attention, withoutEnlargement: false })
+      .jpeg({ chromaSubsampling: "4:4:4", quality: 90 })
+      .toBuffer(),
+    image
+      .clone()
+      .resize(1080, 1440, { fit: "cover", position: sharp.strategy.attention, withoutEnlargement: false })
+      .jpeg({ chromaSubsampling: "4:4:4", quality: 90 })
+      .toBuffer(),
+  ]);
+  return { horizontal, vertical };
+}
+
+/**
+ * 按原包协议构造横版或竖版发布参数。
+ *
+ * @param input - 已上传资源、视频信息、文案和可选话题
+ * @returns 尚未 URL 编码的发布字段
+ */
+function buildPublishPayload(input: PublishPayloadInput): Record<string, unknown> {
+  const duration = Math.ceil(input.duration);
+  const payload: Record<string, unknown> = structuredClone(
+    input.videoType === "horizontal" ? HORIZONTAL_PUBLISH_DEFAULTS : VERTICAL_PUBLISH_DEFAULTS,
+  );
+
+  if (input.videoType === "horizontal") {
+    payload.desc = input.description;
+    payload.vertical_cover = input.verticalCoverUrl;
+    payload.content = JSON.stringify([
+      {
+        title: input.title,
+        mediaId: input.mediaId,
+        videoName: input.videoName,
+        local: 1,
+        desc: input.description,
+      },
+    ]);
+    payload.bjh_video_finger_printing = JSON.stringify({
+      s2l: null,
+      s2game: null,
+      bjh: { duration },
+    });
+    payload.cover_images = JSON.stringify([
+      { src: input.horizontalCoverUrl, isLegal: 0, cover_source_tag: "video_cut" },
+    ]);
+    payload._cover_images_map = JSON.stringify([]);
+    if (input.topic) {
+      payload.bjhtopic_id = input.topic.id;
+      payload.bjhtopic_info = [
+        {
+          id: input.topic.id,
+          title: input.topic.title,
+          guide: "",
+          cover: input.topic.sv_small_images?.https,
+        },
+      ];
+    }
+  } else {
+    const cropData = { x: 0, y: 0, width: 1080, height: 1440 };
+    payload.content = JSON.stringify([{ title: input.title, mediaId: input.mediaId }]);
+    payload.vertical_cover_images = JSON.stringify([
+      {
+        content_original: input.verticalCoverOriginalUrl,
+        src: input.verticalCoverUrl,
+        cropData,
+        isLegal: 0,
+        cover_source_tag: "video_cut",
+      },
+    ]);
+    payload.size = input.size;
+    payload.width_in_pixel = input.width;
+    payload.height_in_pixel = input.height;
+    payload.cover_images = JSON.stringify([
+      {
+        source: "local",
+        src: input.verticalCoverUrl,
+        cropData,
+        isLegal: 0,
+        cover_source_tag: "video_cut",
+      },
+    ]);
+    payload._cover_images_map = JSON.stringify([
+      { src: input.verticalCoverUrl, origin_src: input.verticalCoverOriginalUrl },
+    ]);
+    if (input.topic) {
+      payload.bjhtopic_id = input.topic.id;
+      payload.bjhtopic_info = [input.topic];
+    }
+  }
+
+  payload.title = input.description;
+  payload.video_duration = duration;
+  payload.publish_statement = 0;
+  payload.publish_statement_sub = 0;
+  payload.activity_list = [{ id: "aigc_bjh_status", is_checked: 0 }];
+  payload.bjh_video_finger_printing = JSON.stringify({
+    s2l: null,
+    s2game: null,
+    bjh: { duration },
+  });
+  return payload;
+}
+
+/**
+ * 获取当前账号的百家号 app_id。
+ *
+ * @param cookieHeader - 全量百度 Cookie Header
+ * @returns 后续上传接口使用的 app_id
+ */
+async function fetchAppId(cookieHeader: string, http: AxiosInstance): Promise<string> {
+  const response = await http.get<AppInfoResponse>(APP_INFO_URL, {
+    headers: { Cookie: cookieHeader },
+  });
+  const appId = response.data.data?.user?.app_id;
+  if (appId === undefined || String(appId).length === 0) {
+    throw new Error(response.data.errmsg || "用户信息获取失败：响应缺少 data.user.app_id");
+  }
+  return String(appId);
+}
+
+/**
+ * 创建百家号视频上传任务。
+ *
+ * @param context - app_id、MD5 和视频元数据
+ * @returns 上传密钥和发布使用的 mediaId
+ */
+async function preUploadVideo(
+  context: BaijiahaoRunContext,
+  http: AxiosInstance,
+): Promise<{ mediaId: string; uploadKey: string }> {
+  const videoType = context.metadata.videoType === "horizontal" ? "short" : "tiny";
+  const response = await http.post<PreUploadResponse>(
+    PREUPLOAD_URL,
+    {
+      app_id: context.appId,
+      md5: context.fileMd5,
+      is_pay_column: "0",
+      video_type: videoType,
+      column_videotype: "",
+      size: String(context.metadata.size),
+      org_file_name: context.videoName,
+    },
+    {
+      headers: { Cookie: context.cookieHeader },
+      params: { app_id: context.appId },
+    },
+  );
+  const { error_code: errorCode, mediaId, upload_key: uploadKey } = response.data;
+  if (errorCode !== 20_000 || mediaId === undefined || !uploadKey) {
+    throw new Error(
+      `预上传结果错误（error_code=${String(errorCode)}）：${response.data.error_msg ?? "缺少 upload_key 或 mediaId"}`,
+    );
+  }
+  return { mediaId: String(mediaId), uploadKey };
+}
+
+/**
+ * 上传单张百家号封面并提取 URL 与响应 token。
+ *
+ * @param cookieHeader - 全量百度 Cookie Header
+ * @param image - JPEG 封面 Buffer
+ * @returns 封面原图 URL、处理后 URL 和发布 token
+ */
+async function uploadCover(cookieHeader: string, image: Buffer, http: AxiosInstance): Promise<UploadedCover> {
+  const form = new FormData();
+  form.append("action[]", "save");
+  form.append("base64", image.toString("base64"));
+  form.append("videoCover", "frontend");
+  const response = await http.post<CoverUploadResponse>(COVER_UPLOAD_URL, form, {
+    headers: { Cookie: cookieHeader },
+  });
+  const rawHeaders = response.headers as unknown as Record<string, unknown>;
+  const tokenHeader = rawHeaders["token"] ?? rawHeaders["Token"];
+  const token = typeof tokenHeader === "string" ? tokenHeader : undefined;
+  const originalUrl = response.data.ret?.original_url;
+  const url = response.data.ret?.url;
+  if (response.data.errno !== 0 || !originalUrl || !url || !token) {
+    throw new Error(`封面上传错误：${response.data.errmsg ?? "响应缺少 URL 或 token"}`);
+  }
+  return { originalUrl, token: String(token), url };
+}
+
+/**
+ * 读取并上传一个视频分片；每次重试都会重新创建 multipart Body。
+ *
+ * @param input - 分片、文件和上传上下文
+ */
+async function uploadVideoChunk(input: {
+  appId: string;
+  chunk: ChunkDescriptor;
+  chunkBuffer: Buffer;
+  cookieHeader: string;
+  fileMd5: string;
+  fileModifiedAt: number;
+  fileSize: number;
+  totalChunks: number;
+  uploadKey: string;
+  videoName: string;
+}, http: AxiosInstance): Promise<void> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt += 1) {
     try {
-      await target.click({ timeout: timeoutMs, force });
-      return true;
+      const form = new FormData();
+      form.append("app_id", input.appId);
+      form.append("md5", input.fileMd5);
+      form.append("id", "WU_FILE_0");
+      form.append("name", input.videoName);
+      form.append("type", "video/mp4");
+      form.append("lastModifiedDate", new Date(input.fileModifiedAt).toISOString());
+      form.append("size", String(input.fileSize));
+      form.append("chunks", String(input.totalChunks));
+      form.append("chunk", String(input.chunk.index));
+      form.append("upload_key", input.uploadKey);
+      form.append("file", new Blob([new Uint8Array(input.chunkBuffer)]));
+      const response = await http.post<BasicUploadResponse>(CHUNK_UPLOAD_URL, form, {
+        headers: { Cookie: input.cookieHeader },
+        params: { app_id: input.appId },
+      });
+      if (response.data.error_code !== 20_000) {
+        throw new Error(`分片 ${input.chunk.partNumber} 上传失败（error_code=${String(response.data.error_code)}）：${response.data.error_msg ?? "未知错误"}`);
+      }
+      return;
     } catch (error) {
       lastError = error;
-      if (!onInterference || attempt >= attempts) {
-        continue;
-      }
-      const recovered = await onInterference({ kind: "click", attempt, error });
-      if (recovered) {
-        await sleep(intervalMs);
-      }
+      const wait = RETRY_DELAYS_MS[attempt];
+      if (wait === undefined) break;
+      await new Promise<void>((resolvePromise) => setTimeout(resolvePromise, wait));
     }
   }
-  if (onInterference) {
-    const recovered = await onInterference({ kind: "click", attempt: attempts + 1, error: lastError });
-    if (recovered) {
-      await sleep(intervalMs);
-    }
-  }
-  const handle = await target.elementHandle().catch(() => null);
-  if (!handle) {
-    return false;
-  }
-  return domClickHandle(handle);
-}
-async function domClickHandle(handle) {
-  return handle.evaluate((node) => {
-    try {
-      node.click();
-      return true;
-    } catch {
-      return false;
-    }
-  }).catch(() => false);
-}
-function acceptMatchesKind(accept, kind = "any") {
-  const normalizedAccept = String(accept || "").trim().toLowerCase();
-  if (!normalizedAccept || kind === "any") {
-    return true;
-  }
-  if (kind === "image") {
-    return /image|png|jpg|jpeg|gif|webp|bmp|heic|heif/i.test(normalizedAccept);
-  }
-  if (kind === "video") {
-    return /video|mp4|mov|mkv|avi|wmv|webm|m4v|mpeg|mpg|flv/i.test(normalizedAccept);
-  }
-  return true;
-}
-async function findFileInput(page, selectors, log, kind = "any") {
-  for (const selector of selectors) {
-    const locator = page.locator(selector);
-    const count = await locator.count().catch(() => 0);
-    log?.(`probe selector=${selector} count=${count}`);
-    for (let index = 0; index < count; index += 1) {
-      const candidate = locator.nth(index);
-      const accept = await candidate.getAttribute("accept").catch(() => "");
-      const className = await candidate.getAttribute("class").catch(() => "");
-      const type = await candidate.getAttribute("type").catch(() => "");
-      log?.(`input candidate index=${index} type=${type} class=${className} accept=${accept}`);
-      if (String(type || "").toLowerCase() !== "file") {
-        continue;
-      }
-      if (acceptMatchesKind(accept, kind)) {
-        return candidate;
-      }
-    }
-  }
-  return null;
+  throw lastError;
 }
 
-import { chromium as chromium2 } from "playwright";
-
-import fs3 from "node:fs";
-import path3 from "node:path";
-var PARTITION_MAP_TABLE_KEY = "partition_map_table";
-var DEFAULT_STORE_FILE = "partition-map.json";
-function resolveDefaultPartitionStorePath() {
-  const homeDir = process.env.HOME || process.env.USERPROFILE || ".";
-  return path3.join(homeDir, ".agenthunt", DEFAULT_STORE_FILE);
-}
-function encodePartitionAccountId(accountId) {
-  return Buffer.from(String(accountId), "utf8").toString("base64url");
-}
-function createPartitionStore(storePath = resolveDefaultPartitionStorePath()) {
-  const readAll = () => {
-    try {
-      const content = fs3.readFileSync(storePath, "utf8");
-      const parsed = JSON.parse(content);
-      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
-    } catch {
-      return {};
-    }
-  };
-  const writeAll = (data) => {
-    fs3.mkdirSync(path3.dirname(storePath), { recursive: true });
-    fs3.writeFileSync(storePath, JSON.stringify(data, null, 2), "utf8");
-  };
-  return {
-    storePath,
-    get(key) {
-      return readAll()[key];
-    },
-    set(key, value) {
-      const data = readAll();
-      data[key] = value;
-      writeAll(data);
-    }
-  };
-}
-function readPartitionMapTable(store) {
-  const table = store.get(PARTITION_MAP_TABLE_KEY);
-  if (!table || typeof table !== "object" || Array.isArray(table)) {
-    return {};
+/**
+ * 以并发数 3 上传全部 2 MiB 视频分片。
+ *
+ * @param videoPath - MP4 文件路径
+ * @param context - 账号、文件和视频上下文
+ * @param uploadKey - 预上传返回的上传密钥
+ * @returns 成功上传的分片数量
+ */
+async function uploadVideoChunks(
+  videoPath: string,
+  context: BaijiahaoRunContext,
+  uploadKey: string,
+  http: AxiosInstance,
+  logger: Logger,
+): Promise<number> {
+  const chunks: ChunkDescriptor[] = [];
+  for (let start = 0, index = 0; start < context.metadata.size; start += CHUNK_SIZE, index += 1) {
+    const end = Math.min(start + CHUNK_SIZE, context.metadata.size);
+    chunks.push({ end, index, partNumber: index + 1, size: end - start, start });
   }
-  return { ...table };
-}
-function resolvePartitionForAccount(store, accountId) {
-  const normalizedAccountId = String(accountId || "").trim();
-  if (!normalizedAccountId) {
-    throw new Error("resolvePartitionForAccount requires a non-empty accountId");
-  }
-  const table = readPartitionMapTable(store);
-  let partition = table[normalizedAccountId];
-  if (!partition) {
-    partition = `persist:rpa-${encodePartitionAccountId(normalizedAccountId)}`;
-    table[normalizedAccountId] = partition;
-    store.set(PARTITION_MAP_TABLE_KEY, table);
-  }
-  if (typeof partition !== "string" || !partition.startsWith("persist:")) {
-    throw new Error(`\u8D26\u53F7 ${normalizedAccountId} \u7684 partition \u975E\u6CD5: ${String(partition)}`);
-  }
-  return partition;
-}
-
-import fs4 from "node:fs/promises";
-import path4 from "node:path";
-function cookieUrl(cookie) {
-  const domain = String(cookie.domain || "").replace(/^\./, "");
-  const protocol = cookie.secure ? "https" : "http";
-  return `${protocol}://${domain}${cookie.path || "/"}`;
-}
-function normalizeSameSite(value) {
-  switch ((value || "").toLowerCase()) {
-    case "strict":
-      return "strict";
-    case "lax":
-      return "lax";
-    case "none":
-    case "no_restriction":
-      return "no_restriction";
-    default:
-      return void 0;
-  }
-}
-async function importAccountCookies(cookies, accountFile) {
-  const normalizedAccountFile = String(accountFile || "").trim();
-  if (!normalizedAccountFile) {
-    return false;
-  }
-  const storageState = await readStorageState(normalizedAccountFile);
-  if (!storageState?.cookies?.length) {
-    return false;
-  }
-  for (const cookie of storageState.cookies) {
-    if (!cookie.name || !cookie.domain) {
-      continue;
-    }
-    const details: any = {
-      url: cookieUrl(cookie),
-      name: cookie.name,
-      value: cookie.value,
-      domain: cookie.domain,
-      path: cookie.path || "/",
-      secure: Boolean(cookie.secure),
-      httpOnly: Boolean(cookie.httpOnly)
-    };
-    if (typeof cookie.expires === "number" && cookie.expires > 0) {
-      details.expirationDate = cookie.expires;
-    }
-    const sameSite = normalizeSameSite(cookie.sameSite);
-    if (sameSite) {
-      details.sameSite = sameSite;
-    }
-    await cookies.set(details);
-  }
-  return true;
-}
-async function exportAccountCookies(cookies, accountFile) {
-  const normalizedAccountFile = String(accountFile || "").trim();
-  if (!normalizedAccountFile) {
-    return;
-  }
-  const electronCookies = await cookies.get({});
-  const storageState = {
-    cookies: electronCookies.map((cookie) => ({
-      name: cookie.name,
-      value: cookie.value,
-      domain: cookie.domain || "",
-      path: cookie.path || "/",
-      expires: typeof cookie.expirationDate === "number" ? cookie.expirationDate : -1,
-      httpOnly: Boolean(cookie.httpOnly),
-      secure: Boolean(cookie.secure),
-      sameSite: cookie.sameSite === "strict" ? "Strict" : cookie.sameSite === "lax" ? "Lax" : cookie.sameSite === "no_restriction" ? "None" : void 0
-    })),
-    origins: []
-  };
-  await fs4.mkdir(path4.dirname(normalizedAccountFile), { recursive: true });
-  await writeStorageState(normalizedAccountFile, storageState);
-}
-
-var runtime = null;
-function configureElectronPublishRuntime(nextRuntime) {
-  runtime = nextRuntime;
-}
-function getElectronPublishRuntime() {
-  if (!runtime) {
-    throw new Error("Electron \u53D1\u5E03\u7A97\u53E3\u8FD0\u884C\u65F6\u5C1A\u672A\u521D\u59CB\u5316");
-  }
-  return runtime;
-}
-
-var managedWindows = /* @__PURE__ */ new Map();
-function buildElectronPublishMarkerUrl(accountId) {
-  return `about:blank#agenthunt_publish_window=${encodeURIComponent(accountId)}`;
-}
-function resolveAccountId(accountId) {
-  const normalizedAccountId = String(accountId || "").trim();
-  if (!normalizedAccountId) {
-    throw new Error("\u53D1\u5E03\u4EFB\u52A1\u7F3A\u5C11 accountId\uFF0C\u65E0\u6CD5\u521B\u5EFA Electron \u53D1\u5E03\u7A97\u53E3");
-  }
-  return normalizedAccountId;
-}
-async function ensureManagedWindow(accountId) {
-  const existing = managedWindows.get(accountId);
-  if (existing?.win && !existing.win.isDestroyed()) {
-    return existing;
-  }
-  const runtime2 = getElectronPublishRuntime();
-  const partition = resolvePartitionForAccount(createPartitionStore(), accountId);
-  const markerUrl = buildElectronPublishMarkerUrl(accountId);
-  const win = new runtime2.BrowserWindow({
-    width: 1280,
-    height: 850,
-    minWidth: 1080,
-    minHeight: 570,
-    show: false,
-    autoHideMenuBar: true,
-    webPreferences: {
-      partition,
-      webSecurity: false,
-      contextIsolation: true,
-      nodeIntegration: false,
-      backgroundThrottling: false
-    }
-  });
-  win.on("close", (event) => {
-    if (runtime2.isQuitting()) {
-      return;
-    }
-    event.preventDefault();
-    win.hide();
-  });
-  win.on("closed", () => {
-    managedWindows.delete(accountId);
-  });
-  await win.loadURL(markerUrl);
-  const managed = { accountId, partition, markerUrl, win };
-  managedWindows.set(accountId, managed);
-  return managed;
-}
-async function findMarkedPage(browser, markerUrl) {
-  for (const context of browser.contexts()) {
-    for (const page of context.pages()) {
-      if (page.url() === markerUrl) {
-        return page;
-      }
-    }
-  }
-  return null;
-}
-async function resolveElectronCdpWebSocketEndpoint(endpoint) {
-  const versionUrl = new URL("/json/version", endpoint.endsWith("/") ? endpoint : `${endpoint}/`);
-  const response = await fetch(versionUrl);
-  if (!response.ok) {
-    throw new Error(`Electron CDP /json/version \u8FD4\u56DE ${response.status}`);
-  }
-  const version = await response.json();
-  if (!version.webSocketDebuggerUrl) {
-    throw new Error("Electron CDP /json/version \u7F3A\u5C11 webSocketDebuggerUrl");
-  }
-  return version.webSocketDebuggerUrl;
-}
-async function connectMarkedPage(markerUrl, timeoutMs) {
-  const runtime2 = getElectronPublishRuntime();
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < timeoutMs) {
-    const webSocketEndpoint = await resolveElectronCdpWebSocketEndpoint(runtime2.getCdpEndpoint());
-    const browser = await chromium2.connectOverCDP(webSocketEndpoint);
-    const page = await findMarkedPage(browser, markerUrl);
-    if (page) {
-      return { browser, page };
-    }
-    await browser.close();
-    await new Promise((resolve) => setTimeout(resolve, 200));
-  }
-  throw new Error(`\u672A\u627E\u5230 Electron \u53D1\u5E03\u7A97\u53E3 CDP target: ${markerUrl}`);
-}
-async function acquireElectronPublishSession(options) {
-  const accountId = resolveAccountId(options.accountId);
-  const timeoutMs = options.timeoutMs ?? 3e4;
-  const managed = await ensureManagedWindow(accountId);
-  const runtime2 = getElectronPublishRuntime();
-  const electronSession = runtime2.session.fromPartition(managed.partition);
-  await importAccountCookies(electronSession.cookies, options.accountFile);
-  await managed.win.loadURL(managed.markerUrl);
-  managed.win.show();
-  managed.win.focus();
-  const { browser, page } = await connectMarkedPage(managed.markerUrl, timeoutMs);
-  if (options.viewport) {
-    await page.setViewportSize(options.viewport);
-  }
-  let settled = false;
-  const cleanupConnection = async () => {
-    await browser.close();
-  };
-  return {
-    accountId,
-    page,
-    async complete() {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      await exportAccountCookies(electronSession.cookies, options.accountFile);
-      await page.goto(managed.markerUrl).catch(() => void 0);
-      managed.win.hide();
-      await cleanupConnection();
-    },
-    async release() {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      await page.goto(managed.markerUrl).catch(() => void 0);
-      managed.win.hide();
-      await cleanupConnection();
-    },
-    async fail(error) {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      managed.win.show();
-      managed.win.focus();
-      await cleanupConnection();
-      if (error instanceof Error) {
-        console.error(`[publish-window:${accountId}] ${error.message}`);
-      }
-    }
-  };
-}
-function destroyElectronPublishWindows() {
-  for (const managed of managedWindows.values()) {
-    if (managed.win.isDestroyed()) {
-      continue;
-    }
-    managed.win.destroy();
-  }
-  managedWindows.clear();
-}
-
-async function createContextFromAccountFile(accountFile, headlessMode = "default") {
-  const contextOptions = await loadContextStorageState(accountFile);
-  const session = await createBrowserSession({ accountFile, contextOptions, headlessMode });
+  const handle = await open(videoPath, "r");
+  let completed = 0;
   try {
-    return session.context;
-  } catch (error) {
-    await session.browser.close().catch(() => void 0);
-    throw error;
-  }
-}
-
-var MAX_UPLOAD_ATTEMPTS = 3;
-var UPLOAD_ATTEMPT_TIMEOUT_MS = 9e4;
-var CONTEXT_CLOSED_ERROR_MARKERS = [
-  "target page, context or browser has been closed",
-  "target closed",
-  "browser has been closed",
-  "context has been closed",
-  "context closed",
-  "page has been closed",
-  "page closed",
-  "\u9875\u9762\u5DF2\u5173\u95ED",
-  "\u4E0A\u4F20\u9875\u9762\u5DF2\u5173\u95ED",
-  "\u53D1\u5E03\u9875\u9762\u5DF2\u5173\u95ED",
-  "\u4E0A\u4F20\u4E0A\u4E0B\u6587\u5DF2\u5173\u95ED"
-];
-function isContextClosedError(error) {
-  const message = String(error ?? "").trim().toLowerCase();
-  if (!message) {
-    return false;
-  }
-  return CONTEXT_CLOSED_ERROR_MARKERS.some((marker) => message.includes(marker));
-}
-function normalizeUploadAttemptError(platformLabel, error) {
-  if (error instanceof PlatformUserAbortedError) {
-    return error;
-  }
-  if (error instanceof Error && /上传单轮超时/i.test(error.message)) {
-    return error;
-  }
-  if (error instanceof Error && (error.name === "TimeoutError" || /attempt timeout/i.test(error.message))) {
-    return new Error(`${platformLabel} \u4E0A\u4F20\u5355\u8F6E\u8D85\u65F6\uFF08>${UPLOAD_ATTEMPT_TIMEOUT_MS / 1e3} \u79D2\uFF09`);
-  }
-  if (isContextClosedError(error)) {
-    return new PlatformUserAbortedError(`${platformLabel} \u4E0A\u4F20\u7A97\u53E3\u6216\u9875\u9762\u5DF2\u5173\u95ED\uFF0C\u5DF2\u7EC8\u6B62\u53D1\u5E03`);
-  }
-  return error instanceof Error ? error : new Error(String(error));
-}
-async function runUploadAttemptWithTimeout(platformLabel, runner, timeoutMs = UPLOAD_ATTEMPT_TIMEOUT_MS) {
-  let timer;
-  const abortController = new AbortController();
-  try {
-    return await Promise.race([
-      runner(abortController.signal),
-      new Promise((_, reject) => {
-        timer = setTimeout(() => {
-          const error = new Error(`${platformLabel} \u4E0A\u4F20\u5355\u8F6E\u8D85\u65F6\uFF08>${timeoutMs / 1e3} \u79D2\uFF09`);
-          abortController.abort(error);
-          reject(error);
-        }, timeoutMs);
-      })
-    ]);
+    const limit = pLimit(CHUNK_CONCURRENCY);
+    const settled = await Promise.allSettled(chunks.map((chunk) => limit(async () => {
+      const chunkBuffer = Buffer.allocUnsafe(chunk.size);
+      const { bytesRead } = await handle.read(chunkBuffer, 0, chunk.size, chunk.start);
+      if (bytesRead !== chunk.size) {
+        throw new Error(`读取分片 ${chunk.partNumber} 失败：预期 ${chunk.size} 字节，实际 ${bytesRead} 字节`);
+      }
+      await uploadVideoChunk({
+        appId: context.appId,
+        chunk,
+        chunkBuffer,
+        cookieHeader: context.cookieHeader,
+        fileMd5: context.fileMd5,
+        fileModifiedAt: context.fileModifiedAt,
+        fileSize: context.metadata.size,
+        totalChunks: chunks.length,
+        uploadKey,
+        videoName: context.videoName,
+      }, http);
+      completed += 1;
+      await emitLog(logger, { message: `[视频分片] ${completed}/${chunks.length} 上传成功`, type: "info" });
+    })));
+    const failure = settled.find((result) => result.status === "rejected");
+    if (failure?.status === "rejected") throw failure.reason;
   } finally {
-    if (timer) {
-      clearTimeout(timer);
-    }
+    await handle.close();
   }
-}
-async function withUploadRetry(attemptsOrRunner: any, maybeRunner: any, options: any = {}) {
-  const attempts = typeof attemptsOrRunner === "number" ? attemptsOrRunner : MAX_UPLOAD_ATTEMPTS;
-  const runner = typeof attemptsOrRunner === "function" ? attemptsOrRunner : maybeRunner;
-  if (!runner) {
-    throw new Error("\u7F3A\u5C11\u4E0A\u4F20\u91CD\u8BD5\u6267\u884C\u51FD\u6570");
-  }
-  let lastError;
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    try {
-      return await runner(attempt);
-    } catch (error) {
-      lastError = options.normalizeError ? options.normalizeError(error) : error;
-    }
-  }
-  throw lastError ?? new Error("\u4E0A\u4F20\u91CD\u8BD5\u5931\u8D25");
+  return chunks.length;
 }
 
-function buildSuccessOutcome(options: any = {}) {
-  return {
-    success: true,
-    message: options.detail ?? "\u53D1\u5E03\u6210\u529F",
-    postId: options.platformPostId ?? void 0,
-    articleId: options.platformArticleId ?? void 0
-  };
+/**
+ * 通知百家号所有视频分片已上传完成。
+ *
+ * @param context - app_id、Cookie 和视频元数据
+ * @param uploadKey - 预上传返回的上传密钥
+ * @param chunks - 已成功上传的分片数量
+ */
+async function completeVideoUpload(
+  context: BaijiahaoRunContext,
+  uploadKey: string,
+  chunks: number,
+  http: AxiosInstance,
+): Promise<void> {
+  const form = new FormData();
+  form.append("upload_key", uploadKey);
+  form.append("chunks", String(chunks));
+  form.append("name", context.videoName);
+  form.append("size", String(context.metadata.size));
+  form.append("is_pay_column", "0");
+  form.append("column_videotype", "");
+  form.append("type", "video");
+  form.append("video_type", context.metadata.videoType === "horizontal" ? "short" : "tiny");
+  form.append("duration", String(Math.ceil(context.metadata.duration)));
+  const response = await http.post<BasicUploadResponse>(COMPLETE_UPLOAD_URL, form, {
+    headers: { Cookie: context.cookieHeader },
+    params: { app_id: context.appId },
+  });
+  if (response.data.error_code !== 0) {
+    throw new Error(
+      `汇总上传信息失败（error_code=${String(response.data.error_code)}）：${response.data.error_msg ?? "未知错误"}`,
+    );
+  }
 }
 
-var IMMEDIATE_PUBLISH_VALUE = "0";
-var SCHEDULED_AT_PATTERN = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/;
-function buildFormatError(platformLabel) {
-  return new Error(`${platformLabel} scheduledAt \u683C\u5F0F\u9519\u8BEF\uFF0C\u5E94\u4E3A\u5B57\u7B26\u4E32 "0" \u6216 YYYY-MM-DD HH:mm`);
+/**
+ * 查询单个 hashtag，并只接受 recommend 或 hot 中的标题精确匹配。
+ *
+ * @param cookieHeader - 全量百度 Cookie Header
+ * @param topicName - 不含井号的话题名
+ * @returns 精确匹配的话题；未命中时返回 undefined
+ */
+async function searchTopic(
+  cookieHeader: string,
+  topicName: string,
+  http: AxiosInstance,
+): Promise<BaijiahaoTopic | undefined> {
+  const response = await http.get<TopicSearchResponse>(TOPIC_SEARCH_URL, {
+    headers: { Cookie: cookieHeader },
+    params: { content: topicName, resource_type: 3, title: "" },
+  });
+  if (response.data.errno !== 0) {
+    return undefined;
+  }
+  const recommend = response.data.data?.recommend ?? [];
+  const candidates = recommend.length > 0 ? recommend : (response.data.data?.hot ?? []);
+  return candidates.find((topic) => topic.title === topicName);
 }
-function buildDate(year, month, day, hour, minute) {
-  return new Date(year, month - 1, day, hour, minute, 0, 0);
-}
-function parseScheduledTimeInput(platformLabel, value) {
-  const normalized = String(value || "").trim();
-  if (!normalized || normalized === IMMEDIATE_PUBLISH_VALUE) {
-    return {
-      immediate: true,
-      normalized: "",
-      date: null
+
+const preparedRuntime = new WeakMap<BaijiahaoPreparedContext, { http: AxiosInstance }>();
+
+/** 完成百家号最终发布前的全部校验、转码和素材上传。 */
+export async function prepare(input: VideoUploadPayload): Promise<BaijiahaoPreparedContext> {
+  const scheduledAt = String(input.scheduledAt ?? "").trim();
+  if (scheduledAt && scheduledAt !== "0") throw new Error('百家号当前仅支持立即发布，scheduledAt 必须为 "0"');
+  const accountFile = String(input.accountFile ?? "").trim();
+  const coverFile = String(input.coverPath ?? input.thumbnailPath ?? "").trim();
+  const videoFile = String(input.videoPath ?? input.filePath ?? "").trim();
+  const title = String(input.title ?? "").trim();
+  const introduction = String(input.introduction ?? input.description ?? "").trim();
+  if (!accountFile || !coverFile || !videoFile || !title) {
+    throw new Error("百家号发布缺少账号、封面、视频或标题");
+  }
+
+  const cookiesPath = isAbsolute(accountFile) ? accountFile : resolve(process.cwd(), accountFile);
+  const coverPath = isAbsolute(coverFile) ? coverFile : resolve(process.cwd(), coverFile);
+  const videoPath = isAbsolute(videoFile) ? videoFile : resolve(process.cwd(), videoFile);
+  const logger = consoleLogger;
+  const responses: SerializedAxiosResponse[] = [];
+  const http = axios.create({
+    maxBodyLength: Number.POSITIVE_INFINITY,
+    maxContentLength: Number.POSITIVE_INFINITY,
+    timeout: 120_000,
+  });
+  http.interceptors.request.use(async (config) => {
+    await emitLog(logger, { type: "http-request", request: { data: config.data, headers: config.headers, method: config.method, params: config.params, url: axios.getUri(config) } });
+    return config;
+  });
+  http.interceptors.response.use(async (response) => {
+    const serialized: SerializedAxiosResponse = {
+      body: response.data,
+      headers: response.headers,
+      status: response.status,
+      statusText: response.statusText,
     };
-  }
-  const matched = normalized.match(SCHEDULED_AT_PATTERN);
-  if (!matched) {
-    throw buildFormatError(platformLabel);
-  }
-  const [, yearText, monthText, dayText, hourText, minuteText] = matched;
-  const year = Number(yearText);
-  const month = Number(monthText);
-  const day = Number(dayText);
-  const hour = Number(hourText);
-  const minute = Number(minuteText);
-  const date = buildDate(year, month, day, hour, minute);
-  if (Number.isNaN(date.getTime()) || date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day || date.getHours() !== hour || date.getMinutes() !== minute) {
-    throw buildFormatError(platformLabel);
-  }
-  return {
-    immediate: false,
-    normalized,
-    date
-  };
-}
-
-var BAIJIAHAO_UPLOAD_URL = "https://baijiahao.baidu.com/builder/rc/edit?type=videoV2";
-var BAIJIAHAO_UPLOAD_WAIT_TIMEOUT_MS = 6e4;
-var BAIJIAHAO_SECURITY_VERIFICATION_WAIT_TIMEOUT_MS = 10 * 6e4;
-var BAIJIAHAO_POST_PUBLISH_POLL_INTERVAL_MS = 1e3;
-var BAIJIAHAO_DESCRIPTION_MAX_LENGTH = 50;
-var BAIJIAHAO_SUCCESS_HINTS = ["\u53D1\u5E03\u6210\u529F", "\u63D0\u4EA4\u6210\u529F", "\u53D1\u8868\u6210\u529F", "\u5BA1\u6838\u4E2D", "\u67E5\u770B\u4F5C\u54C1"];
-var BAIJIAHAO_SECURITY_VERIFICATION_HINTS = [
-  "\u767E\u5EA6\u5B89\u5168\u9A8C\u8BC1",
-  "\u8BF7\u5B8C\u6210\u4E0B\u65B9\u9A8C\u8BC1\u540E\u7EE7\u7EED\u64CD\u4F5C",
-  "\u62D6\u52A8\u5DE6\u4FA7\u6ED1\u5757\u4F7F\u56FE\u7247\u4E3A\u6B63",
-  "\u62D6\u52A8\u6ED1\u5757\u4F7F\u56FE\u7247\u4E3A\u6B63",
-  "\u626B\u7801\u9A8C\u8BC1"
-];
-var BAIJIAHAO_EDITOR_READY_SELECTORS = [
-  "div#formMain:visible",
-  "#formMain textarea:visible",
-  "#formMain [contenteditable='true']:visible",
-  "textarea:visible",
-  "[contenteditable='true']:visible",
-  "button:has-text('\u53D1\u5E03'):visible",
-  "button:has-text('\u5B9A\u65F6\u53D1\u5E03'):visible",
-  "button:has-text('\u9884\u8BA1'):visible"
-];
-var BAIJIAHAO_DESCRIPTION_SELECTORS = [
-  "#formMain div.d482ca4cbff50e1c-contentEditable",
-  "div.d482ca4cbff50e1c-contentEditable",
-  "#formMain ._872ce91b1b159b92-editorArea div.d482ca4cbff50e1c-contentEditable",
-  "._872ce91b1b159b92-editorArea div.d482ca4cbff50e1c-contentEditable",
-  "#formMain [contenteditable='true']",
-  "#formMain textarea",
-  "textarea[placeholder*='\u7B80\u4ECB']",
-  "textarea[placeholder*='\u63CF\u8FF0']",
-  "textarea"
-];
-var BAIJIAHAO_UPLOAD_FILE_INPUT_SELECTORS = [
-  "div[class^='video-main-container'] input[type='file']",
-  "div[class^='video-main-container'] input",
-  "input[type='file']"
-];
-var BAIJIAHAO_UPLOAD_TRIGGER_SELECTORS = [
-  "button:has-text('\u4E0A\u4F20\u89C6\u9891')",
-  "button:has-text('\u70B9\u51FB\u4E0A\u4F20')",
-  "button:has-text('\u4E0A\u4F20')",
-  "text=\u4E0A\u4F20\u89C6\u9891",
-  "text=\u70B9\u51FB\u4E0A\u4F20",
-  "text=\u4E0A\u4F20"
-];
-var BAIJIAHAO_SCHEDULE_DIALOG_SELECTORS = [
-  ".cheetah-modal:visible",
-  "[role='dialog']:visible",
-  ".ant-modal:visible"
-];
-var BAIJIAHAO_SCHEDULE_CONFIRM_SELECTORS = [
-  "button:has-text('\u5B9A\u65F6\u53D1\u5E03')",
-  "button.ant-btn-primary:has-text('\u5B9A\u65F6\u53D1\u5E03')",
-  "button:has-text('\u786E\u8BA4')"
-];
-var BAIJIAHAO_PUBLISH_CLICK_RETRY_ATTEMPTS = 3;
-var BAIJIAHAO_PUBLISH_CLICK_RETRY_INTERVAL_MS = 3e3;
-var BAIJIAHAO_IMMEDIATE_PUBLISH_BUTTON_TEXTS = ["\u7ACB\u5373\u53D1\u5E03", "\u53D1\u5E03", "\u53D1\u8868"];
-function normalizeBaijiahaoScheduledAt(value, nowMs = Date.now()) {
-  const parsed = parseScheduledTimeInput("\u767E\u5BB6\u53F7", value);
-  if (parsed.immediate || !parsed.date) {
-    return "";
-  }
-  if (parsed.date.getTime() <= nowMs + 6e4) {
-    return "";
-  }
-  return parsed.normalized;
-}
-function pickBaijiahaoImmediatePublishButtonCandidate(candidates) {
-  let picked = null;
-  for (const candidate of candidates) {
-    const text = String(candidate.text || "").trim();
-    if (!candidate.visible || !BAIJIAHAO_IMMEDIATE_PUBLISH_BUTTON_TEXTS.includes(text)) {
-      continue;
-    }
-    picked = candidate;
-  }
-  return picked;
-}
-function isBaijiahaoSecurityVerificationText(value) {
-  const normalized = String(value || "").replace(/\s+/g, " ").trim();
-  if (!normalized) {
-    return false;
-  }
-  return BAIJIAHAO_SECURITY_VERIFICATION_HINTS.some((hint) => normalized.includes(hint));
-}
-function parseUploadPayload(payload) {
-  const accountFile = String(payload.accountFile || "").trim();
-  const accountId = String(payload.accountId || "").trim();
-  const title = String(payload.title || "").trim();
-  const videoPath = String(payload.videoPath || payload.filePath || "").trim();
-  const introduction = String(payload.introduction || payload.description || title).trim();
-  const coverPath = String(payload.coverPath || payload.thumbnailPath || "").trim();
-  const scheduledAt = normalizeBaijiahaoScheduledAt(String(payload.scheduledAt || payload.publishDate || "").trim());
-  const timeoutMs = typeof payload.timeoutMs === "number" && Number.isFinite(payload.timeoutMs) ? payload.timeoutMs : UPLOAD_ATTEMPT_TIMEOUT_MS;
-  if (!accountId) {
-    throw new Error("\u767E\u5BB6\u53F7 upload \u7F3A\u5C11 accountId");
-  }
-  if (!title) {
-    throw new Error("\u767E\u5BB6\u53F7 upload \u7F3A\u5C11 title");
-  }
-  if (!videoPath) {
-    throw new Error("\u767E\u5BB6\u53F7 upload \u7F3A\u5C11 videoPath");
-  }
-  return {
-    ...payload,
-    accountFile,
-    accountId,
+    responses.push(serialized);
+    await emitLog(logger, { type: "http-response", response: serialized });
+    return response;
+  }, async (error) => {
+    await emitLog(logger, { type: "http-error", error });
+    throw error;
+  });
+  const topicPattern = /#([^#\s]+)(?=\s|#|$)/gu;
+  const topicNames = [...introduction.matchAll(topicPattern)]
+    .map((match) => match[1])
+    .filter((name): name is string => Boolean(name));
+  const publication: PublicationText = {
+    description: introduction.replace(topicPattern, "").trim() || title,
     title,
-    videoPath,
-    introduction,
-    description: introduction,
-    coverPath,
-    scheduledAt,
-    timeoutMs
+    topicNames: [...new Set(topicNames)],
   };
-}
-async function findFirstVisible(page, selectors) {
-  for (const selector of selectors) {
-    const locator = page.locator(selector);
-    const count = await locator.count().catch(() => 0);
-    for (let index = 0; index < count; index += 1) {
-      const candidate = locator.nth(index);
-      if (await candidate.isVisible().catch(() => false)) {
-        return candidate;
-      }
-    }
-  }
-  return null;
-}
-async function clickLastVisibleImmediatePublishButton(page) {
-  const buttons = page.locator("button");
-  const count = await buttons.count().catch(() => 0);
-  const candidates = [];
-  for (let index = 0; index < count; index += 1) {
-    const locator = buttons.nth(index);
-    const visible = await locator.isVisible().catch(() => false);
-    const text = String(await locator.innerText().catch(() => "")).replace(/\s+/g, " ").trim();
-    candidates.push({ index, locator, text, visible });
-  }
-  const picked = pickBaijiahaoImmediatePublishButtonCandidate(candidates);
-  if (!picked) {
-    return false;
-  }
-  return clickWithDomFallback(picked.locator, { timeoutMs: 5e3, force: true });
-}
-async function clickPublishButtonWithRetry(page) {
-  for (let attempt = 1; attempt <= BAIJIAHAO_PUBLISH_CLICK_RETRY_ATTEMPTS; attempt += 1) {
-    const clicked = await clickLastVisibleImmediatePublishButton(page);
-    if (!clicked) {
-      console.warn(`[baijiahao:upload] \u53D1\u5E03\u6309\u94AE\u70B9\u51FB\u5931\u8D25 attempt=${attempt}/${BAIJIAHAO_PUBLISH_CLICK_RETRY_ATTEMPTS}`);
-    } else {
-      try {
-        await page.waitForURL((url) => !url.toString().includes("edit?type=videoV2"), {
-          timeout: BAIJIAHAO_PUBLISH_CLICK_RETRY_INTERVAL_MS
-        });
-        console.info(`[baijiahao:upload] \u53D1\u5E03\u70B9\u51FB\u540E\u68C0\u6D4B\u5230 URL \u8DF3\u8F6C attempt=${attempt}/${BAIJIAHAO_PUBLISH_CLICK_RETRY_ATTEMPTS} url=${page.url()}`);
-        return;
-      } catch {
-        console.warn(`[baijiahao:upload] \u53D1\u5E03\u70B9\u51FB\u540E\u672A\u68C0\u6D4B\u5230 URL \u8DF3\u8F6C attempt=${attempt}/${BAIJIAHAO_PUBLISH_CLICK_RETRY_ATTEMPTS} url=${page.url()}`);
-      }
-    }
-    if (attempt < BAIJIAHAO_PUBLISH_CLICK_RETRY_ATTEMPTS) {
-      await page.waitForTimeout(BAIJIAHAO_PUBLISH_CLICK_RETRY_INTERVAL_MS);
-    }
-  }
-  throw new Error("\u767E\u5BB6\u53F7\u53D1\u5E03\u70B9\u51FB\u540E\u672A\u68C0\u6D4B\u5230 URL \u8DF3\u8F6C");
-}
-async function isBaijiahaoSecurityVerificationVisible(page) {
-  const currentUrl = page.url();
-  if (/verify|captcha|wappass\.baidu\.com/i.test(currentUrl)) {
-    return true;
-  }
-  const title = await page.title().catch(() => "");
-  if (isBaijiahaoSecurityVerificationText(title)) {
-    return true;
-  }
-  const bodyText = await page.locator("body").innerText().catch(() => "");
-  return isBaijiahaoSecurityVerificationText(bodyText);
-}
-async function waitForBaijiahaoPublishSuccess(page) {
-  const startedAt = Date.now();
-  let securityVerificationDetectedAt = null;
-  while (true) {
-    if (page.isClosed()) {
-      throw new Error("\u767E\u5BB6\u53F7\u4E0A\u4F20\u9875\u9762\u5DF2\u5173\u95ED");
-    }
-    const currentUrl = page.url();
-    if (!currentUrl.includes("edit?type=videoV2")) {
-      return;
-    }
-    for (const hint of BAIJIAHAO_SUCCESS_HINTS) {
-      if (await page.getByText(hint, { exact: false }).count() > 0) {
-        return;
-      }
-    }
-    const securityVerificationVisible = await isBaijiahaoSecurityVerificationVisible(page);
-    if (securityVerificationVisible) {
-      if (securityVerificationDetectedAt === null) {
-        securityVerificationDetectedAt = Date.now();
-        console.warn(`[baijiahao:upload] \u68C0\u6D4B\u5230\u767E\u5EA6\u5B89\u5168\u9A8C\u8BC1\uFF0C\u4FDD\u6301\u53EF\u89C1\u6D4F\u89C8\u5668\u7B49\u5F85\u4EBA\u5DE5\u5B8C\u6210 url=${currentUrl}`);
-        await page.bringToFront().catch(() => void 0);
-      }
-      if (Date.now() - securityVerificationDetectedAt >= BAIJIAHAO_SECURITY_VERIFICATION_WAIT_TIMEOUT_MS) {
-        throw new Error("\u767E\u5BB6\u53F7\u767E\u5EA6\u5B89\u5168\u9A8C\u8BC1\u7B49\u5F85\u8D85\u65F6\uFF0C\u8BF7\u5728\u6D4F\u89C8\u5668\u7A97\u53E3\u4E2D\u5B8C\u6210\u9A8C\u8BC1\u540E\u91CD\u8BD5");
-      }
-    } else if (Date.now() - startedAt >= BAIJIAHAO_UPLOAD_WAIT_TIMEOUT_MS) {
-      throw new Error("\u7B49\u5F85\u767E\u5BB6\u53F7\u53D1\u5E03\u6210\u529F\u8D85\u65F6");
-    }
-    await page.waitForTimeout(BAIJIAHAO_POST_PUBLISH_POLL_INTERVAL_MS);
-  }
-}
-async function attachVideoFile(page, videoPath) {
-  const fileInput = await findFileInput(page, BAIJIAHAO_UPLOAD_FILE_INPUT_SELECTORS, void 0, "video");
-  if (fileInput) {
-    await fileInput.setInputFiles(videoPath);
-    return;
-  }
-  const trigger = await findFirstVisible(page, BAIJIAHAO_UPLOAD_TRIGGER_SELECTORS);
-  if (!trigger) {
-    throw new Error("\u672A\u627E\u5230\u767E\u5BB6\u53F7\u4E0A\u4F20\u89C6\u9891\u5165\u53E3");
-  }
-  const chooserHandled = await pickFileWithChooser(page, async () => {
-    await trigger.click({ timeout: 5e3, force: true });
-  }, videoPath, 1e4);
-  if (!chooserHandled) {
-    throw new Error("\u767E\u5BB6\u53F7\u89C6\u9891\u6587\u4EF6\u9009\u62E9\u5668\u672A\u80FD\u5199\u5165\u6587\u4EF6");
-  }
-}
-async function dismissEditorOverlays(page) {
-  await page.waitForLoadState("networkidle", { timeout: 5e3 }).catch(() => void 0);
-  await page.waitForTimeout(1200);
-  for (const buttonName of ["\u4E0B\u4E00\u6B65", "\u4E0B\u4E00\u6B65", "\u5B8C\u6210"]) {
-    const button = page.getByRole("button", { name: buttonName });
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      try {
-        if (await button.count().catch(() => 0) === 0) {
-          await page.waitForTimeout(700);
-          continue;
-        }
-        const target = button.first();
-        if (!await target.isVisible().catch(() => false)) {
-          await page.waitForTimeout(700);
-          continue;
-        }
-        await target.scrollIntoViewIfNeeded().catch(() => void 0);
-        await target.click({ timeout: 3e3, force: true });
-        await page.waitForTimeout(700);
-        break;
-      } catch {
-        await page.waitForTimeout(700);
-      }
-    }
-  }
-  const closeButtons = [
-    "button:has-text('\u5173\u95ED')",
-    "button:has-text('\u6211\u77E5\u9053\u4E86')",
-    "button:has-text('\u77E5\u9053\u4E86')",
-    "button[aria-label='Close']",
-    "button[aria-label='\u5173\u95ED']",
-    ".ant-modal-close",
-    ".ant-tour-close",
-    "img.detail_close",
-    "img.feedback_card_title_close"
-  ];
-  for (const selector of closeButtons) {
-    const locator = page.locator(selector).first();
-    if (!await locator.count().catch(() => 0)) {
-      continue;
-    }
-    if (!await locator.isVisible().catch(() => false)) {
-      continue;
-    }
-    await clickWithDomFallback(locator, { timeoutMs: 3e3, force: true });
-    await page.waitForTimeout(300);
-  }
-  await page.keyboard.press("Escape").catch(() => void 0);
-  await page.waitForTimeout(300);
-  await page.evaluate(() => {
-    const keywords = ["\u5FEB\u901F\u4FEE\u6539", "\u6211\u89C9\u5F97\u89C6\u9891\u53D1\u5E03\u5668\u64CD\u4F5C\u9AD8\u6548", "\u65B0\u589E\u89C6\u9891\u66FF\u6362\u529F\u80FD"];
-    const roots = Array.from(document.querySelectorAll("body *"));
-    for (const node of roots) {
-      const text = (node.textContent || "").trim();
-      if (!text || !keywords.some((keyword) => text.includes(keyword))) {
-        continue;
-      }
-      const popup = node.closest("[role='dialog'], .ant-modal, .ant-modal-wrap, .ant-popover, .feedback, .guide, .popup, .modal");
-      if (popup && popup !== document.body) {
-        popup.remove();
-      }
-    }
-  }).catch(() => void 0);
-  await page.evaluate(() => {
-    const selectors = [
-      ".feedback",
-      ".feedback-card",
-      ".feedback_dialog",
-      ".feedback_dialog_wrapper",
-      ".questionnaire",
-      ".survey",
-      ".ant-drawer",
-      ".ant-popover",
-      ".ant-float-btn-wrap",
-      "[class*='feedback']",
-      "[class*='survey']"
-    ];
-    for (const selector of selectors) {
-      for (const node of document.querySelectorAll(selector)) {
-        const text = (node.textContent || "").trim();
-        if (text.includes("\u89C6\u9891\u53D1\u5E03\u5668\u64CD\u4F5C\u9AD8\u6548") || text.includes("\u975E\u5E38\u8BA4\u540C") || text.includes("\u89C4\u5219\u4E2D\u5FC3") || text.includes("\u95EE\u9898\u54A8\u8BE2") || text.includes("\u6709\u5956\u8C03\u7814")) {
-          node.remove();
-        }
-      }
-    }
-  }).catch(() => void 0);
-}
-async function isPublishEditorReady(page) {
-  for (const selector of BAIJIAHAO_EDITOR_READY_SELECTORS) {
-    const locator = page.locator(selector).first();
-    if (await locator.count().catch(() => 0)) {
-      return true;
-    }
-  }
-  return false;
-}
-async function waitForPublishEditorReady(page) {
-  while (true) {
-    if (page.isClosed()) {
-      throw new Error("\u767E\u5BB6\u53F7\u4E0A\u4F20\u9875\u9762\u5DF2\u5173\u95ED");
-    }
-    await page.waitForLoadState("domcontentloaded", { timeout: 5e3 }).catch(() => void 0);
-    await page.waitForFunction(() => document.readyState === "complete", void 0, { timeout: 5e3 }).catch(() => void 0);
-    await page.waitForTimeout(1200);
-    if (await isPublishEditorReady(page)) {
-      return;
-    }
-    await page.waitForTimeout(500);
-  }
-}
-async function collectRenderedScheduleOptionTexts(options) {
-  const optionCount = await options.count().catch(() => 0);
-  const optionTexts = [];
-  for (let index = 0; index < optionCount; index += 1) {
-    const text = String(await options.nth(index).innerText().catch(() => "")).trim();
-    if (text) {
-      optionTexts.push(text);
-    }
-  }
-  return optionTexts;
-}
-async function findRenderedScheduleOption(options, value) {
-  const optionCount = await options.count().catch(() => 0);
-  for (let index = 0; index < optionCount; index += 1) {
-    const candidate = options.nth(index);
-    const text = String(await candidate.innerText().catch(() => "")).trim();
-    if (text === value) {
-      return candidate;
-    }
-  }
-  return null;
-}
-async function findScheduleOptionByScrolling(page, options, value) {
-  let selected = await findRenderedScheduleOption(options, value);
-  if (selected) {
-    return selected;
-  }
-  const scrollContainer = page.locator("div.rc-virtual-list:visible .rc-virtual-list-holder, div.rc-virtual-list-holder:visible").last();
-  if (!await scrollContainer.count().catch(() => 0)) {
-    return null;
-  }
-  const metrics = await scrollContainer.evaluate((node: any) => ({
-    scrollHeight: node.scrollHeight,
-    clientHeight: node.clientHeight
-  })).catch(() => null);
-  if (!metrics || metrics.scrollHeight <= metrics.clientHeight) {
-    return null;
-  }
-  const step = Math.max(40, Math.floor(metrics.clientHeight * 0.8));
-  const maxScrollTop = Math.max(0, metrics.scrollHeight - metrics.clientHeight);
-  for (let scrollTop = 0; scrollTop <= maxScrollTop; scrollTop += step) {
-    await scrollContainer.evaluate((node, top) => {
-      node.scrollTop = Number(top);
-    }, scrollTop).catch(() => void 0);
-    await page.waitForTimeout(150);
-    selected = await findRenderedScheduleOption(options, value);
-    if (selected) {
-      return selected;
-    }
-  }
-  await scrollContainer.evaluate((node) => {
-    node.scrollTop = 0;
-  }).catch(() => void 0);
-  await page.waitForTimeout(150);
-  return null;
-}
-async function selectScheduleDropdownValue(page, dialog, dropdownIndex, value) {
-  const dropdowns = dialog.locator("div.select-wrap:visible");
-  const count = await dropdowns.count().catch(() => 0);
-  if (count <= dropdownIndex) {
-    throw new Error(`\u672A\u627E\u5230\u7B2C ${dropdownIndex + 1} \u4E2A\u5B9A\u65F6\u53D1\u5E03\u4E0B\u62C9\u6846`);
-  }
-  const dropdown = dropdowns.nth(dropdownIndex);
-  await dropdown.scrollIntoViewIfNeeded().catch(() => void 0);
-  await dropdown.click({ timeout: 5e3, force: true });
-  await page.waitForTimeout(500);
-  const options = page.locator("div.rc-virtual-list:visible div.cheetah-select-item-option, div.rc-virtual-list:visible div.cheetah-select-item");
-  const optionTexts = await collectRenderedScheduleOptionTexts(options);
-  console.info(`[baijiahao:schedule] dropdownIndex=${dropdownIndex} target=${value} options=${JSON.stringify(optionTexts.slice(0, 80))}`);
-  let selected = await findScheduleOptionByScrolling(page, options, value);
-  if (!selected && dropdownIndex === 2) {
-    const targetMatch = value.match(/(\d+)/);
-    const targetMinute = targetMatch ? Number(targetMatch[1]) : Number.NaN;
-    const optionCount = await options.count().catch(() => 0);
-    let fallbackCandidate = null;
-    let fallbackDiff = Number.POSITIVE_INFINITY;
-    let fallbackMinute = Number.NaN;
-    for (let index = 0; index < optionCount; index += 1) {
-      const candidate = options.nth(index);
-      const text = String(await candidate.innerText().catch(() => "")).trim();
-      const minuteMatch = text.match(/(\d+)/);
-      if (!minuteMatch) {
-        continue;
-      }
-      const minute = Number(minuteMatch[1]);
-      const diff = Number.isFinite(targetMinute) ? Math.abs(minute - targetMinute) : 0;
-      if (diff < fallbackDiff) {
-        fallbackDiff = diff;
-        fallbackCandidate = candidate;
-        fallbackMinute = minute;
-      }
-    }
-    if (fallbackCandidate) {
-      console.info(`[baijiahao:upload] \u5B9A\u65F6\u53D1\u5E03\u5206\u949F ${targetMinute} \u5206\u4E0D\u53EF\u9009\uFF0C\u56DE\u9000\u5230 ${fallbackMinute} \u5206`);
-      selected = fallbackCandidate;
-    }
-  }
-  if (!selected) {
-    throw new Error(`\u672A\u627E\u5230\u5B9A\u65F6\u53D1\u5E03\u9009\u9879: ${value}`);
-  }
-  await selected.scrollIntoViewIfNeeded().catch(() => void 0);
-  await selected.click({ timeout: 5e3, force: true });
-  await page.waitForTimeout(500);
-}
-async function openSchedulePublishDialog(page) {
-  const candidates = [
-    page.getByRole("button", { name: "\u5B9A\u65F6\u53D1\u5E03" }),
-    page.locator("button").filter({ hasText: "\u5B9A\u65F6\u53D1\u5E03" }),
-    page.getByRole("button", { name: "\u9884\u8BA1" }),
-    page.locator("button").filter({ hasText: "\u9884\u8BA1" })
-  ];
-  for (const candidate of candidates) {
-    if (await candidate.count().catch(() => 0)) {
-      await clickWithDomFallback(candidate.first(), { timeoutMs: 5e3, force: true });
-      const dialog = await waitForScheduleDialog(page);
-      return dialog;
-    }
-  }
-  throw new Error("\u672A\u627E\u5230\u5B9A\u65F6\u53D1\u5E03\u6309\u94AE");
-}
-async function waitForScheduleDialog(page) {
-  for (const selector of BAIJIAHAO_SCHEDULE_DIALOG_SELECTORS) {
-    const dialog = page.locator(selector).last();
-    if (await dialog.count().catch(() => 0)) {
-      const title = dialog.locator(".cheetah-modal-title").filter({ hasText: "\u5B9A\u65F6\u53D1\u6587" });
-      if (await title.count().catch(() => 0)) {
-        return dialog;
-      }
-      if (await dialog.getByText("\u5B9A\u65F6\u53D1\u6587", { exact: true }).count().catch(() => 0)) {
-        return dialog;
-      }
-    }
-  }
-  await page.getByText("\u5B9A\u65F6\u53D1\u6587", { exact: true }).waitFor({ state: "visible", timeout: 8e3 });
-  for (const selector of BAIJIAHAO_SCHEDULE_DIALOG_SELECTORS) {
-    const dialog = page.locator(selector).last();
-    if (await dialog.count().catch(() => 0)) {
-      return dialog;
-    }
-  }
-  return page.locator("body");
-}
-async function confirmSchedulePublishDialog(page) {
-  const dialog = await waitForScheduleDialog(page);
-  for (const selector of BAIJIAHAO_SCHEDULE_CONFIRM_SELECTORS) {
-    const button = dialog.locator(selector).first();
-    if (!await button.count().catch(() => 0)) {
-      continue;
-    }
-    if (!await button.isVisible().catch(() => false)) {
-      continue;
-    }
-    await clickWithDomFallback(button, { timeoutMs: 5e3, force: true });
-    return;
-  }
-  throw new Error("\u672A\u627E\u5230\u5B9A\u65F6\u53D1\u5E03\u786E\u8BA4\u6309\u94AE");
-}
-function parseScheduledDate(value) {
-  const parsed = parseScheduledTimeInput("\u767E\u5BB6\u53F7", value);
-  return parsed.date;
-}
-function padBaijiahaoDay(value) {
-  return String(value).padStart(2, "0");
-}
-function formatBaijiahaoScheduleDateOption(date) {
-  return `${date.getMonth() + 1}\u6708${padBaijiahaoDay(date.getDate())}\u65E5`;
-}
-function formatBaijiahaoScheduleHourOption(date) {
-  return `${date.getHours()}\u70B9`;
-}
-function formatBaijiahaoScheduleMinuteOption(date) {
-  return `${date.getMinutes()}\u5206`;
-}
-function buildBaijiahaoDescriptionValue(title, description) {
-  const normalizedTitle = String(title || "").trim();
-  const normalizedDescription = String(description || "").trim();
-  const truncateDescription = (value) => Array.from(value).slice(0, BAIJIAHAO_DESCRIPTION_MAX_LENGTH).join("");
-  if (!normalizedTitle) {
-    return truncateDescription(normalizedDescription);
-  }
-  if (!normalizedDescription || normalizedDescription === normalizedTitle) {
-    return truncateDescription(normalizedTitle);
-  }
-  return truncateDescription(`${normalizedTitle}: ${normalizedDescription}`);
-}
-function normalizeBaijiahaoFieldText(value) {
-  return String(value || "").replace(/\s+/g, " ").trim();
-}
-function normalizeBaijiahaoFilenameToken(value) {
-  return normalizeBaijiahaoFieldText(String(value || "").toLowerCase()).replace(/[._-]+/g, " ");
-}
-function buildBaijiahaoVideoFilenameCandidates(videoPath) {
-  const baseName = path5.basename(String(videoPath || "").trim());
-  const parsed = path5.parse(baseName);
-  const candidates = /* @__PURE__ */ new Set<string>();
-  for (const candidate of [baseName, parsed.name]) {
-    const normalized = normalizeBaijiahaoFilenameToken(candidate);
-    if (normalized) {
-      candidates.add(normalized);
-    }
-  }
-  return Array.from(candidates);
-}
-function isBaijiahaoFilenameRefill(currentValue, expectedTitle, videoPath) {
-  const normalizedCurrent = normalizeBaijiahaoFilenameToken(currentValue);
-  const normalizedTitle = normalizeBaijiahaoFilenameToken(expectedTitle);
-  if (!normalizedCurrent) {
-    return false;
-  }
-  if (normalizedTitle && normalizedCurrent.includes(normalizedTitle)) {
-    return false;
-  }
-  const fileNameCandidates = buildBaijiahaoVideoFilenameCandidates(videoPath);
-  return fileNameCandidates.some((candidate) => candidate && (normalizedCurrent === candidate || normalizedCurrent.includes(candidate) || candidate.includes(normalizedCurrent)));
-}
-async function readBaijiahaoEditorValue(locator) {
-  return normalizeBaijiahaoFieldText(await locator.evaluate((node) => {
-    if (node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement) {
-      return node.value;
-    }
-    if (node instanceof HTMLElement) {
-      return node.innerText || node.textContent || "";
-    }
-    return "";
-  }).catch(() => ""));
-}
-async function readBaijiahaoDescriptionContent(page, selectors) {
-  const locator = await findFirstVisible(page, selectors);
-  if (!locator) {
-    return "";
-  }
-  return readBaijiahaoEditorValue(locator);
-}
-function resolveBaijiahaoSelectAllShortcut() {
-  return process.platform === "darwin" ? "Meta+A" : "Control+A";
-}
-async function focusBaijiahaoDescriptionContent(locator) {
-  await locator.scrollIntoViewIfNeeded().catch(() => void 0);
-  await locator.click({ timeout: 5e3, force: true }).catch(() => void 0);
-  return locator.evaluate((node) => {
-    if (node instanceof HTMLTextAreaElement || node instanceof HTMLInputElement) {
-      node.focus();
-      return "text";
-    }
-    if (node instanceof HTMLElement) {
-      node.focus();
-      return "editable";
-    }
-    return null;
-  }).catch(() => null);
-}
-async function clearBaijiahaoDescriptionContent(page, locator, kind) {
-  if (kind === "text") {
-    await locator.fill("").catch(async () => {
-      await locator.press(resolveBaijiahaoSelectAllShortcut()).catch(() => void 0);
-      await page.keyboard.press("Backspace").catch(() => void 0);
-      await page.keyboard.press("Delete").catch(() => void 0);
-    });
-    return;
-  }
-  await locator.evaluate((node) => {
-    if (!(node instanceof HTMLElement)) {
-      return;
-    }
-    node.focus();
-    const selection = node.ownerDocument.getSelection();
-    const range = node.ownerDocument.createRange();
-    range.selectNodeContents(node);
-    selection?.removeAllRanges();
-    selection?.addRange(range);
-  }).catch(() => void 0);
-  await locator.press(resolveBaijiahaoSelectAllShortcut()).catch(() => void 0);
-  await page.keyboard.press("Backspace").catch(() => void 0);
-  await page.keyboard.press("Delete").catch(() => void 0);
-}
-async function typeBaijiahaoDescriptionContent(page, locator, kind, value) {
-  if (kind === "text") {
-    await locator.fill(value).catch(async () => {
-      await page.keyboard.type(value);
-    });
-    return;
-  }
-  const lines = String(value).split("\n");
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index];
-    if (line) {
-      await page.keyboard.type(line);
-    }
-    if (index < lines.length - 1) {
-      await page.keyboard.press("Shift+Enter").catch(async () => {
-        await page.keyboard.press("Enter").catch(() => void 0);
-      });
-    }
-  }
-}
-async function blurBaijiahaoDescriptionContent(page, locator) {
-  await locator.evaluate((node) => {
-    if (node instanceof HTMLElement) {
-      node.blur();
-    }
-  }).catch(() => void 0);
-  await page.locator("body").click({ timeout: 3e3, force: true, position: { x: 8, y: 8 } }).catch(() => void 0);
-  await page.waitForTimeout(300);
-}
-async function setBaijiahaoDescriptionContent(page, locator, value) {
-  const kind = await focusBaijiahaoDescriptionContent(locator);
-  if (!kind) {
-    return false;
-  }
-  await clearBaijiahaoDescriptionContent(page, locator, kind);
-  await typeBaijiahaoDescriptionContent(page, locator, kind, value);
-  await blurBaijiahaoDescriptionContent(page, locator);
-  return true;
-}
-async function fillTitleAndDescription(page, title, description) {
-  const descriptionValue = buildBaijiahaoDescriptionValue(title, description);
-  if (!descriptionValue.trim()) {
-    return;
-  }
-  const locator = await findFirstVisible(page, BAIJIAHAO_DESCRIPTION_SELECTORS);
-  if (!locator) {
-    throw new Error("\u672A\u627E\u5230\u767E\u5BB6\u53F7\u4F5C\u54C1\u63CF\u8FF0\u8F93\u5165\u533A");
-  }
-  const beforeValue = await readBaijiahaoEditorValue(locator);
-  console.info(`[baijiahao:upload] \u586B\u5199\u524D\u6807\u9898\u503C="${beforeValue}"`);
-  if (await setBaijiahaoDescriptionContent(page, locator, descriptionValue)) {
-    const afterValue = await readBaijiahaoEditorValue(locator);
-    console.info(`[baijiahao:upload] \u586B\u5199\u540E\u6807\u9898\u503C="${afterValue}"`);
-    return;
-  }
-  throw new Error("\u672A\u627E\u5230\u767E\u5BB6\u53F7\u4F5C\u54C1\u63CF\u8FF0\u8F93\u5165\u533A");
-}
-async function ensureTitleNotRevertedToFilename(page, payload) {
-  const finalValueBeforePublish = await readBaijiahaoDescriptionContent(page, BAIJIAHAO_DESCRIPTION_SELECTORS);
-  console.info(`[baijiahao:upload] \u53D1\u5E03\u524D\u6700\u7EC8\u6807\u9898\u503C="${finalValueBeforePublish}"`);
-  if (!isBaijiahaoFilenameRefill(finalValueBeforePublish, payload.title, payload.videoPath)) {
-    return;
-  }
-  console.warn(
-    `[baijiahao:upload] \u68C0\u6D4B\u5230\u6587\u4EF6\u540D\u56DE\u586B\u5E76\u89E6\u53D1\u91CD\u586B current="${finalValueBeforePublish}" file="${path5.basename(payload.videoPath)}"`
+  const [cookieHeader, metadata, videoStats, fileMd5] = await Promise.all([
+    loadCookieHeader(cookiesPath),
+    inspectMp4(videoPath),
+    stat(videoPath),
+    calculateFileMd5(videoPath),
+  ]);
+  await stat(coverPath);
+  const context: BaijiahaoRunContext = {
+    appId: "",
+    cookieHeader,
+    fileMd5,
+    fileModifiedAt: videoStats.mtimeMs,
+    metadata,
+    publication,
+    videoName: basename(videoPath),
+  };
+
+  await emitLog(logger, { message: `[1/7] 获取账号 app_id（${metadata.width}×${metadata.height}，${metadata.videoType}）`, type: "info" });
+  context.appId = await fetchAppId(cookieHeader, http);
+  await emitLog(logger, { message: "[2/7] 创建视频预上传任务", type: "info" });
+  const uploadContext = await preUploadVideo(context, http);
+  await emitLog(logger, { message: "[3/7] 从单一封面生成竖版和横版 JPEG，并依次上传", type: "info" });
+  const covers = await generateCovers(coverPath);
+  const verticalCover = await uploadCover(cookieHeader, covers.vertical, http);
+  const horizontalCover = await uploadCover(cookieHeader, covers.horizontal, http);
+  await emitLog(logger, { message: "[4/7] 上传 2 MiB 视频分片", type: "info" });
+  const chunks = await uploadVideoChunks(videoPath, context, uploadContext.uploadKey, http, logger);
+  await emitLog(logger, { message: "[5/7] 汇总视频上传信息", type: "info" });
+  await completeVideoUpload(context, uploadContext.uploadKey, chunks, http);
+  await emitLog(logger, { message: "[6/7] 搜索话题并构造最终发布参数", type: "info" });
+  const topicResults = await Promise.allSettled(
+    publication.topicNames.map((name) => searchTopic(cookieHeader, name, http)),
   );
-  await fillTitleAndDescription(page, payload.title, payload.description || payload.title);
-  const refilledValue = await readBaijiahaoDescriptionContent(page, BAIJIAHAO_DESCRIPTION_SELECTORS);
-  console.info(`[baijiahao:upload] \u6587\u4EF6\u540D\u56DE\u586B\u91CD\u586B\u540E\u6807\u9898\u503C="${refilledValue}"`);
-}
-async function setThumbnail(page, coverPath) {
-  if (!coverPath) {
-    return;
-  }
-  try {
-    await fs5.access(coverPath);
-  } catch {
-    console.warn(`[baijiahao:upload] \u5C01\u9762\u6587\u4EF6\u4E0D\u5B58\u5728\uFF0C\u8DF3\u8FC7: ${coverPath}`);
-    return;
-  }
-  await dismissEditorOverlays(page);
-  const trigger = page.locator(
-    "#formMain > form > div:nth-child(7) > div.form-item-line-content-24.form-item-line-content-cover.form-cover > div.form-inner-wrap > div.d01689d7d733c6fb-coverWrap > div:nth-child(1), div#formMain > form > div:nth-child(7) div.form-cover, div#formMain > form > div:nth-child(7) button, div#formMain > form > div:nth-child(7) [role='button']"
-  ).first();
-  if (!await trigger.count().catch(() => 0)) {
-    console.warn("[baijiahao:upload] \u672A\u627E\u5230\u5C01\u9762\u5165\u53E3\uFF0C\u8DF3\u8FC7\u81EA\u5B9A\u4E49\u5C01\u9762");
-    return;
-  }
-  await clickWithDomFallback(trigger, { timeoutMs: 5e3, force: true });
-  await page.waitForTimeout(1e3);
-  const panelSelectors = [
-    "#rc-tabs-0-panel-1",
-    "div[id^='rc-tabs-'][id$='-panel-1']",
-    "[role='dialog']:has-text('\u5C01\u9762\u622A\u53D6')",
-    "[role='dialog']:has-text('AI \u5C01\u9762')"
-  ];
-  let panel = null;
-  for (const selector of panelSelectors) {
-    const candidate = page.locator(selector).last();
-    if (await candidate.count().catch(() => 0)) {
-      panel = candidate;
+  let topic: BaijiahaoTopic | undefined;
+  for (const result of topicResults) {
+    if (result.status === "fulfilled" && result.value) {
+      topic = result.value;
       break;
     }
   }
-  if (!panel) {
-    await page.getByText("\u5C01\u9762\u622A\u53D6", { exact: true }).waitFor({ state: "visible", timeout: 8e3 }).catch(() => void 0);
-    for (const selector of panelSelectors) {
-      const candidate = page.locator(selector).last();
-      if (await candidate.count().catch(() => 0)) {
-        panel = candidate;
-        break;
-      }
-    }
-  }
-  if (!panel) {
-    throw new Error("\u672A\u7B49\u5230\u767E\u5BB6\u53F7\u5C01\u9762\u8BBE\u7F6E\u9762\u677F\u51FA\u73B0");
-  }
-  const fileInput = page.locator(
-    "#rc-tabs-0-panel-1 ._37e9eeb539c7e75d-upload input[type='file'][accept*='image'], div[id^='rc-tabs-'][id$='-panel-1'] ._37e9eeb539c7e75d-upload input[type='file'][accept*='image'], #rc-tabs-0-panel-1 input[type='file'][accept*='image'], [id^='rc-tabs-'][id$='-panel-1'] input[type='file'][accept*='image']"
-  ).last();
-  if (await fileInput.count().catch(() => 0)) {
-    await fileInput.setInputFiles(coverPath);
-  } else {
-    const uploadTrigger = page.locator(
-      "#rc-tabs-0-panel-1 > div > div._37e9eeb539c7e75d-content > div._37e9eeb539c7e75d-left > div._37e9eeb539c7e75d-select > div._37e9eeb539c7e75d-upload > div > span > div > span, #rc-tabs-0-panel-1 [class*='upload'] [role='button'], #rc-tabs-0-panel-1 button:has-text('\u4E0A\u4F20')"
-    ).first();
-    if (!await uploadTrigger.count().catch(() => 0)) {
-      throw new Error("\u672A\u627E\u5230\u767E\u5BB6\u53F7\u4E0A\u4F20\u5C01\u9762\u6309\u94AE");
-    }
-    const chooserHandled = await pickFileWithChooser(page, async () => {
-      await uploadTrigger.click({ timeout: 5e3, force: true });
-    }, coverPath, 1e4);
-    if (!chooserHandled) {
-      throw new Error("\u767E\u5BB6\u53F7\u5C01\u9762\u6587\u4EF6\u9009\u62E9\u5668\u672A\u80FD\u5199\u5165\u6587\u4EF6");
-    }
-  }
-  await page.waitForTimeout(1500);
-  const confirmButton = page.locator(
-    "#rc-tabs-0-panel-1 > div > div._37e9eeb539c7e75d-footer > button.cheetah-btn-primary, div[id^='rc-tabs-'][id$='-panel-1'] button.cheetah-btn-primary:has-text('\u786E\u5B9A'), [role='dialog'] button:has-text('\u786E\u5B9A')"
-  ).first();
-  if (!await confirmButton.count().catch(() => 0)) {
-    throw new Error("\u672A\u627E\u5230\u767E\u5BB6\u53F7\u5C01\u9762\u786E\u5B9A\u6309\u94AE");
-  }
-  const confirmed = await clickWithDomFallback(confirmButton, { timeoutMs: 5e3, force: true });
-  if (!confirmed) {
-    throw new Error("\u767E\u5BB6\u53F7\u5C01\u9762\u786E\u5B9A\u6309\u94AE\u70B9\u51FB\u5931\u8D25");
-  }
-  await page.waitForTimeout(800);
-  await panel.waitFor({ state: "hidden", timeout: 8e3 }).catch(() => void 0);
-}
-async function uploadOnce(payload, attempt, maxAttempts, signal) {
-  const finalAttempt = attempt >= maxAttempts;
-  const session = await acquireElectronPublishSession({
-    accountId: payload.accountId,
-    accountFile: payload.accountFile,
-    platform: "baijiahao",
-    timeoutMs: payload.timeoutMs
+  const payload = buildPublishPayload({
+    description: publication.description,
+    duration: metadata.duration,
+    height: metadata.height,
+    horizontalCoverUrl: horizontalCover.url,
+    mediaId: uploadContext.mediaId,
+    size: metadata.size,
+    title: publication.title,
+    ...(topic ? { topic } : {}),
+    verticalCoverOriginalUrl: verticalCover.originalUrl,
+    verticalCoverUrl: verticalCover.url,
+    videoName: context.videoName,
+    videoType: metadata.videoType,
+    width: metadata.width,
   });
-  const page = session.page;
-  page.setDefaultTimeout(payload.timeoutMs ?? BAIJIAHAO_UPLOAD_WAIT_TIMEOUT_MS);
-  page.setDefaultNavigationTimeout(payload.timeoutMs ?? BAIJIAHAO_UPLOAD_WAIT_TIMEOUT_MS);
-  const detachAbortHandler = runOnAbort(signal, async () => {
-    console.info("[baijiahao:upload] timeout abort received");
-    if (finalAttempt) {
-      await session.fail(new Error("\u767E\u5BB6\u53F7\u4E0A\u4F20\u8D85\u65F6"));
-      return;
-    }
-    await session.release();
-  });
-  try {
-    console.info(`[baijiahao:upload] \u5F00\u59CB\u7B2C ${attempt}/${maxAttempts} \u6B21\u5C1D\u8BD5`);
-    await page.goto(BAIJIAHAO_UPLOAD_URL, { waitUntil: "domcontentloaded", timeout: payload.timeoutMs ?? BAIJIAHAO_UPLOAD_WAIT_TIMEOUT_MS });
-    await page.waitForURL(BAIJIAHAO_UPLOAD_URL, { timeout: payload.timeoutMs ?? BAIJIAHAO_UPLOAD_WAIT_TIMEOUT_MS }).catch(() => void 0);
-    await page.waitForLoadState("networkidle", { timeout: 5e3 }).catch(() => void 0);
-    await dismissEditorOverlays(page);
-    await attachVideoFile(page, payload.videoPath);
-    await waitForPublishEditorReady(page);
-    await dismissEditorOverlays(page);
-    await fillTitleAndDescription(page, payload.title, payload.description || payload.title);
-    if (payload.coverPath) {
-      await setThumbnail(page, payload.coverPath);
-    }
-    await ensureTitleNotRevertedToFilename(page, payload);
-    const scheduledDate = parseScheduledDate(payload.scheduledAt || "");
-    if (scheduledDate) {
-      const dialog = await openSchedulePublishDialog(page);
-      await selectScheduleDropdownValue(page, dialog, 0, formatBaijiahaoScheduleDateOption(scheduledDate));
-      await selectScheduleDropdownValue(page, dialog, 1, formatBaijiahaoScheduleHourOption(scheduledDate));
-      await selectScheduleDropdownValue(page, dialog, 2, formatBaijiahaoScheduleMinuteOption(scheduledDate));
-      await confirmSchedulePublishDialog(page);
-    } else {
-      await clickPublishButtonWithRetry(page);
-    }
-    await waitForBaijiahaoPublishSuccess(page);
-    await session.complete();
-    return buildSuccessOutcome({ detail: "\u767E\u5BB6\u53F7\u4E0A\u4F20\u6210\u529F" });
-  } catch (error) {
-    if (finalAttempt) {
-      await session.fail(error);
-    } else {
-      await session.release();
-    }
-    throw error;
-  } finally {
-    detachAbortHandler();
-  }
-}
-async function upload(payload) {
-  const parsed = parseUploadPayload(payload);
-  return withUploadRetry(
-    MAX_UPLOAD_ATTEMPTS,
-    (attempt) => runUploadAttemptWithTimeout("\u767E\u5BB6\u53F7", (signal) => uploadOnce(parsed, attempt, MAX_UPLOAD_ATTEMPTS, signal), parsed.timeoutMs ?? UPLOAD_ATTEMPT_TIMEOUT_MS),
-    {
-      normalizeError: (error) => normalizeUploadAttemptError("\u767E\u5BB6\u53F7", error)
-    }
-  );
+  const prepared: BaijiahaoPreparedContext = {
+    context,
+    horizontalCover,
+    httpResponses: responses,
+    payload,
+    ...(topic ? { topic } : {}),
+    upload: uploadContext,
+    verticalCover,
+  };
+  preparedRuntime.set(prepared, { http });
+  return prepared;
 }
 
-var DEFAULT_RECORD_STATUS_TIMEOUT_MS = 6e4;
-function normalizeOptionalString(value) {
-  if (typeof value !== "string") {
-    return null;
+/** 发送百家号最后一次发布请求。 */
+async function publish(prepared: BaijiahaoPreparedContext): Promise<VideoUploadResult> {
+  const runtime = preparedRuntime.get(prepared);
+  if (!runtime) throw new Error("百家号准备上下文无效或已经释放");
+  const bodyText = (axios.toFormData(prepared.payload, new URLSearchParams()) as URLSearchParams).toString();
+  const response = await runtime.http.post<PublishResponse>(PUBLISH_URL, bodyText, {
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Cookie: prepared.context.cookieHeader,
+      token: prepared.horizontalCover.token,
+    },
+    params: {
+      callback: "bjhpublish",
+      type: prepared.context.metadata.videoType === "horizontal" ? "video" : "ugc_video",
+    },
+    transformRequest: [() => bodyText],
+  });
+  const nid = response.data.ret?.nid;
+  if (response.data.errno !== 0 || nid === undefined || String(nid).length === 0) {
+    const rawMessage = response.data.errmsg || response.data.error_msg || "发布失败";
+    throw new Error(BAIJIAHAO_ERROR_MESSAGES[rawMessage] || rawMessage);
   }
-  const normalized = value.trim();
-  return normalized ? normalized : null;
-}
-function normalizeOptionalRecord(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-  return value;
-}
-function resolvePayloadTitle(payload) {
-  const directTitle = normalizeOptionalString(payload.title);
-  if (directTitle) {
-    return directTitle;
-  }
-  const publishResultTitle = normalizeOptionalRecord(payload.publishResult)?.title;
-  if (typeof publishResultTitle === "string" && publishResultTitle.trim()) {
-    return publishResultTitle.trim();
-  }
-  const attributes = normalizeOptionalRecord(payload.attributes);
-  const clueTitle = normalizeOptionalRecord(attributes?.review_state_clues)?.title;
-  return typeof clueTitle === "string" && clueTitle.trim() ? clueTitle.trim() : null;
-}
-function resolveRecordStatusTimeoutMs(timeoutMs) {
-  return typeof timeoutMs === "number" && Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : DEFAULT_RECORD_STATUS_TIMEOUT_MS;
-}
-function createPublishedStateResult(input) {
-  return {
-    status: input.status,
-    link: normalizeOptionalString(input.link) ?? null,
-    raw: input.raw,
-    matchedBy: input.matchedBy ?? "unknown",
-    reason: normalizeOptionalString(input.reason) ?? null
-  };
+  return { success: true, articleId: String(nid) };
 }
 
-var BAIJIAHAO_RECORD_STATUS_URL = "https://baijiahao.baidu.com/builder/rc/content?currentPage=1&pageSize=10&search=&type=&collection=&startDate=&endDate=";
-var BAIJIAHAO_ARTICLE_LIST_URL_MARKER = "/pcui/article/lists";
-var BAIJIAHAO_STATUS_RESPONSE_TIMEOUT_MS = 15e3;
-var BAIJIAHAO_STATUS_PAGINATION_ATTEMPTS = 3;
-var BAIJIAHAO_LOGIN_HINTS = ["\u767E\u5EA6\u8D26\u53F7\u767B\u5F55", "\u626B\u7801\u767B\u5F55", "\u624B\u673A\u53F7\u767B\u5F55", "\u767B\u5F55\u767E\u5BB6\u53F7"];
-function normalizeComparisonText(value) {
-  if (!value) {
-    return null;
-  }
-  const normalized = value.replace(/\s+/g, " ").trim().toLowerCase();
-  return normalized || null;
+/** 百家号没有需要主动关闭的发布资源。 */
+export async function dispose(_prepared?: BaijiahaoPreparedContext): Promise<void> {
+  await Promise.resolve();
 }
-function matchesBaijiahaoTrackedTitle(recordTitle, trackedTitle) {
-  const normalizedRecordTitle = normalizeComparisonText(recordTitle);
-  const normalizedTrackedTitle = normalizeComparisonText(trackedTitle);
-  if (!normalizedRecordTitle || !normalizedTrackedTitle) {
-    return false;
-  }
-  if (normalizedRecordTitle === normalizedTrackedTitle) {
-    return true;
-  }
-  return normalizedRecordTitle.startsWith(`${normalizedTrackedTitle}: `) || normalizedRecordTitle.startsWith(`${normalizedTrackedTitle}:`) || normalizedRecordTitle.startsWith(`${normalizedTrackedTitle}\uFF1A`);
+
+const BAIJIAHAO_RECORD_STATUS_URL = "https://baijiahao.baidu.com/builder/rc/content?currentPage=1&pageSize=10&search=&type=&collection=&startDate=&endDate=";
+const BAIJIAHAO_ARTICLE_LIST_URL_MARKER = "/pcui/article/lists";
+
+/** 将未知值收窄为普通记录。 */
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
 }
-function resolveBaijiahaoStatusValue(record) {
-  if (typeof record.status === "string") {
-    const normalized = record.status.trim();
-    return normalized || null;
+
+/** 将可选值规范化为非空字符串。 */
+function asString(value: unknown): string | null {
+  const text = typeof value === "string" || typeof value === "number" ? String(value).trim() : "";
+  return text || null;
+}
+
+/** 把百家号已确认的状态字段映射为业务状态。 */
+export function parseBaijiahaoRecordStatus(rawRecord: unknown): PublishedStateResult | null {
+  const record = asRecord(rawRecord);
+  if (!record || (typeof record.status !== "string" && typeof record.status !== "number")) return null;
+  const status = String(record.status).trim();
+  if (!status) return null;
+  const link = asString(record.share_url) ?? asString(record.url);
+  if (status === "publish" && asString(record.quality_status) === "rejected") {
+    return { status: "non_public", link, raw: rawRecord, matchedBy: "unknown", reason: asString(record.quality_not_pass_reason) ?? "baijiahao.status=publish,quality_status=rejected" };
   }
-  if (typeof record.status === "number" && Number.isFinite(record.status)) {
-    return String(record.status);
-  }
+  if (status === "publish") return { status: "public", link, raw: rawRecord, matchedBy: "unknown", reason: "baijiahao.status=publish" };
+  if (status === "analyze") return { status: "reviewing", link, raw: rawRecord, matchedBy: "unknown", reason: "baijiahao.status=analyze" };
   return null;
 }
-function resolveBaijiahaoPublicLink(record) {
-  return normalizeOptionalString(record.share_url) ?? normalizeOptionalString(record.url);
+
+/** 从文章列表接口的数组或数字键对象中提取记录。 */
+export function collectBaijiahaoRecordsFromPayload(rawPayload: unknown): Array<Record<string, unknown>> {
+  const root = asRecord(rawPayload);
+  const candidate = asRecord(root?.data)?.list ?? root?.list;
+  const values = Array.isArray(candidate) ? candidate : asRecord(candidate) ? Object.values(candidate as Record<string, unknown>) : [];
+  return values.map(asRecord).filter((item): item is Record<string, unknown> => item !== null);
 }
-function parseBaijiahaoRecordStatus(rawRecord) {
-  const record = normalizeOptionalRecord(rawRecord);
-  if (!record) {
-    return null;
+
+/** 按平台 ID、分享链接、标题与发布时间依次匹配记录。 */
+export function findBaijiahaoRecordInList(records: Array<Record<string, unknown>>, payload: PublishedStatePayload): { matchedBy: "platform_work_id" | "share_url" | "title" | "title_and_time_window"; record: Record<string, unknown> } | null {
+  const attributes = asRecord(payload.attributes);
+  const clues = asRecord(attributes?.review_state_clues);
+  const result = asRecord(payload.publishResult);
+  const workId = asString(clues?.platform_work_id) ?? asString(result?.articleId) ?? asString(result?.article_id) ?? asString(result?.id) ?? asString(result?.feed_id);
+  if (workId) {
+    const record = records.find((item) => [item.article_id, item.id, item.feed_id].map(asString).includes(workId));
+    if (record) return { matchedBy: "platform_work_id", record };
   }
-  const statusValue = resolveBaijiahaoStatusValue(record);
-  if (!statusValue) {
-    return null;
+  const shareUrl = asString(clues?.share_url) ?? asString(payload.link) ?? asString(result?.link) ?? asString(result?.share_url);
+  if (shareUrl) {
+    const record = records.find((item) => asString(item.share_url) === shareUrl);
+    if (record) return { matchedBy: "share_url", record };
   }
-  const qualityStatus = normalizeOptionalString(record.quality_status);
-  const qualityFailureReason = normalizeOptionalString(record.quality_not_pass_reason);
-  if (statusValue === "publish" && qualityStatus === "rejected") {
-    return createPublishedStateResult({
-      status: "non_public",
-      link: resolveBaijiahaoPublicLink(record),
-      raw: rawRecord,
-      matchedBy: "unknown",
-      reason: qualityFailureReason ?? "baijiahao.status=publish,quality_status=rejected"
+  const trackedTitle = asString(payload.title)?.replace(/\s+/gu, " ").toLowerCase();
+  if (!trackedTitle) return null;
+  const titleMatches = records.filter((item) => {
+    const title = asString(item.title)?.replace(/\s+/gu, " ").toLowerCase();
+    return title === trackedTitle || title?.startsWith(`${trackedTitle}:`) || title?.startsWith(`${trackedTitle}：`);
+  });
+  if (titleMatches.length === 1) return { matchedBy: "title", record: titleMatches[0] };
+  const publishedAt = Date.parse(asString(clues?.published_at) ?? asString(payload.publishedAt) ?? "");
+  if (titleMatches.length > 1 && Number.isFinite(publishedAt)) {
+    const record = titleMatches.find((item) => {
+      const recordTime = Date.parse((asString(item.publish_at) ?? asString(item.publish_time) ?? "").replace(" ", "T"));
+      return Number.isFinite(recordTime) && Math.abs(recordTime - publishedAt) <= 48 * 60 * 60 * 1_000;
     });
+    if (record) return { matchedBy: "title_and_time_window", record };
   }
-  if (statusValue === "publish") {
-    return createPublishedStateResult({
-      status: "public",
-      link: resolveBaijiahaoPublicLink(record),
-      raw: rawRecord,
-      matchedBy: "unknown",
-      reason: "baijiahao.status=publish"
-    });
-  }
-  if (statusValue === "analyze") {
-    return createPublishedStateResult({
-      status: "reviewing",
-      link: resolveBaijiahaoPublicLink(record),
-      raw: rawRecord,
-      matchedBy: "unknown",
-      reason: "baijiahao.status=analyze"
-    });
-  }
-  return null;
+  return titleMatches[0] ? { matchedBy: "title", record: titleMatches[0] } : null;
 }
-function resolvePayloadClues(payload) {
-  const attributes = normalizeOptionalRecord(payload.attributes);
-  const reviewStateClues = normalizeOptionalRecord(attributes?.review_state_clues);
-  const publishResult = normalizeOptionalRecord(payload.publishResult);
-  const platformWorkId = normalizeOptionalString(reviewStateClues?.platform_work_id == null ? null : String(reviewStateClues?.platform_work_id)) ?? normalizeOptionalString(publishResult?.articleId == null ? null : String(publishResult?.articleId)) ?? normalizeOptionalString(publishResult?.article_id == null ? null : String(publishResult?.article_id)) ?? normalizeOptionalString(publishResult?.id == null ? null : String(publishResult?.id)) ?? normalizeOptionalString(publishResult?.feed_id == null ? null : String(publishResult?.feed_id)) ?? null;
-  const shareUrl = normalizeOptionalString(reviewStateClues?.share_url) ?? normalizeOptionalString(payload.link) ?? normalizeOptionalString(publishResult?.link) ?? normalizeOptionalString(publishResult?.share_url) ?? null;
-  const publishedAtRaw = normalizeOptionalString(reviewStateClues?.published_at) ?? normalizeOptionalString(payload.publishedAt) ?? null;
-  const publishedAtMs = publishedAtRaw ? Date.parse(publishedAtRaw) : Number.NaN;
-  return {
-    platformWorkId,
-    shareUrl,
-    title: resolvePayloadTitle(payload),
-    publishedAtMs: Number.isFinite(publishedAtMs) ? publishedAtMs : null
-  };
-}
-function collectBaijiahaoRecordsFromPayload(rawPayload) {
-  const payloadRecord = normalizeOptionalRecord(rawPayload);
-  if (!payloadRecord) {
-    return [];
-  }
-  const candidates = [
-    normalizeOptionalRecord(payloadRecord.data)?.list,
-    payloadRecord.list
-  ];
-  for (const candidate of candidates) {
-    if (Array.isArray(candidate)) {
-      return candidate.map((item) => normalizeOptionalRecord(item)).filter((item) => Boolean(item));
-    }
-    const candidateRecord = normalizeOptionalRecord(candidate);
-    if (candidateRecord) {
-      return Object.values(candidateRecord).map((item) => normalizeOptionalRecord(item)).filter((item) => Boolean(item));
-    }
-  }
-  return [];
-}
-function resolveBaijiahaoRecordPublishedAtMs(record) {
-  const candidates = [
-    normalizeOptionalString(record.publish_at),
-    normalizeOptionalString(record.publish_time)
-  ];
-  for (const candidate of candidates) {
-    if (!candidate) {
-      continue;
-    }
-    const parsed = Date.parse(candidate.replace(" ", "T"));
-    if (Number.isFinite(parsed)) {
-      return parsed;
-    }
-  }
-  return null;
-}
-function withinPublishedAtWindow(leftMs, rightMs) {
-  if (leftMs == null || rightMs == null) {
-    return false;
-  }
-  return Math.abs(leftMs - rightMs) <= 48 * 60 * 60 * 1e3;
-}
-function findBaijiahaoRecordInList(records, payload) {
-  const clues = resolvePayloadClues(payload);
-  if (clues.platformWorkId) {
-    const matched = records.find((record) => {
-      const candidates = [
-        normalizeOptionalString(record.article_id == null ? null : String(record.article_id)),
-        normalizeOptionalString(record.id == null ? null : String(record.id)),
-        normalizeOptionalString(record.feed_id == null ? null : String(record.feed_id))
-      ];
-      return candidates.includes(clues.platformWorkId);
-    });
-    if (matched) {
-      return { matchedBy: "platform_work_id", record: matched };
-    }
-  }
-  if (clues.shareUrl) {
-    const matched = records.find((record) => normalizeOptionalString(record.share_url) === clues.shareUrl);
-    if (matched) {
-      return { matchedBy: "share_url", record: matched };
-    }
-  }
-  const normalizedTitle = normalizeComparisonText(clues.title);
-  if (normalizedTitle) {
-    const titleMatches = records.filter((record) => matchesBaijiahaoTrackedTitle(normalizeOptionalString(record.title), clues.title));
-    if (titleMatches.length === 1) {
-      return { matchedBy: "title", record: titleMatches[0] };
-    }
-    if (titleMatches.length > 1 && clues.publishedAtMs != null) {
-      const timeWindowMatched = titleMatches.find((record) => {
-        return withinPublishedAtWindow(resolveBaijiahaoRecordPublishedAtMs(record), clues.publishedAtMs);
-      });
-      if (timeWindowMatched) {
-        return { matchedBy: "title_and_time_window", record: timeWindowMatched };
-      }
-    }
-    if (titleMatches.length > 0) {
-      return { matchedBy: "title", record: titleMatches[0] };
-    }
-  }
-  return null;
-}
-async function assertBaijiahaoLoggedIn(page, accountFile) {
-  const currentUrl = page.url().toLowerCase();
-  if (!currentUrl.includes("baijiahao.baidu.com/builder/") || currentUrl.includes("/login") || currentUrl.includes("bjh/login")) {
-    throw new PlatformCookieInvalidError("\u767E\u5BB6\u53F7", accountFile);
-  }
-  const bodyText = await page.locator("body").innerText().catch(() => "");
-  if (BAIJIAHAO_LOGIN_HINTS.some((hint) => bodyText.includes(hint))) {
-    throw new PlatformCookieInvalidError("\u767E\u5BB6\u53F7", accountFile);
-  }
-}
-function isBaijiahaoArticleListResponse(response, expectedPage = null) {
-  if (response.request().method() !== "GET") {
-    return false;
-  }
-  const url = response.url();
-  if (!url.includes(BAIJIAHAO_ARTICLE_LIST_URL_MARKER)) {
-    return false;
-  }
-  if (expectedPage == null) {
-    return true;
-  }
-  try {
-    return new URL(url).searchParams.get("currentPage") === String(expectedPage);
-  } catch {
-    return url.includes(`currentPage=${expectedPage}`);
-  }
-}
-async function waitForBaijiahaoArticleListPayload(page, timeoutMs, expectedPage = null) {
-  const response = await page.waitForResponse((candidate) => isBaijiahaoArticleListResponse(candidate, expectedPage), { timeout: timeoutMs });
+
+/** 等待百家号文章列表接口响应。 */
+async function waitForArticleList(page: Page, timeout: number, pageNumber: number): Promise<unknown> {
+  const response = await page.waitForResponse((candidate: Response) => {
+    if (candidate.request().method() !== "GET" || !candidate.url().includes(BAIJIAHAO_ARTICLE_LIST_URL_MARKER)) return false;
+    return new URL(candidate.url()).searchParams.get("currentPage") === String(pageNumber);
+  }, { timeout });
   return response.json();
 }
-function buildBaijiahaoRecordStatusUrl(pageNumber) {
-  const url = new URL(BAIJIAHAO_RECORD_STATUS_URL);
-  url.searchParams.set("currentPage", String(pageNumber));
-  return url.toString();
-}
-async function fetchPublishedState(payload) {
-  const accountFile = normalizeOptionalString(payload.accountFile);
-  if (!accountFile) {
-    throw new Error("\u767E\u5BB6\u53F7\u53D1\u5E03\u72B6\u6001\u67E5\u8BE2\u7F3A\u5C11 accountFile");
-  }
-  const timeoutMs = resolveRecordStatusTimeoutMs(payload.timeoutMs);
-  const context = await createContextFromAccountFile(accountFile, "record-status:baijiahao");
-  const browser = context.browser();
-  try {
-    const page = await context.newPage();
-    page.setDefaultTimeout(timeoutMs);
-    page.setDefaultNavigationTimeout(timeoutMs);
-    const responseTimeoutMs = Math.min(timeoutMs, BAIJIAHAO_STATUS_RESPONSE_TIMEOUT_MS);
-    const pageRecordCache = /* @__PURE__ */ new Map();
-    for (let attempt = 0; attempt < BAIJIAHAO_STATUS_PAGINATION_ATTEMPTS; attempt += 1) {
-      const currentPage = attempt + 1;
-      const responsePromise = waitForBaijiahaoArticleListPayload(page, responseTimeoutMs, currentPage);
-      await page.goto(buildBaijiahaoRecordStatusUrl(currentPage), { waitUntil: "domcontentloaded", timeout: timeoutMs });
-      await page.waitForLoadState("networkidle", { timeout: Math.min(timeoutMs, 1e4) }).catch(() => void 0);
-      await assertBaijiahaoLoggedIn(page, accountFile);
-      let responsePayload;
-      try {
-        responsePayload = await responsePromise;
-      } catch (error) {
-        if (error instanceof Error && /Timeout/i.test(error.message)) {
-          throw new PlatformTimeoutError("\u767E\u5BB6\u53F7", `wait-article-list:page-${currentPage}`, responseTimeoutMs);
-        }
-        throw error;
-      }
-      const records = collectBaijiahaoRecordsFromPayload(responsePayload);
-      pageRecordCache.set(currentPage, records);
-      const matched = findBaijiahaoRecordInList(records, payload);
-      if (!matched) {
-        continue;
-      }
-      const parsed = parseBaijiahaoRecordStatus(matched.record);
-      if (!parsed) {
-        throw new Error("\u767E\u5BB6\u53F7\u547D\u4E2D\u8BB0\u5F55\u4F46 record.status \u7F3A\u5931\u6216\u7C7B\u578B\u5F02\u5E38");
-      }
-      return createPublishedStateResult({
-        status: parsed.status,
-        link: resolveBaijiahaoPublicLink(matched.record) ?? payload.link ?? null,
-        raw: matched.record,
-        matchedBy: matched.matchedBy,
-        reason: parsed.reason
-      });
-    }
-    return createPublishedStateResult({
-      status: "reviewing",
-      link: payload.link ?? null,
-      raw: {
-        scannedPages: Array.from(pageRecordCache.entries()).map(([pageNumber, records]) => ({
-          pageNumber,
-          recordCount: records.length
-        }))
-      },
-      matchedBy: "unknown",
-      reason: "baijiahao article list did not match current publish task"
-    });
-  } finally {
-    await context.close().catch(() => void 0);
-    await browser?.close().catch(() => void 0);
-  }
-}
 
-class BaijiahaoVideo implements Video {
-  /** 发布百家号视频。 */
-  upload(payload: VideoUploadPayload): Promise<VideoUploadResult> {
-    return upload(payload) as Promise<VideoUploadResult>;
+/** 百家号直接通过 HTTP 发布，无需 Electron 运行时。 */
+export function configureBaijiahaoVideoRuntime(_runtime: VideoRuntime): void {}
+
+/** 百家号不持有发布窗口。 */
+export function destroyBaijiahaoVideoWindows(): void {}
+
+/** 百家号统一视频资源适配器。 */
+export class BaijiahaoVideo implements Video {
+  /** 上传并发布百家号视频。 */
+  async upload(payload: VideoUploadPayload): Promise<VideoUploadResult> {
+    let prepared: BaijiahaoPreparedContext | undefined;
+    try {
+      prepared = await prepare(payload);
+      return await publish(prepared);
+    } finally {
+      await dispose(prepared);
+    }
   }
+
   /** 查询百家号视频发布状态。 */
-  fetchPublishedState(payload: PublishedStatePayload): Promise<PublishedStateResult | null> {
-    return fetchPublishedState(payload) as Promise<PublishedStateResult | null>;
+  async fetchPublishedState(payload: PublishedStatePayload): Promise<PublishedStateResult | null> {
+    const accountFile = asString(payload.accountFile);
+    if (!accountFile) throw new Error("百家号发布状态查询缺少 accountFile");
+    const timeout = typeof payload.timeoutMs === "number" && payload.timeoutMs > 0 ? payload.timeoutMs : 30_000;
+    const browser = await chromium.launch({ headless: true });
+    let context: BrowserContext | undefined;
+    try {
+      context = await browser.newContext({ storageState: isAbsolute(accountFile) ? accountFile : resolve(process.cwd(), accountFile) });
+      const page = await context.newPage();
+      for (let pageNumber = 1; pageNumber <= 3; pageNumber += 1) {
+        const url = new URL(BAIJIAHAO_RECORD_STATUS_URL);
+        url.searchParams.set("currentPage", String(pageNumber));
+        const response = waitForArticleList(page, Math.min(timeout, 15_000), pageNumber);
+        await page.goto(url.toString(), { waitUntil: "domcontentloaded", timeout });
+        if (!page.url().includes("baijiahao.baidu.com/builder/") || page.url().includes("/login")) {
+          throw new Error(`百家号账号登录状态失效: ${accountFile}`);
+        }
+        const matched = findBaijiahaoRecordInList(collectBaijiahaoRecordsFromPayload(await response), payload);
+        if (!matched) continue;
+        const parsed = parseBaijiahaoRecordStatus(matched.record);
+        if (!parsed) throw new Error("百家号命中记录但 record.status 缺失或未确认映射");
+        return { ...parsed, matchedBy: matched.matchedBy, link: parsed.link ?? payload.link ?? null };
+      }
+      return { status: "reviewing", link: payload.link ?? null, raw: null, matchedBy: "unknown", reason: "baijiahao article list did not match current publish task" };
+    } finally {
+      await context?.close().catch((error: unknown) => console.error("关闭百家号状态查询上下文失败：", error));
+      await browser.close().catch((error: unknown) => console.error("关闭百家号状态查询浏览器失败：", error));
+    }
   }
 }
-export {
-  BAIJIAHAO_ARTICLE_LIST_URL_MARKER,
-  BAIJIAHAO_RECORD_STATUS_URL,
-  BAIJIAHAO_STATUS_PAGINATION_ATTEMPTS,
-  BAIJIAHAO_STATUS_RESPONSE_TIMEOUT_MS,
-  BaijiahaoVideo,
-  buildBaijiahaoDescriptionValue,
-  collectBaijiahaoRecordsFromPayload,
-  configureElectronPublishRuntime as configureBaijiahaoVideoRuntime,
-  destroyElectronPublishWindows as destroyBaijiahaoVideoWindows,
-  fetchPublishedState,
-  findBaijiahaoRecordInList,
-  formatBaijiahaoScheduleDateOption,
-  formatBaijiahaoScheduleHourOption,
-  formatBaijiahaoScheduleMinuteOption,
-  isBaijiahaoFilenameRefill,
-  isBaijiahaoSecurityVerificationText,
-  normalizeBaijiahaoScheduledAt,
-  parseBaijiahaoRecordStatus,
-  pickBaijiahaoImmediatePublishButtonCandidate,
-  upload
-};

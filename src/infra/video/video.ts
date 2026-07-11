@@ -79,6 +79,7 @@ export interface Video {
 /** Electron 主进程提供给平台视频实现的运行时能力。 */
 export interface VideoRuntime {
   BrowserWindow: new(options: Electron.BrowserWindowConstructorOptions) => Electron.BrowserWindow;
+  electron: typeof import("electron");
   session: {
     fromPartition(partition: string): Electron.Session;
   };
@@ -89,7 +90,7 @@ export interface VideoRuntime {
 /**
  * 将 Electron 发布运行时分别注入四个平台实现。
  *
- * @param runtime - 主进程窗口、session 和 CDP 能力
+ * @param runtime - 主进程 Electron module、窗口、session 和 CDP 能力
  */
 export function configureVideoRuntime(runtime: VideoRuntime): void {
   configureBaijiahaoVideoRuntime(runtime);

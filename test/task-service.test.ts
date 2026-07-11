@@ -1,22 +1,29 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { normalizeScheduledAt } from '../src/service/task-service.ts'
+import { normalizeScheduledAt, resolvePublishOptions } from '../src/service/task-service.ts'
 
 test('normalizeScheduledAt should treat only "0" as immediate publish sentinel', () => {
-  assert.equal(normalizeScheduledAt(undefined), '')
-  assert.equal(normalizeScheduledAt(''), '')
-  assert.equal(normalizeScheduledAt('   '), '')
-  assert.equal(normalizeScheduledAt('0'), '')
+  assert.equal(normalizeScheduledAt(undefined), '0')
+  assert.equal(normalizeScheduledAt(''), '0')
+  assert.equal(normalizeScheduledAt('   '), '0')
+  assert.equal(normalizeScheduledAt('0'), '0')
 })
 
-test('normalizeScheduledAt should keep explicit scheduled publish time', () => {
-  assert.equal(normalizeScheduledAt('2026-05-01 12:30'), '2026-05-01 12:30')
-})
-
-test('normalizeScheduledAt should reject non-standard scheduled publish time', () => {
+test('normalizeScheduledAt should reject every scheduled publish time', () => {
   assert.throws(
-    () => normalizeScheduledAt('2026-05-01T12:30'),
-    /scheduledAt 格式错误，应为字符串 "0" 或 YYYY-MM-DD HH:mm/,
+    () => normalizeScheduledAt('2026-05-01 12:30'),
+    /当前仅支持立即发布/,
   )
+})
+
+test('resolvePublishOptions persists Bilibili partition and Douyin visibility', () => {
+  assert.deepEqual(resolvePublishOptions({ humanTypeId: 1027 }, 'bilibili'), { human_type_id: 1027 })
+  assert.deepEqual(resolvePublishOptions({}, 'douyin'), { visibility: 'public' })
+  assert.deepEqual(resolvePublishOptions({}, 'baijiahao'), {})
+})
+
+test('resolvePublishOptions rejects missing platform-specific values', () => {
+  assert.throws(() => resolvePublishOptions({}, 'bilibili'), /humanTypeId/)
+  assert.throws(() => resolvePublishOptions({ visibility: 'unknown' }, 'douyin'), /visibility/)
 })

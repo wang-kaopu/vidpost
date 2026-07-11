@@ -25,6 +25,22 @@ npm run forge:package
 
 The Electron main process is emitted as `.build/main.js` in ESM format. `preload.ts` uses TypeScript and ESM syntax in source, but is emitted as `.build/preload.cjs` to preserve Electron sandbox support.
 
+## Video publishing pipeline
+
+The Bilibili, Baijiahao, and Douyin publishing implementations now live directly in their corresponding `src/infra/video/xx-video.ts` files without generated CJS/ESM wrappers. Top-level `prepare()` performs everything before the final submission, private `publish()` confirms only that last operation, and top-level `dispose()` cleans resources. The complete `upload()` and `fetchPublishedState()` implementations live directly in each platform `Video` class and are called through the common `Video` interface. Sohu publishing is unchanged.
+
+- A title, video, and cover are mandatory for all three migrated platforms.
+- Only immediate publishing is supported. Scheduling controls stay visible but disabled, and the backend accepts only `scheduledAt: "0"`.
+- Every Bilibili task must select an account-specific `humanTypeId` fetched from Bilibili.
+- Every Douyin task selects `public`, `friends`, or `self`; the default is `public`.
+- Douyin reuses the current Electron account partition instead of opening the same profile in a second Electron process. Douyin publishing is available on macOS and Windows only.
+- `prepare()` returns the complete inspectable platform context. Calling Bilibili or Baijiahao `prepare()` without the final publish can leave uploaded remote assets behind. Pass a standalone Douyin context to `dispose()` to close hidden windows, IPC, and session resources. Cleanup failures are logged and never thrown.
+- Final publish requests and complete workflows are never retried automatically. Only safe probes and media chunks have bounded retries.
+- HTTP debug logs intentionally include full headers, cookies, tokens, and responses. Treat production logs as sensitive.
+- Remote task records store only platform IDs, public links, and non-sensitive publishing options, never complete HTTP responses.
+
+The migrated services use `axios-retry`, `crc-32`, `file-type`, `mp4box`, `p-limit`, and `sharp`. `npm run build:electron` emits the Douyin hidden-window bundle at `.build/douyin-publish-renderer.js`.
+
 `app/App.vue` is the production renderer entry. `app/src/App.vue` and `app/src/scripts/sse-register.ts` are the backend integration demo and must be retained.
 
 The obsolete manual-verification store integration was removed because its runtime store did not exist. Douyin SMS verification can still read `MATRIX_DOUYIN_PUBLISH_SMS_CODE` from the environment.

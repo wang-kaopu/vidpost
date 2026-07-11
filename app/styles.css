@@ -1690,6 +1690,39 @@ body.rm-dialog-open .workspace {
   width: 140px;
 }
 
+.publish-plan-col-platform-option {
+  width: 190px;
+}
+
+.publish-plan-platform-option {
+  display: grid;
+  gap: 6px;
+}
+
+.publish-plan-platform-option select {
+  width: 100%;
+  min-height: 36px;
+  border: 1px solid #d8e2ee;
+  border-radius: 9px;
+  background: #fff;
+  color: #334155;
+}
+
+.platform-option-error {
+  color: #c2413b;
+  white-space: normal;
+}
+
+.platform-account-dropdown-item:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.publish-plan-timing-card.is-disabled,
+.publish-plan-table-timing.is-disabled {
+  opacity: 0.68;
+}
+
 .publish-plan-table td {
   vertical-align: middle;
 }

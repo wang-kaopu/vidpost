@@ -10,7 +10,7 @@ type PlatformDialogTableRow = {
   category: string;
 };
 
-type PlatformDialogTableAccount = Pick<AccountItem, "id" | "platform" | "nickname" | "status" | "rawStatus">;
+type PlatformDialogTableAccount = Pick<AccountItem, "id" | "platform" | "nickname" | "status" | "rawStatus" | "disabledReason">;
 type DropdownPlacement = {
   vertical: "up" | "down";
   horizontal: "left" | "right";
@@ -85,7 +85,7 @@ const isSelected = (platformKey: string) => selectedSet.value.has(platformKey);
 const getSelectedAccountIds = (rowId: string) => props.tableRowAccountSelections[rowId] || [];
 const getSelectedAccounts = (rowId: string) => {
   const selectedIds = new Set(getSelectedAccountIds(rowId));
-  return loginSuccessTableAccountOptions.value.filter((account) => selectedIds.has(account.id));
+  return loginSuccessTableAccountOptions.value.filter((account) => selectedIds.has(account.id) && !account.disabledReason);
 };
 const isTableDropdownOpen = (rowId: string) => props.activeTableRowId === rowId;
 const isAccountSelected = (rowId: string, accountId: string) => getSelectedAccountIds(rowId).includes(accountId);
@@ -139,6 +139,8 @@ const toggleTableDropdown = (rowId: string, event: MouseEvent) => {
 };
 
 const toggleTableAccount = (rowId: string, accountId: string) => {
+  const account = loginSuccessTableAccountOptions.value.find((item) => item.id === accountId);
+  if (account?.disabledReason) return;
   const nextSelections = { ...props.tableRowAccountSelections };
   const nextIds = new Set(nextSelections[rowId] || []);
   if (nextIds.has(accountId)) {
@@ -288,12 +290,14 @@ const handleConfirm = () => {
                             class="platform-account-dropdown-item"
                             :class="{ selected: isAccountSelected(row.id, account.id) }"
                             type="button"
+                            :disabled="Boolean(account.disabledReason)"
+                            :title="account.disabledReason || `${account.platform} · ${account.nickname}`"
                             @click="toggleTableAccount(row.id, account.id)"
                           >
                             <PlatformLogo :platform="account.platform" />
                             <span class="platform-account-dropdown-main">
                               <strong>{{ account.nickname }}</strong>
-                              <small>{{ account.platform }}</small>
+                              <small>{{ account.disabledReason || account.platform }}</small>
                             </span>
                           </button>
                           <div v-if="!loginSuccessTableAccountOptions.length" class="platform-account-dropdown-empty">

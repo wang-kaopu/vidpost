@@ -56,7 +56,9 @@ test('packaging ignore rules drop non-runtime assets and keep renderer build out
   )
   assert.equal(isPackagedPathIgnored(resolveProjectPath('node_modules', 'playwright', 'index.js'), projectRoot), false)
   assert.equal(isPackagedPathIgnored(resolveProjectPath('node_modules', 'axios', 'index.js'), projectRoot), false)
+  assert.equal(isPackagedPathIgnored(resolveProjectPath('node_modules', 'sharp', 'lib', 'index.js'), projectRoot), false)
   assert.equal(isPackagedPathIgnored(resolveProjectPath('.build', 'main.js'), projectRoot), false)
+  assert.equal(isPackagedPathIgnored(resolveProjectPath('.build', 'douyin-publish-renderer.js'), projectRoot), false)
 })
 
 test('forge packager declares the agenthunt custom protocol', () => {

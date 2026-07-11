@@ -8,6 +8,8 @@ export interface ElectronApi {
   onLaunchIntent(handler: (payload: unknown) => void): () => void
   openExternal(url: string): Promise<void>
   syncTaskStateBg(): void
+  getBilibiliHumanTypes(payload: { accountId: string }): Promise<Array<{ id: number; name: string }>>
+  getVideoPublishCapabilities(): Promise<{ douyin: { enabled: boolean; reason: string | null } }>
 }
 
 // 将需要暴露给渲染进程的 API 通过 contextBridge 暴露出来
@@ -25,6 +27,8 @@ const electronApi: ElectronApi = {
   },
   openExternal: (url) => ipcRenderer.invoke('agenthunt:open-external', url),
   syncTaskStateBg: () => ipcRenderer.send('sync-task-state-bg'),
+  getBilibiliHumanTypes: (payload) => ipcRenderer.invoke('video:get-bilibili-human-types', payload),
+  getVideoPublishCapabilities: () => ipcRenderer.invoke('video:get-publish-capabilities'),
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronApi)

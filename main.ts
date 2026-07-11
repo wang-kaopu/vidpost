@@ -3,9 +3,10 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { app, ipcMain, BrowserWindow, session, shell, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
+import * as electron from 'electron'
 import squirrelStartup from 'electron-squirrel-startup'
 
-import { login, publish, ping } from './src/funcs.ts'
+import { getBilibiliHumanTypes, getVideoPublishCapabilities, login, publish, ping } from './src/funcs.ts'
 import {
   AGENTHUNT_PROTOCOL,
   extractProtocolUrlFromCommandLine,
@@ -175,7 +176,6 @@ const createWindow = (): BrowserWindow => {
   // 加载页面URL
   loadRenderer(mainWindow, builtAppPath).catch((error) => {
     console.error('[renderer] failed to load renderer:', error)
-    mainWindow.loadFile(builtAppPath)
   })
 
   // 将主窗口传给 API 客户端模块以便通信，如获取token
@@ -190,6 +190,7 @@ async function startApplication(): Promise<void> {
   app.commandLine.appendSwitch('remote-debugging-port', String(electronCdpPort))
   configureVideoRuntime({
     BrowserWindow,
+    electron,
     session,
     getCdpEndpoint: () => `http://127.0.0.1:${electronCdpPort}`,
     isQuitting: () => willQuitApp,
@@ -204,6 +205,8 @@ async function startApplication(): Promise<void> {
     registerIpcHandler('login', login)
     registerIpcListener('publish', publish)
     registerIpcHandler('ping', ping)
+    registerIpcHandler('video:get-bilibili-human-types', getBilibiliHumanTypes)
+    registerIpcHandler('video:get-publish-capabilities', getVideoPublishCapabilities)
     registerIpcListener('sync-task-state-bg', (_event, options) => {
       syncTaskStateBg((options as { limit?: number } | undefined) ?? {})
     })
@@ -241,7 +244,7 @@ if (hasSingletonLock) {
   app.on('before-quit', () => {
     willQuitApp = true
     destroyVideoWindows()
-    stopSseServer()
+    // stopSseServer()
   })
 
   app.on('window-all-closed', () => {

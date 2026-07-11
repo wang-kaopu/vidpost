@@ -29,6 +29,7 @@ export interface AccountItem {
   status: "获取二维码中" | "等待扫码" | "校验登录中" | "在线" | "离线" | "登录超时" | "未知状态";
   phone: string;
   tag: string;
+  disabledReason?: string | null;
 }
 
 export interface PlatformItem {

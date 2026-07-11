@@ -11,6 +11,8 @@ nvm use
 npm install
 ```
 
+前端环境变量维护在 `app/.env`，包括 API 地址、应用名称和 Mock 模式。`RENDERER_DEV_SERVER_URL` 由开发启动器按实际端口动态注入，无需手动配置。
+
 ## 开发与验证
 
 ```bash
@@ -60,6 +62,22 @@ src/infra/
 `account.ts` 定义登录、探活和昵称同步接口，`video.ts` 定义发布和发布状态查询接口。业务调用方通过 `createAccount(platform)` 和 `createVideo(platform)` 获取具体实现。
 
 各平台实现有意保持自包含。浏览器启动、Cookie 状态、Electron 发布窗口、页面交互、上传重试和状态解析代码不通过 shared 模块跨平台复用。新增平台时必须分别提供 `Account` 和 `Video` 实现，不再使用旧的 `platformRegistry` 或 `src/infra/platforms` 目录。
+
+### 视频上传链路
+
+Bilibili、百家号和抖音的发布逻辑已分别内联到 `src/infra/video` 下对应的 `xx-video.ts`，不再包含迁移工具生成的 CJS/ESM 包装代码。每个平台由顶层 `prepare()` 完成最终投稿前的全部操作，私有 `publish()` 只确认最后一次投稿，顶层 `dispose()` 负责清理；`upload()` 与 `fetchPublishedState()` 的完整实现直接位于平台 `Video` 类中。业务层通过统一的 `Video.upload()` 和 `Video.fetchPublishedState()` 接口调用。搜狐上传保持不变。
+
+- 三个平台都要求标题、视频和封面，封面缺失时任务不会提交。
+- 当前所有平台仅支持立即发布；发布计划中的定时控件保留为禁用状态，后端只接受 `scheduledAt: "0"`。
+- Bilibili 必须按账号动态查询并选择投稿分区 `humanTypeId`。
+- 抖音必须逐任务选择 `public`、`friends` 或 `self`，默认 `public`。
+- 抖音 HTTP 上传复用当前应用的账号级 Electron partition，不启动第二个 Electron Profile；该链路仅支持 macOS 和 Windows。
+- `prepare()` 返回可检查的完整平台上下文。单独调用 Bilibili 或百家号 `prepare()` 后不执行最终投稿会遗留已上传的远端素材；抖音应将返回上下文传给 `dispose()` 关闭隐藏窗口、IPC 和 Session 资源。`dispose()` 清理失败只记录日志，不向调用方抛错。
+- 最终投稿请求和整条发布流程不会自动重试，只对可安全重复的探测请求及视频分片做有限重试。
+- HTTP 调试日志按原 Service 行为输出完整 Header、Cookie、Token 和响应，请勿把生产日志交给无关人员。
+- 远程任务只保存平台作品 ID、公开链接及非敏感发布选项，不保存完整 HTTP 响应。
+
+新增上传实现依赖 `axios-retry`、`crc-32`、`file-type`、`mp4box`、`p-limit` 和 `sharp`。抖音隐藏网络窗口脚本由 `npm run build:electron` 生成到 `.build/douyin-publish-renderer.js`。
 
 ## 账号浏览器环境隔离
 

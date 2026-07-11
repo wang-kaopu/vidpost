@@ -73,45 +73,48 @@ export function resetAccountQueuesForTest(): void {
 }
 
 const IMMEDIATE_PUBLISH_VALUE = '0'
-const SCHEDULED_AT_PATTERN = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/
-
-function isValidScheduledAt(normalized) {
-    const matched = normalized.match(SCHEDULED_AT_PATTERN)
-    if (!matched) {
-        return false
-    }
-
-    const [, yearText, monthText, dayText, hourText, minuteText] = matched
-    const year = Number(yearText)
-    const month = Number(monthText)
-    const day = Number(dayText)
-    const hour = Number(hourText)
-    const minute = Number(minuteText)
-    const date = new Date(year, month - 1, day, hour, minute, 0, 0)
-
-    return !Number.isNaN(date.getTime())
-        && date.getFullYear() === year
-        && date.getMonth() === month - 1
-        && date.getDate() === day
-        && date.getHours() === hour
-        && date.getMinutes() === minute
-}
-
+/** 将发布任务统一限制为立即发布。 */
 export function normalizeScheduledAt(value) {
     const normalized = String(value ?? '').trim()
-    if (!normalized) {
-        return ''
+    if (!normalized || normalized === IMMEDIATE_PUBLISH_VALUE) {
+        return IMMEDIATE_PUBLISH_VALUE
     }
+    throw new Error('当前仅支持立即发布，scheduledAt 必须为字符串 "0"')
+}
 
-    if (normalized === IMMEDIATE_PUBLISH_VALUE) {
-        return ''
+/** 校验并提取三平台发布所需的非敏感专属选项。 */
+export function resolvePublishOptions(payload: Record<string, any>, platform: string) {
+    if (platform === 'bilibili') {
+        const humanTypeId = Number(payload.humanTypeId ?? payload.human_type_id)
+        if (!Number.isSafeInteger(humanTypeId) || humanTypeId <= 0) {
+            throw new Error('Bilibili 发布缺少有效的 humanTypeId')
+        }
+        payload.humanTypeId = humanTypeId
+        return { human_type_id: humanTypeId }
     }
-
-    if (!isValidScheduledAt(normalized)) {
-        throw new Error('scheduledAt 格式错误，应为字符串 "0" 或 YYYY-MM-DD HH:mm')
+    if (platform === 'douyin') {
+        const visibility = String(payload.visibility ?? 'public').trim()
+        if (visibility !== 'public' && visibility !== 'friends' && visibility !== 'self') {
+            throw new Error('抖音 visibility 只支持 public、friends 或 self')
+        }
+        payload.visibility = visibility
+        return { visibility }
     }
+    return {}
+}
 
-    return normalized
+/** 校验下载或本地解析后的发布素材确实是非空文件。 */
+function assertMaterializedPublishAssets(payload: Record<string, any>, platform: string) {
+    for (const [field, label] of [['videoPath', '视频'], ['coverPath', '封面']] as const) {
+        const value = String(payload[field] || '').trim()
+        if (!value) {
+            throw new Error(`${platform} 发布缺少${label}文件`)
+        }
+        const stats = fs.statSync(value)
+        if (!stats.isFile() || stats.size <= 0) {
+            throw new Error(`${platform} 发布的${label}不是非空文件: ${value}`)
+        }
+    }
 }
 
 // 发布并更新远程发布记录
@@ -131,6 +134,13 @@ export async function publishAndUpdateRemoteTask(
     }
     normalizedPayload.accountId = accountId
     normalizedPayload.platform = platform
+    if (platform === 'bilibili' || platform === 'baijiahao' || platform === 'douyin') {
+        const cover = String(normalizedPayload.coverPath || normalizedPayload.thumbnailPath || normalizedPayload.coverUrl || '').trim()
+        if (!cover) {
+            throw new Error(`${platform} 发布必须提供封面`)
+        }
+    }
+    const publishOptions = resolvePublishOptions(normalizedPayload, platform)
 
     // 如果没有提供账号文件路径，但提供了账号ID和平台，则解析出账号文件路径
     if (!normalizedPayload.accountFile) {
@@ -155,6 +165,7 @@ export async function publishAndUpdateRemoteTask(
             attributes: {
                 account_id: normalizedPayload.accountId ?? null,
                 account_name: normalizedPayload.accountName ?? null,
+                publish_options: publishOptions,
             },
         })
 
@@ -164,6 +175,9 @@ export async function publishAndUpdateRemoteTask(
             ...normalizedPayload,
             remoteTaskId,
         })
+        if (platform === 'bilibili' || platform === 'baijiahao' || platform === 'douyin') {
+            assertMaterializedPublishAssets(materializedPayload, platform)
+        }
 
 
         // 发布动作
@@ -189,6 +203,7 @@ export async function publishAndUpdateRemoteTask(
             attributes: {
                 account_id: normalizedPayload.accountId ?? null,
                 account_name: normalizedPayload.accountName ?? null,
+                publish_options: publishOptions,
                 publish_result: publishResult ?? null,
                 review_state_clues: {
                     title: payload.title ?? null,
@@ -217,6 +232,7 @@ export async function publishAndUpdateRemoteTask(
                 attributes: {
                     account_id: normalizedPayload.accountId ?? null,
                     account_name: normalizedPayload.accountName ?? null,
+                    publish_options: publishOptions,
                     error_message: message,
                     failure_detail: {
                         detail: 'publish_before_submit',

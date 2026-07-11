@@ -6,6 +6,7 @@ type PublishPlanRow = {
   id: string;
   workId: string;
   accountId: string;
+  platformKey: string;
   coverUrl: string;
   coverAlt: string;
   title: string;
@@ -13,6 +14,11 @@ type PublishPlanRow = {
   accountName: string;
   summary: string;
   scheduledAt: string;
+  humanTypeId: number | null;
+  humanTypes: Array<{ id: number; name: string }>;
+  humanTypesError: string;
+  humanTypesLoading: boolean;
+  visibility: "public" | "friends" | "self";
 };
 
 type PublishPlanGroup = {
@@ -54,12 +60,27 @@ const emit = defineEmits<{
   close: [];
   remove: [payload: { workId: string; accountId: string }];
   confirm: [];
-  "update-row-field": [payload: { rowId: string; field: "title" | "summary" | "scheduledAt"; value: string }];
+  "update-row-field": [payload: {
+    rowId: string;
+    field: "title" | "summary" | "scheduledAt" | "humanTypeId" | "visibility";
+    value: string | number | null;
+  }];
   "apply-all": [payload: { title: string; summary: string; scheduledAt: string }];
 }>();
 
 const totalPlanCount = computed(() => props.groups.reduce((total, group) => total + group.rows.length, 0));
-const canConfirm = computed(() => totalPlanCount.value > 0);
+const canConfirm = computed(() => totalPlanCount.value > 0 && props.groups.every((group) =>
+  group.rows.every((row) =>
+    (row.platformKey === "sohu" || Boolean(row.coverUrl))
+    && (row.platformKey !== "bilibili" || (
+      !row.humanTypesLoading
+      && !row.humanTypesError
+      && Number.isSafeInteger(row.humanTypeId)
+      && Number(row.humanTypeId) > 0
+      && row.humanTypes.some((type) => type.id === row.humanTypeId)
+    ))
+  )
+));
 
 const globalTitle = ref("");
 const globalSummary = ref("");
@@ -70,7 +91,7 @@ const applyAll = (): void => {
   emit("apply-all", {
     title: globalTitle.value,
     summary: globalSummary.value,
-    scheduledAt: globalTimedPublish.value ? globalScheduleTime.value : IMMEDIATE_PUBLISH_VALUE,
+    scheduledAt: IMMEDIATE_PUBLISH_VALUE,
   });
 };
 
@@ -151,20 +172,20 @@ useDialogLayer(() => props.visible);
                   @input="globalTitle = ($event.target as HTMLInputElement).value"
                 />
               </label>
-              <section class="publish-plan-timing-card" :class="{ active: globalTimedPublish }">
+              <section class="publish-plan-timing-card is-disabled">
                 <div class="publish-plan-timing-card-header">
                   <div class="publish-plan-timing-copy">
                     <span class="publish-plan-timing-title">定时发布</span>
                     <span class="publish-plan-timing-hint">
-                      {{ globalTimedPublish ? "为所有计划统一设置发布时间" : "关闭后默认立即发布" }}
+                      当前平台仅支持立即发布
                     </span>
                   </div>
                   <button
                     class="publish-plan-switch-control"
                     :class="{ active: globalTimedPublish }"
                     type="button"
-                    :aria-pressed="globalTimedPublish"
-                    @click="globalTimedPublish = !globalTimedPublish"
+                    :aria-pressed="false"
+                    disabled
                   >
                     <span />
                   </button>
@@ -174,8 +195,7 @@ useDialogLayer(() => props.visible);
                   <input
                     :value="toDatetimeLocal(globalScheduleTime)"
                     type="datetime-local"
-                    :disabled="!globalTimedPublish"
-                    @input="globalScheduleTime = fromDatetimeLocal(($event.target as HTMLInputElement).value)"
+                    disabled
                   />
                 </label>
               </section>
@@ -208,6 +228,7 @@ useDialogLayer(() => props.visible);
                 <th class="publish-plan-col-title">标题</th>
                 <th class="publish-plan-col-video-category">视频类别</th>
                 <th class="publish-plan-col-account-name">发布账号</th>
+                <th class="publish-plan-col-platform-option">平台选项</th>
                 <th class="publish-plan-col-summary">简介</th>
                 <th class="publish-plan-col-scheduled-at">定时发布</th>
                 <th class="publish-plan-col-actions"></th>
@@ -237,6 +258,41 @@ useDialogLayer(() => props.visible);
                   <span class="publish-plan-text-cell" :title="row.accountName">{{ row.accountName }}</span>
                 </td>
                 <td>
+                  <label v-if="row.platformKey === 'bilibili'" class="publish-plan-platform-option">
+                    <select
+                      :value="row.humanTypeId ?? ''"
+                      :disabled="row.humanTypesLoading || Boolean(row.humanTypesError) || !row.humanTypes.length"
+                      @change="emit('update-row-field', {
+                        rowId: row.id,
+                        field: 'humanTypeId',
+                        value: Number(($event.target as HTMLSelectElement).value) || null,
+                      })"
+                    >
+                      <option value="" disabled>选择投稿分区</option>
+                      <option v-for="type in row.humanTypes" :key="type.id" :value="type.id">
+                        {{ type.id }} {{ type.name }}
+                      </option>
+                    </select>
+                    <small v-if="row.humanTypesLoading">正在加载投稿分区…</small>
+                    <small v-if="row.humanTypesError" class="platform-option-error">{{ row.humanTypesError }}</small>
+                  </label>
+                  <label v-else-if="row.platformKey === 'douyin'" class="publish-plan-platform-option">
+                    <select
+                      :value="row.visibility"
+                      @change="emit('update-row-field', {
+                        rowId: row.id,
+                        field: 'visibility',
+                        value: ($event.target as HTMLSelectElement).value,
+                      })"
+                    >
+                      <option value="public">公开</option>
+                      <option value="friends">朋友可见</option>
+                      <option value="self">仅自己可见</option>
+                    </select>
+                  </label>
+                  <span v-else class="publish-plan-text-cell">—</span>
+                </td>
+                <td>
                   <input
                     class="publish-plan-table-input"
                     :value="row.summary"
@@ -246,14 +302,14 @@ useDialogLayer(() => props.visible);
                   />
                 </td>
                 <td>
-                  <div class="publish-plan-table-timing" :class="{ active: isRowTimedPublishEnabled(row.scheduledAt) }">
+                  <div class="publish-plan-table-timing is-disabled">
                     <div class="publish-plan-table-timing-head">
                       <button
                         class="publish-plan-switch-control"
                         :class="{ active: isRowTimedPublishEnabled(row.scheduledAt) }"
                         type="button"
-                        :aria-pressed="isRowTimedPublishEnabled(row.scheduledAt)"
-                        @click.stop="toggleRowTimedPublish(row)"
+                        :aria-pressed="false"
+                        disabled
                       >
                         <span />
                       </button>
@@ -261,17 +317,10 @@ useDialogLayer(() => props.visible);
                         class="publish-plan-table-timing-status"
                         :class="{ active: isRowTimedPublishEnabled(row.scheduledAt) }"
                       >
-                        {{ getScheduledAtDisplayText(row.scheduledAt) }}
+                        立即发布
                       </span>
                     </div>
-                    <input
-                      v-if="isRowTimedPublishEnabled(row.scheduledAt)"
-                      class="publish-plan-table-input publish-plan-table-schedule-input"
-                      :value="toDatetimeLocal(row.scheduledAt)"
-                      type="datetime-local"
-                      @input="emit('update-row-field', { rowId: row.id, field: 'scheduledAt', value: fromDatetimeLocal(($event.target as HTMLInputElement).value) })"
-                    />
-                    <span v-else class="publish-plan-immediate-text">开启后可单独设置时间</span>
+                    <span class="publish-plan-immediate-text">当前平台仅支持立即发布</span>
                   </div>
                 </td>
                 <td>
