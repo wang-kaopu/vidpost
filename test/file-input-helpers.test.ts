@@ -2,7 +2,11 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 async function loadHelpersModule() {
-  return import('../src/infra/platforms/shared/browser/page-helpers.ts')
+  return import('../src/infra/video/bilibili-video.ts')
+}
+
+async function loadDouyinHelpersModule() {
+  return import('../src/infra/video/douyin-video.ts')
 }
 
 test('acceptMatchesKind matches video accepts for video uploads', async () => {
@@ -61,7 +65,7 @@ test('clickWithDomFallback retries after interference recovery callback runs', a
 })
 
 test('fillWithRecovery retries after interference recovery callback runs', async () => {
-  const { fillWithRecovery } = await loadHelpersModule()
+  const { fillWithRecovery } = await loadDouyinHelpersModule()
 
   let fillAttempts = 0
   let recoveryCalls = 0

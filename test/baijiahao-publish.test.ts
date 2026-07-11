@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 async function loadPublishModule() {
-  return import('../src/infra/platforms/baijiahao/publish.ts')
+  return import('../src/infra/video/baijiahao-video.ts')
 }
 
 test('buildBaijiahaoDescriptionValue joins title and copy with colon', async () => {

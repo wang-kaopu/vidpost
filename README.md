@@ -37,6 +37,30 @@ Electron 主进程构建为 `.build/main.js` ESM。`preload.ts` 仍在源码层�
 
 `app/App.vue` 是正式渲染入口；`app/src/App.vue` 和 `app/src/scripts/sse-register.ts` 是后端联调 Demo，不能作为废弃目录删除。
 
+## 平台资源基础设施
+
+`src/infra` 按资源而不是按平台组织，只包含账号和视频两个目录：
+
+```text
+src/infra/
+├── account/
+│   ├── account.ts
+│   ├── baijiahao-account.ts
+│   ├── bilibili-account.ts
+│   ├── douyin-account.ts
+│   └── sohu-account.ts
+└── video/
+    ├── video.ts
+    ├── baijiahao-video.ts
+    ├── bilibili-video.ts
+    ├── douyin-video.ts
+    └── sohu-video.ts
+```
+
+`account.ts` 定义登录、探活和昵称同步接口，`video.ts` 定义发布和发布状态查询接口。业务调用方通过 `createAccount(platform)` 和 `createVideo(platform)` 获取具体实现。
+
+各平台实现有意保持自包含。浏览器启动、Cookie 状态、Electron 发布窗口、页面交互、上传重试和状态解析代码不通过 shared 模块跨平台复用。新增平台时必须分别提供 `Account` 和 `Video` 实现，不再使用旧的 `platformRegistry` 或 `src/infra/platforms` 目录。
+
 ## 账号浏览器环境隔离
 
 平台账号登录窗口使用账号级 Electron `persist:` partition 隔离浏览器状态。partition 映射持久化在：

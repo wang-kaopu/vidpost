@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 async function loadQueueModule() {
-  return import('../src/infra/platforms/shared/publish/account-queue.ts')
+  return import('../src/service/task-service.ts')
 }
 
 test('account publish queue serializes tasks for the same account', async () => {

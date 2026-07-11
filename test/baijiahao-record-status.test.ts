@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 async function loadBaijiahaoRecordStatusModule() {
-  return import('../src/infra/platforms/baijiahao/record-status.ts')
+  return import('../src/infra/video/baijiahao-video.ts')
 }
 
 test('baijiahao record status parser returns public when top-level status is publish', async () => {

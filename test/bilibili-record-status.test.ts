@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 async function loadBilibiliRecordStatusModule() {
-  return import('../src/infra/platforms/bilibili/record-status.ts')
+  return import('../src/infra/video/bilibili-video.ts')
 }
 
 test('bilibili record status parser returns public when Archive.state is 0', async () => {

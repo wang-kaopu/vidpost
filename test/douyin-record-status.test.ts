@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 async function loadDouyinRecordStatusModule() {
-  return import('../src/infra/platforms/douyin/record-status.ts')
+  return import('../src/infra/video/douyin-video.ts')
 }
 
 test('douyin record status parser returns reviewing when status.in_reviewing is true', async () => {

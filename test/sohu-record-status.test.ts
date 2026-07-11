@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 async function loadSohuRecordStatusModule() {
-  return import('../src/infra/platforms/sohu/record-status.ts')
+  return import('../src/infra/video/sohu-video.ts')
 }
 
 test('sohu record status parser returns public when auditStatus is 4', async () => {

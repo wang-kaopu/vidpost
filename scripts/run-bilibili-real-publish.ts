@@ -1,8 +1,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-import { cookieAuth } from '../src/infra/platforms/bilibili/cookie-auth.ts'
-import { upload } from '../src/infra/platforms/bilibili/publish.ts'
+import { createAccount } from '../src/infra/account/account.ts'
+import { createVideo } from '../src/infra/video/video.ts'
 
 const COOKIE_DIR = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.agenthunt', 'cookie_files')
 const VIDEO_PATH = '/Users/wkp/Downloads/olivia.mp4'
@@ -31,7 +31,7 @@ async function resolveLatestValidBilibiliAccountFile() {
 
   for (const entry of entries) {
     try {
-      if (await cookieAuth(entry.fullPath)) {
+      if (await createAccount('bilibili').ping(entry.fullPath)) {
         return entry.fullPath
       }
     } catch {
@@ -76,7 +76,7 @@ async function main() {
   console.info(`[bilibili:real-publish] videoPath=${VIDEO_PATH}`)
   console.info(`[bilibili:real-publish] coverPath=${COVER_PATH}`)
 
-  const result = await upload(payload)
+  const result = await createVideo('bilibili').upload(payload)
   console.info('[bilibili:real-publish] result=', result)
 }
 

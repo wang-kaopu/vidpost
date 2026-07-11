@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 async function loadSessionModule() {
-  return import('../src/infra/platforms/shared/browser/electron-publish-session.ts')
+  return import('../src/infra/video/bilibili-video.ts')
 }
 
 test('electron publish marker URL contains encoded account id', async () => {

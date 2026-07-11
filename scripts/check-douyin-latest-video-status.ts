@@ -6,8 +6,8 @@ import {
   DOUYIN_STATUS_RESPONSE_TIMEOUT_MS,
   DOUYIN_WORK_LIST_URL_MARKER,
   parseDouyinRecordStatus,
-} from '../src/infra/platforms/douyin/record-status.ts'
-import { createContextFromAccountFile } from '../src/infra/platforms/shared/browser.ts'
+} from '../src/infra/video/douyin-video.ts'
+import { createContextFromAccountFile } from '../src/infra/video/douyin-video.ts'
 
 const COOKIE_DIR = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.agenthunt', 'cookie_files')
 

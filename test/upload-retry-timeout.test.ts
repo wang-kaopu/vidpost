@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 async function loadRetryModule() {
-  return import('../src/infra/platforms/shared/publish/retry.ts')
+  return import('../src/infra/video/bilibili-video.ts')
 }
 
 test('runUploadAttemptWithTimeout aborts the active runner when timeout fires', async () => {

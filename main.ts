@@ -17,8 +17,7 @@ import { getSingletonLock } from './src/utils/lock.ts'
 import { setApiClientWindow } from './src/api/api-client.ts'
 import { startSseServer, stopSseServer } from './src/sse/sse-server.ts'
 import { syncTaskStateBg } from './src/service/task-state-service.ts'
-import { configureElectronPublishRuntime } from './src/infra/platforms/shared/browser/electron-publish-runtime.ts'
-import { destroyElectronPublishWindows } from './src/infra/platforms/shared/browser/electron-publish-session.ts'
+import { configureVideoRuntime, destroyVideoWindows } from './src/infra/video/video.ts'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const projectRoot = path.resolve(__dirname, '..')
@@ -189,7 +188,7 @@ async function startApplication(): Promise<void> {
   electronCdpPort = await findAvailableCdpPort()
   app.commandLine.appendSwitch('remote-debugging-address', '127.0.0.1')
   app.commandLine.appendSwitch('remote-debugging-port', String(electronCdpPort))
-  configureElectronPublishRuntime({
+  configureVideoRuntime({
     BrowserWindow,
     session,
     getCdpEndpoint: () => `http://127.0.0.1:${electronCdpPort}`,
@@ -241,7 +240,7 @@ if (hasSingletonLock) {
 
   app.on('before-quit', () => {
     willQuitApp = true
-    destroyElectronPublishWindows()
+    destroyVideoWindows()
     stopSseServer()
   })
 

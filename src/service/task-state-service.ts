@@ -1,5 +1,6 @@
 import { listPublishTasks, updatePublishTask } from '../api/task-api.ts'
-import { platformRegistry } from '../platform-registry.ts'
+import { createVideo } from '../infra/video/video.ts'
+import type { PlatformType } from '../infra/account/account.ts'
 import { resolveAccountFilePath } from './account-service.ts'
 
 const REVIEWING_STATUS = 'reviewing'
@@ -140,11 +141,7 @@ export async function syncSingleTaskState(task) {
         await markTaskStateSyncError(task, 'task platform is missing')
         return { skipped: true, reason: 'missing_platform', taskId }
     }
-    const fetchPublishedState = platformRegistry?.[platform]?.fetchPublishedState
-    if (typeof fetchPublishedState !== 'function') {
-        await markTaskStateSyncError(task, `${platform} fetchPublishedState is unavailable`)
-        return { skipped: true, reason: 'missing_fetcher', taskId, platform }
-    }
+    const video = createVideo(platform as PlatformType)
 
     const fetchPayload = buildFetchPayload(task)
     if (!normalizeString(fetchPayload.accountFile)) {
@@ -153,7 +150,7 @@ export async function syncSingleTaskState(task) {
     }
 
     try {
-        const fetchResult = await fetchPublishedState(fetchPayload)
+        const fetchResult = await video.fetchPublishedState(fetchPayload)
         const nextStatus = normalizeString(fetchResult?.status) ?? REVIEWING_STATUS
         const nextLink = fetchResult?.link ?? task.link ?? null
 

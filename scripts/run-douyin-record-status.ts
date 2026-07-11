@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-import { fetchPublishedState } from '../src/infra/platforms/douyin/record-status.ts'
+import { createVideo } from '../src/infra/video/video.ts'
 
 const COOKIE_DIR = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.agenthunt', 'cookie_files')
 
@@ -65,7 +65,7 @@ async function main() {
   console.info(`[douyin:record-status] link=${link || ''}`)
   console.info(`[douyin:record-status] workId=${platformWorkId || ''}`)
 
-  const result = await fetchPublishedState(payload)
+  const result = await createVideo('douyin').fetchPublishedState(payload)
   console.info('[douyin:record-status] result=')
   console.info(JSON.stringify(result, null, 2))
 }

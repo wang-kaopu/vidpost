@@ -12,6 +12,7 @@ import {
     resolvePartitionForAccount,
 } from '../db/partition-store.ts'
 import { createAccountPageModel } from '../page-model/account-page-model.ts'
+import type { Account } from '../infra/account/account.ts'
 
 // 拼接账号文件路径，用于正在新增过程中、未获取数据自增ID的账号文件命名
 export function resolveDraftAccountFilePath(platform) {
@@ -39,14 +40,14 @@ function finalizeAccountFile(accountFile, accountId, platform) {
 
 // 登录并创建远程账号
 export async function loginAndCreateRemoteAccount(platform, accountFile, parentWindow,
-    runLogin, syncNickname) {
+    account: Account) {
     const partitionStore = createPartitionStore()
     // 登录新账号时远程账号 ID 尚不存在，先用草稿 key 绑定本次登录窗口 partition。
     const draftPartitionAccountId = `draft:${platform}:${path.basename(accountFile)}`
     const partition = resolvePartitionForAccount(partitionStore, draftPartitionAccountId)
 
     try {
-        await runLogin({
+        await account.login({
             accountId: draftPartitionAccountId,
             accountFile,
             partition,
@@ -54,7 +55,7 @@ export async function loginAndCreateRemoteAccount(platform, accountFile, parentW
             parentWindow,
         })
 
-        const nickname = await syncNickname(accountFile, 6000)
+        const nickname = await account.syncNickname(accountFile, 6000)
         console.log(`登录完成，获取到的 ${platform} 昵称为: ${nickname}`)
 
         const { remoteAccountId } = await createPublishAccount({
@@ -91,7 +92,7 @@ export async function loginAndCreateRemoteAccount(platform, accountFile, parentW
 }
 
 // 探活账号并更新远程账号状态
-export async function updateRemoteAccount(account, runCookieAuth) {
+export async function updateRemoteAccount(account, accountResource: Account) {
     const platform = String(account?.platformKey || account?.platform || '').trim().toLowerCase()
     const accountId = String(account?.id || account?.account_id || account?.accountId || '').trim()
 
@@ -103,7 +104,7 @@ export async function updateRemoteAccount(account, runCookieAuth) {
     resolvePartitionForAccount(createPartitionStore(), accountId)
     console.log('账号文件存在:', accountFile)
 
-    const isValid = await runCookieAuth(accountFile)
+    const isValid = await accountResource.ping(accountFile)
     console.log(`${platform}检测结果：`, isValid)
 
     const nextStatus = isValid ? 'online' : 'offline'

@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 async function loadPublishModule() {
-  return import('../src/infra/platforms/douyin/publish.ts')
+  return import('../src/infra/video/douyin-video.ts')
 }
 
 test('douyin scheduledAt parser accepts valid YYYY-MM-DD HH:mm and keeps value', async () => {

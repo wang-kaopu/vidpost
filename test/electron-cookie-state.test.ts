@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 
 async function loadCookieModule() {
-  return import('../src/infra/platforms/shared/browser/electron-cookie-state.ts')
+  return import('../src/infra/video/bilibili-video.ts')
 }
 
 function createCookieStore(initialCookies = []) {

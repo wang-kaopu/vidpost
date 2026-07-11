@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-import { upload } from '../src/infra/platforms/douyin/publish.ts'
+import { createVideo } from '../src/infra/video/video.ts'
 
 const COOKIE_DIR = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.agenthunt', 'cookie_files')
 const VIDEO_PATH = '/Users/wkp/Downloads/olivia.mp4'
@@ -64,7 +64,7 @@ async function main() {
   console.info(`[douyin:real-publish] videoPath=${VIDEO_PATH}`)
   console.info(`[douyin:real-publish] coverPath=${COVER_PATH}`)
 
-  const result = await upload(payload)
+  const result = await createVideo('douyin').upload(payload)
   console.info('[douyin:real-publish] result=', result)
 }
 

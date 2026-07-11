@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 async function loadPublishModule() {
-  return import('../src/infra/platforms/bilibili/publish.ts')
+  return import('../src/infra/video/bilibili-video.ts')
 }
 
 test('bilibili scheduledAt split keeps YYYY-MM-DD and HH:mm parts', async () => {

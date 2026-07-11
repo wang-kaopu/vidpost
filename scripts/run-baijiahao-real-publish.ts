@@ -1,8 +1,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-import { cookieAuth } from '../src/infra/platforms/baijiahao/cookie-auth.ts'
-import { upload } from '../src/infra/platforms/baijiahao/publish.ts'
+import { createAccount } from '../src/infra/account/account.ts'
+import { createVideo } from '../src/infra/video/video.ts'
 
 const COOKIE_DIR = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.agenthunt', 'cookie_files')
 const VIDEO_PATH = '/Users/wkp/Downloads/olivia.mp4'
@@ -51,7 +51,7 @@ async function resolveLatestValidBaijiahaoAccountFile() {
 
   for (const entry of entries) {
     try {
-      if (await cookieAuth(entry.fullPath)) {
+      if (await createAccount('baijiahao').ping(entry.fullPath)) {
         return entry.fullPath
       }
     } catch {
@@ -91,7 +91,7 @@ async function main() {
   console.info(`[baijiahao:real-publish] videoPath=${VIDEO_PATH}`)
   console.info(`[baijiahao:real-publish] coverPath=${COVER_PATH}`)
 
-  const result = await upload(payload)
+  const result = await createVideo('baijiahao').upload(payload)
   console.info('[baijiahao:real-publish] result=', result)
 }
 

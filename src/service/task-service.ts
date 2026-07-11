@@ -1,11 +1,76 @@
 import fs from 'node:fs'
 import { createPublishTask, updatePublishTask } from '../api/task-api.ts'
 import { createPartitionStore, resolvePartitionForAccount } from '../db/partition-store.ts'
-import { runInAccountQueue } from '../infra/platforms/shared/publish/account-queue.ts'
 import { createTaskPageModel } from '../page-model/task-page-model.ts'
 import { resolveAccountFilePath } from './account-service.ts'
 import { PublishAssetCache } from './publish-asset-cache.ts'
+import type { Video } from '../infra/video/video.ts'
 const publishAssetCache = new PublishAssetCache()
+
+type AccountTask<T> = () => Promise<T>
+
+interface AccountQueueState {
+    tail: Promise<unknown>
+    paused: boolean
+}
+
+const accountQueues = new Map<string, AccountQueueState>()
+
+/** 获取账号发布队列，不存在时创建空队列。 */
+function getAccountQueueState(accountId: string): AccountQueueState {
+    const existing = accountQueues.get(accountId)
+    if (existing) {
+        return existing
+    }
+
+    const created: AccountQueueState = { tail: Promise.resolve(), paused: false }
+    accountQueues.set(accountId, created)
+    return created
+}
+
+/**
+ * 将发布任务放入账号专属串行队列。
+ *
+ * @param accountId - 全局唯一账号 ID
+ * @param task - 需要串行执行的发布任务
+ * @returns 发布任务执行结果
+ */
+export async function runInAccountQueue<T>(accountId: string, task: AccountTask<T>): Promise<T> {
+    const normalizedAccountId = String(accountId || '').trim()
+    if (!normalizedAccountId) {
+        throw new Error('发布任务缺少 accountId，无法定位账号发布队列')
+    }
+
+    const state = getAccountQueueState(normalizedAccountId)
+    const run = state.tail.then(async () => {
+        if (state.paused) {
+            throw new Error(`账号 ${normalizedAccountId} 的发布队列已暂停`)
+        }
+
+        try {
+            return await task()
+        } catch (error) {
+            state.paused = true
+            throw error
+        }
+    })
+
+    state.tail = run.catch(() => undefined)
+    return run
+}
+
+/** 恢复指定账号的发布队列。 */
+export function resumeAccountQueue(accountId: string): void {
+    const normalizedAccountId = String(accountId || '').trim()
+    if (normalizedAccountId) {
+        getAccountQueueState(normalizedAccountId).paused = false
+    }
+}
+
+/** 清理测试中的账号发布队列状态。 */
+export function resetAccountQueuesForTest(): void {
+    accountQueues.clear()
+}
 
 const IMMEDIATE_PUBLISH_VALUE = '0'
 const SCHEDULED_AT_PATTERN = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/
@@ -52,7 +117,7 @@ export function normalizeScheduledAt(value) {
 // 发布并更新远程发布记录
 export async function publishAndUpdateRemoteTask(
     payload: Record<string, any>,
-    runUpload: (payload: Record<string, any>) => Promise<Record<string, any>>,
+    video: Video,
 ) {
     // 浅拷贝
     const normalizedPayload = payload ? { ...payload } : {}
@@ -105,7 +170,7 @@ export async function publishAndUpdateRemoteTask(
         remoteTaskId = createResult.remoteTaskId
         const publishResult = await runInAccountQueue<Record<string, any>>(
             normalizedPayload.accountId,
-            () => runUpload(materializedPayload),
+            () => video.upload(materializedPayload),
         )
         if (!publishResult || publishResult.success !== true) {
             const failureMessage = publishResult && typeof publishResult.message === 'string' && publishResult.message.trim()

@@ -1,51 +1,26 @@
-import test from 'node:test'
 import assert from 'node:assert/strict'
+import test from 'node:test'
 
-test('playwright headless config is centralized in shared config file', () => {
-  return import('../src/infra/platforms/shared/browser/headless-config.ts').then(({
-    PLAYWRIGHT_HEADLESS_CONFIG,
-    resolvePlaywrightHeadlessMode,
-  }) => {
-  assert.equal(resolvePlaywrightHeadlessMode(), PLAYWRIGHT_HEADLESS_CONFIG.default)
-  assert.equal(resolvePlaywrightHeadlessMode('probe'), PLAYWRIGHT_HEADLESS_CONFIG.probe)
-  assert.equal(resolvePlaywrightHeadlessMode('ping:douyin'), PLAYWRIGHT_HEADLESS_CONFIG['ping:douyin'])
-  assert.equal(resolvePlaywrightHeadlessMode('ping:bilibili'), PLAYWRIGHT_HEADLESS_CONFIG['ping:bilibili'])
-  assert.equal(resolvePlaywrightHeadlessMode('ping:sohu'), PLAYWRIGHT_HEADLESS_CONFIG['ping:sohu'])
-  assert.equal(resolvePlaywrightHeadlessMode('ping:baijiahao'), PLAYWRIGHT_HEADLESS_CONFIG['ping:baijiahao'])
-  assert.equal(resolvePlaywrightHeadlessMode('login-success:douyin'), PLAYWRIGHT_HEADLESS_CONFIG['login-success:douyin'])
-  assert.equal(resolvePlaywrightHeadlessMode('login-success:bilibili'), PLAYWRIGHT_HEADLESS_CONFIG['login-success:bilibili'])
-  assert.equal(resolvePlaywrightHeadlessMode('login-success:sohu'), PLAYWRIGHT_HEADLESS_CONFIG['login-success:sohu'])
-  assert.equal(resolvePlaywrightHeadlessMode('login-success:baijiahao'), PLAYWRIGHT_HEADLESS_CONFIG['login-success:baijiahao'])
-  assert.equal(resolvePlaywrightHeadlessMode('publish:douyin'), PLAYWRIGHT_HEADLESS_CONFIG['publish:douyin'])
-  assert.equal(resolvePlaywrightHeadlessMode('publish:sohu'), PLAYWRIGHT_HEADLESS_CONFIG['publish:sohu'])
-  assert.equal(resolvePlaywrightHeadlessMode('publish:baijiahao'), PLAYWRIGHT_HEADLESS_CONFIG['publish:baijiahao'])
-  assert.equal(
-    resolvePlaywrightHeadlessMode('record-status:douyin'),
-    PLAYWRIGHT_HEADLESS_CONFIG['record-status:douyin']
-  )
-  assert.equal(
-    resolvePlaywrightHeadlessMode('record-status:bilibili'),
-    PLAYWRIGHT_HEADLESS_CONFIG['record-status:bilibili']
-  )
-  assert.equal(
-    resolvePlaywrightHeadlessMode('record-status:sohu'),
-    PLAYWRIGHT_HEADLESS_CONFIG['record-status:sohu']
-  )
-  assert.equal(
-    resolvePlaywrightHeadlessMode('record-status:baijiahao'),
-    PLAYWRIGHT_HEADLESS_CONFIG['record-status:baijiahao']
-  )
-  assert.equal(
-    resolvePlaywrightHeadlessMode('script:douyin-record-status'),
-    PLAYWRIGHT_HEADLESS_CONFIG['script:douyin-record-status']
-  )
-  assert.equal(
-    resolvePlaywrightHeadlessMode('script:baijiahao-video-state-success'),
-    PLAYWRIGHT_HEADLESS_CONFIG['script:baijiahao-video-state-success']
-  )
-  assert.equal(
-    resolvePlaywrightHeadlessMode('script:bilibili-video-state-success'),
-    PLAYWRIGHT_HEADLESS_CONFIG['script:bilibili-video-state-success']
-  )
+const ACCOUNT_MODULES = {
+  baijiahao: () => import('../src/infra/account/baijiahao-account.ts'),
+  bilibili: () => import('../src/infra/account/bilibili-account.ts'),
+  douyin: () => import('../src/infra/account/douyin-account.ts'),
+  sohu: () => import('../src/infra/account/sohu-account.ts'),
+}
+
+for (const [platform, loadAccountModule] of Object.entries(ACCOUNT_MODULES)) {
+  test(`${platform} account owns an independent headless configuration`, async () => {
+    const { PLAYWRIGHT_HEADLESS_CONFIG, resolvePlaywrightHeadlessMode } = await loadAccountModule()
+
+    assert.equal(resolvePlaywrightHeadlessMode(), PLAYWRIGHT_HEADLESS_CONFIG.default)
+    assert.equal(resolvePlaywrightHeadlessMode('probe'), PLAYWRIGHT_HEADLESS_CONFIG.probe)
+    assert.equal(
+      resolvePlaywrightHeadlessMode(`ping:${platform}`),
+      PLAYWRIGHT_HEADLESS_CONFIG[`ping:${platform}`],
+    )
+    assert.equal(
+      resolvePlaywrightHeadlessMode(`login-success:${platform}`),
+      PLAYWRIGHT_HEADLESS_CONFIG[`login-success:${platform}`],
+    )
   })
-})
+}
