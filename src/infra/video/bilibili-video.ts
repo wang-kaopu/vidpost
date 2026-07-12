@@ -99,7 +99,7 @@ export interface BilibiliVideoOptions {
   videoPath: string;
 }
 
-export interface BilibiliPreparedContext {
+interface BilibiliPreparedContext {
   cookie: CookieContext;
   httpResponses: SerializedAxiosResponse[];
   humanType: HumanType;
@@ -477,7 +477,7 @@ async function uploadCover(
 const preparedRuntime = new WeakMap<BilibiliPreparedContext, { http: AxiosInstance }>();
 
 /** 完成 Bilibili 最终投稿前的全部校验和素材上传。 */
-export async function prepare(input: VideoUploadPayload): Promise<BilibiliPreparedContext> {
+async function prepare(input: VideoUploadPayload): Promise<BilibiliPreparedContext> {
   const scheduledAt = String(input.scheduledAt ?? "").trim();
   if (scheduledAt && scheduledAt !== "0") throw new Error('Bilibili 当前仅支持立即发布，scheduledAt 必须为 "0"');
   const accountFile = String(input.accountFile ?? "").trim();
@@ -556,7 +556,7 @@ async function publish(prepared: BilibiliPreparedContext): Promise<VideoUploadRe
 }
 
 /** Bilibili 没有需要主动关闭的发布资源。 */
-export async function dispose(_prepared?: BilibiliPreparedContext): Promise<void> {
+async function dispose(_prepared?: BilibiliPreparedContext): Promise<void> {
   await Promise.resolve();
 }
 
@@ -645,6 +645,16 @@ export function destroyBilibiliVideoWindows(): void {}
 
 /** Bilibili 的统一视频资源适配器。 */
 export class BilibiliVideo implements Video {
+  /** 执行 Bilibili 最终投稿前的完整流程，但不提交作品。 */
+  async dryRun(payload: VideoUploadPayload): Promise<void> {
+    let prepared: BilibiliPreparedContext | undefined;
+    try {
+      prepared = await prepare(payload);
+    } finally {
+      await dispose(prepared);
+    }
+  }
+
   /** 上传并发布 Bilibili 视频。 */
   async upload(payload: VideoUploadPayload): Promise<VideoUploadResult> {
     let prepared: BilibiliPreparedContext | undefined;

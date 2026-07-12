@@ -69,6 +69,13 @@ export interface PublishedStateResult {
 
 /** 平台视频资源需要实现的统一能力。 */
 export interface Video {
+  /**
+   * 执行最终投稿前的完整预发布流程，但不提交作品。
+   *
+   * 该流程可能向平台上传远端临时素材。
+   */
+  dryRun(payload: VideoUploadPayload): Promise<void>;
+
   /** 上传视频并完成平台发布。 */
   upload(payload: VideoUploadPayload): Promise<VideoUploadResult>;
 

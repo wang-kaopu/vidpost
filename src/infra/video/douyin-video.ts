@@ -106,7 +106,7 @@ interface DouyinWorkerOptions {
   visibility: DouyinVisibility;
 }
 
-export interface DouyinPreparedContext {
+interface DouyinPreparedContext {
   bodyText: string;
   chunkDescriptors: ChunkDescriptor[];
   commonParams: CommonParams;
@@ -2542,7 +2542,7 @@ async function disposeWorker(worker: InProcessWorker): Promise<void> {
 }
 
 /** 完成抖音最终发布前的全部校验、签名和素材上传。 */
-export async function prepare(input: VideoUploadPayload): Promise<DouyinPreparedContext> {
+async function prepare(input: VideoUploadPayload): Promise<DouyinPreparedContext> {
   const scheduledAt = String(input.scheduledAt ?? "").trim();
   if (scheduledAt && scheduledAt !== "0") throw new Error('抖音当前仅支持立即发布，scheduledAt 必须为 "0"');
   if (process.platform === "linux") throw new Error("抖音发布暂不支持 Linux");
@@ -2597,7 +2597,7 @@ async function publish(prepared: DouyinPreparedContext): Promise<VideoUploadResu
 }
 
 /** 关闭 prepare 创建的抖音窗口、IPC 和 Session；清理失败只写日志。 */
-export async function dispose(prepared?: DouyinPreparedContext): Promise<void> {
+async function dispose(prepared?: DouyinPreparedContext): Promise<void> {
   if (!prepared) return;
   const worker = preparedWorkers.get(prepared);
   if (!worker) return;
@@ -2693,6 +2693,16 @@ export function destroyDouyinVideoWindows(): void {
 
 /** 抖音统一视频资源适配器。 */
 export class DouyinVideo implements Video {
+  /** 执行抖音最终投稿前的完整流程，但不提交作品。 */
+  async dryRun(payload: VideoUploadPayload): Promise<void> {
+    let prepared: DouyinPreparedContext | undefined;
+    try {
+      prepared = await prepare(payload);
+    } finally {
+      await dispose(prepared);
+    }
+  }
+
   /** 上传并发布抖音视频。 */
   async upload(payload: VideoUploadPayload): Promise<VideoUploadResult> {
     let prepared: DouyinPreparedContext | undefined;

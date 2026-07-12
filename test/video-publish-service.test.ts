@@ -5,20 +5,15 @@ import test from "node:test";
 
 import {
   BilibiliVideo,
-  dispose as disposeBilibili,
-  prepare as prepareBilibili,
 } from "../src/infra/video/bilibili-video.ts";
 import {
   BaijiahaoVideo,
-  dispose as disposeBaijiahao,
-  prepare as prepareBaijiahao,
 } from "../src/infra/video/baijiahao-video.ts";
 import {
   DouyinVideo,
   createMachineProfile,
-  dispose as disposeDouyin,
-  prepare as prepareDouyin,
 } from "../src/infra/video/douyin-video.ts";
+import { SohuVideo } from "../src/infra/video/sohu-video.ts";
 
 const projectRoot = process.cwd();
 const windowsIdentity = JSON.parse(fs.readFileSync(
@@ -30,13 +25,26 @@ const macosIdentity = JSON.parse(fs.readFileSync(
   "utf8",
 ));
 
-test("migrated platforms expose prepare and dispose functions plus class upload", () => {
-  for (const lifecycle of [
-    [prepareBilibili, disposeBilibili, new BilibiliVideo().upload],
-    [prepareBaijiahao, disposeBaijiahao, new BaijiahaoVideo().upload],
-    [prepareDouyin, disposeDouyin, new DouyinVideo().upload],
+test("video implementations expose dry-run and upload instance methods", () => {
+  for (const video of [
+    new BilibiliVideo(),
+    new BaijiahaoVideo(),
+    new DouyinVideo(),
+    new SohuVideo(),
   ]) {
-    assert.ok(lifecycle.every((operation) => typeof operation === "function"));
+    assert.equal(typeof video.dryRun, "function");
+    assert.equal(typeof video.upload, "function");
+  }
+});
+
+test("platform modules do not expose prepare or dispose functions", async () => {
+  for (const module of await Promise.all([
+    import("../src/infra/video/bilibili-video.ts"),
+    import("../src/infra/video/baijiahao-video.ts"),
+    import("../src/infra/video/douyin-video.ts"),
+  ])) {
+    assert.equal("prepare" in module, false);
+    assert.equal("dispose" in module, false);
   }
 });
 
@@ -47,8 +55,8 @@ test("migrated platform uploads reject scheduled publishing before touching file
   await assert.rejects(new DouyinVideo().upload(scheduled), /仅支持立即发布/u);
 });
 
-test("HTTP platform prepare requires the mandatory cover", async () => {
-  await assert.rejects(prepareBilibili({
+test("HTTP platform dry-run requires the mandatory cover", async () => {
+  await assert.rejects(new BilibiliVideo().dryRun({
     accountFile: "account.json",
     coverPath: "",
     humanTypeId: 1,
@@ -56,7 +64,7 @@ test("HTTP platform prepare requires the mandatory cover", async () => {
     title: "标题",
     videoPath: "video.mp4",
   }), /缺少账号、封面、视频或标题/u);
-  await assert.rejects(prepareBaijiahao({
+  await assert.rejects(new BaijiahaoVideo().dryRun({
     accountFile: "account.json",
     coverPath: "",
     scheduledAt: "0",
@@ -65,10 +73,8 @@ test("HTTP platform prepare requires the mandatory cover", async () => {
   }), /缺少账号、封面、视频或标题/u);
 });
 
-test("dispose is safe when prepare did not produce a context", async () => {
-  await assert.doesNotReject(disposeBilibili());
-  await assert.doesNotReject(disposeBaijiahao());
-  await assert.doesNotReject(disposeDouyin());
+test("Sohu dry-run succeeds without executing a publish flow", async () => {
+  await assert.doesNotReject(new SohuVideo().dryRun({ title: "演练标题" }));
 });
 
 test("douyin fixed identity assets contain complete Chrome 138 fields", () => {

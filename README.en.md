@@ -27,7 +27,7 @@ The Electron main process is emitted as `.build/main.js` in ESM format. `preload
 
 ## Video publishing pipeline
 
-The Bilibili, Baijiahao, and Douyin publishing implementations now live directly in their corresponding `src/infra/video/xx-video.ts` files without generated CJS/ESM wrappers. Top-level `prepare()` performs everything before the final submission, private `publish()` confirms only that last operation, and top-level `dispose()` cleans resources. The complete `upload()` and `fetchPublishedState()` implementations live directly in each platform `Video` class and are called through the common `Video` interface. Sohu publishing is unchanged.
+The Bilibili, Baijiahao, and Douyin publishing implementations now live directly in their corresponding `src/infra/video/xx-video.ts` files without generated CJS/ESM wrappers. Module-private `prepare()` performs everything before the final submission, private `publish()` confirms only that last operation, and private `dispose()` cleans resources. The complete `dryRun()`, `upload()`, and `fetchPublishedState()` implementations live directly in each platform `Video` class and are called through the common `Video` interface. Sohu publishing is unchanged; its `dryRun()` only logs the input payload and resolves successfully.
 
 - A title, video, and cover are mandatory for all three migrated platforms.
 - Only immediate publishing is supported. Scheduling controls stay visible but disabled, and the backend accepts only `scheduledAt: "0"`.
@@ -36,7 +36,7 @@ The Bilibili, Baijiahao, and Douyin publishing implementations now live directly
 - Douyin reuses the current Electron account partition instead of opening the same profile in a second Electron process. Douyin publishing is available on macOS and Windows only.
 - Douyin login and publish select the corresponding fixed Chrome 138 identity file under `assets/douyin` from the host OS, then consistently use its UA, platform, and Client Hints. Fingerprint overrides through environment variables or runtime arguments are unsupported. GPU, CPU, memory, and screen information still comes from the host Chromium runtime.
 - When Douyin's security gateway requires identity verification for the final submission, the task fails directly and reports the account nickname, verification reason, scene, and available methods. Complete verification in the same account partition before publishing again.
-- `prepare()` returns the complete inspectable platform context. Calling Bilibili or Baijiahao `prepare()` without the final publish can leave uploaded remote assets behind. Pass a standalone Douyin context to `dispose()` to close hidden windows, IPC, and session resources. Cleanup failures are logged and never thrown.
+- `dryRun()` executes the complete pre-publish flow without making the final submission and does not return the internal prepared context. Bilibili, Baijiahao, and Douyin dry runs may upload temporary remote assets. Douyin closes its hidden windows, IPC, and session resources after the dry run. Cleanup failures are logged and never thrown.
 - Final publish requests and complete workflows are never retried automatically. Only safe probes and media chunks have bounded retries.
 - HTTP debug logs intentionally include full headers, cookies, tokens, and responses. Treat production logs as sensitive.
 - Remote task records store only platform IDs, public links, and non-sensitive publishing options, never complete HTTP responses.

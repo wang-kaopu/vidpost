@@ -216,7 +216,7 @@ export interface BaijiahaoVideoOptions {
   videoPath: string;
 }
 
-export interface BaijiahaoPreparedContext {
+interface BaijiahaoPreparedContext {
   context: BaijiahaoRunContext;
   horizontalCover: UploadedCover;
   httpResponses: SerializedAxiosResponse[];
@@ -740,7 +740,7 @@ async function searchTopic(
 const preparedRuntime = new WeakMap<BaijiahaoPreparedContext, { http: AxiosInstance }>();
 
 /** 完成百家号最终发布前的全部校验、转码和素材上传。 */
-export async function prepare(input: VideoUploadPayload): Promise<BaijiahaoPreparedContext> {
+async function prepare(input: VideoUploadPayload): Promise<BaijiahaoPreparedContext> {
   const scheduledAt = String(input.scheduledAt ?? "").trim();
   if (scheduledAt && scheduledAt !== "0") throw new Error('百家号当前仅支持立即发布，scheduledAt 必须为 "0"');
   const accountFile = String(input.accountFile ?? "").trim();
@@ -882,7 +882,7 @@ async function publish(prepared: BaijiahaoPreparedContext): Promise<VideoUploadR
 }
 
 /** 百家号没有需要主动关闭的发布资源。 */
-export async function dispose(_prepared?: BaijiahaoPreparedContext): Promise<void> {
+async function dispose(_prepared?: BaijiahaoPreparedContext): Promise<void> {
   await Promise.resolve();
 }
 
@@ -974,6 +974,16 @@ export function destroyBaijiahaoVideoWindows(): void {}
 
 /** 百家号统一视频资源适配器。 */
 export class BaijiahaoVideo implements Video {
+  /** 执行百家号最终投稿前的完整流程，但不提交作品。 */
+  async dryRun(payload: VideoUploadPayload): Promise<void> {
+    let prepared: BaijiahaoPreparedContext | undefined;
+    try {
+      prepared = await prepare(payload);
+    } finally {
+      await dispose(prepared);
+    }
+  }
+
   /** 上传并发布百家号视频。 */
   async upload(payload: VideoUploadPayload): Promise<VideoUploadResult> {
     let prepared: BaijiahaoPreparedContext | undefined;

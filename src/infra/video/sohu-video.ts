@@ -1970,6 +1970,16 @@ async function fetchPublishedState(payload) {
 }
 
 class SohuVideo implements Video {
+  /** 记录搜狐预发布请求；搜狐当前不执行实际预发布流程。 */
+  dryRun(payload: VideoUploadPayload): Promise<void> {
+    logger.info({
+      type: "sohu-dry-run",
+      message: "搜狐暂不支持 dry-run，已跳过",
+      payload,
+    });
+    return Promise.resolve();
+  }
+
   /** 发布搜狐视频。 */
   upload(payload: VideoUploadPayload): Promise<VideoUploadResult> {
     return upload(payload) as Promise<VideoUploadResult>;
