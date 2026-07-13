@@ -51,6 +51,10 @@ async function resolveLatestValidBilibiliAccountFile(): Promise<string> {
 /** 执行一次真实的 Bilibili 预约发布。 */
 async function main(): Promise<void> {
   const accountFile = await resolveLatestValidBilibiliAccountFile();
+  const humanTypeId = Number(process.env.BILIBILI_HUMAN_TYPE_ID);
+  if (!Number.isSafeInteger(humanTypeId) || humanTypeId <= 0) {
+    throw new Error("请通过 BILIBILI_HUMAN_TYPE_ID 指定当前账号可用的投稿分区 ID");
+  }
   if (!fs.existsSync(VIDEO_PATH)) {
     throw new Error(`视频文件不存在: ${VIDEO_PATH}`);
   }
@@ -64,6 +68,7 @@ async function main(): Promise<void> {
 
   const payload = {
     accountFile,
+    humanTypeId,
     title: `olivia ${scheduledAt}`,
     description: `olivia scheduled publish ${scheduledAt}`,
     videoPath: VIDEO_PATH,

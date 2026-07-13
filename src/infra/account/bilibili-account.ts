@@ -6,7 +6,7 @@ import { PlatformTimeoutError } from "../platform-errors.ts";
 import type { Account, AccountLoginOptions, AccountLoginResult, AccountPingResult } from "./account.ts";
 import { runAccountLoginFlow } from "./account-login-flow.ts";
 import { buildCloseButtonScript } from "./account-login-window.ts";
-import { readAccountStorageState } from "./account-storage-state.ts";
+import { readBrowserStorageState } from "../browser-storage-state.ts";
 
 const BILIBILI_ACCOUNT_INFO_URL = "https://api.bilibili.com/x/web-interface/nav";
 const BILIBILI_LOGIN_URL = "https://passport.bilibili.com/login";
@@ -22,7 +22,7 @@ const BILIBILI_CLOSE_BUTTON_SCRIPT = buildCloseButtonScript("matrix-bilibili-log
  * @returns Bilibili HTTP 探活上下文
  */
 async function loadBilibiliPingContext(accountFile: string): Promise<{ cookieHeader: string; userAgent: string }> {
-  const state = await readAccountStorageState(
+  const state = await readBrowserStorageState(
     accountFile,
     "Bilibili 账号文件必须是包含 cookies 数组的 Playwright storage-state JSON",
   );

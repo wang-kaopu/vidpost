@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { getDouyinVerificationErrorMessage } from "../src/infra/video/douyin-video.ts";
+import { getDouyinVerificationErrorMessage } from "../src/infra/video/douyin/upload.ts";
 
 test("douyin verification decision reports account details and repairs a mojibake nickname", () => {
   const message = getDouyinVerificationErrorMessage({

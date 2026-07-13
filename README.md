@@ -55,7 +55,7 @@ Electron 主进程构建为 `.build/main.js` ESM。`preload.ts` 仍在源码层�
 
 对象会压缩为单行 JSON；普通字符串及错误堆栈中的换行保持不变，并且每次 logger 调用只添加一次前缀。`Buffer`、ArrayBuffer、TypedArray 和 DataView 会显示 Base64 编码后的前 100 个字符，同时记录类型、原始字节数和截断状态。Blob、File 只记录名称、MIME 和字节数；FormData 会展开字段并按相同规则描述其中的文件。
 
-日志不会脱敏，HTTP Header、Cookie、Token 和请求数据可能完整显示。生产日志不得交给无关人员。ESLint 对业务源码启用 `no-console`，仅两个 logger 实现及其契约测试允许访问原生 console。平台账号模块仍保留部分迁移生成风格，因此只对其关闭 `no-var` 与遗留未使用变量检查；搜狐视频模块已经整理为类型化源码，其余推荐规则和日志约束均生效。
+平台协议日志可能包含 HTTP Header、Cookie、Token 和请求数据；部分平台会对身份 Header 做定向脱敏，但生产日志仍不得交给无关人员。ESLint 对业务源码启用 `no-console`，仅两个 logger 实现及其契约测试允许访问原生 console。
 
 ## 平台资源基础设施
 
@@ -63,8 +63,12 @@ Electron 主进程构建为 `.build/main.js` ESM。`preload.ts` 仍在源码层�
 
 ```text
 src/infra/
+├── browser-identity.ts
+├── browser-storage-state.ts
 ├── account/
 │   ├── account.ts
+│   ├── account-login-flow.ts
+│   ├── account-login-window.ts
 │   ├── baijiahao-account.ts
 │   ├── bilibili-account.ts
 │   ├── douyin-account.ts
@@ -72,18 +76,22 @@ src/infra/
 └── video/
     ├── video.ts
     ├── baijiahao-video.ts
+    ├── baijiahao/{media,publish,record-status}.ts
     ├── bilibili-video.ts
+    ├── bilibili/{publish,record-status}.ts
     ├── douyin-video.ts
-    └── sohu-video.ts
+    ├── douyin/{upload,electron-runtime,record-status}.ts
+    ├── sohu-video.ts
+    └── sohu/{publish,record-status}.ts
 ```
 
-`account.ts` 定义登录和探活接口，`video.ts` 定义预发布演练、发布和发布状态查询接口。业务调用方通过 `createAccount(platform)` 和 `createVideo(platform)` 获取具体实现。平台登录保存草稿账号文件后必须调用同一个 HTTP `ping()` 完成最终在线校验和昵称读取；不再通过 DOM 或 Playwright 单独同步昵称。
+`account.ts` 定义登录和探活接口，`video.ts` 通过基础接口、四个平台输入接口和 `Video<TPayload>` 定义预发布演练、发布和发布状态查询能力。业务调用方通过 `createAccount(platform)` 和 `createVideo(platform)` 获取具体实现。`browser-storage-state.ts` 是账号登录、探活和 HTTP 视频协议共同使用的 storage-state 结构与读写入口；`browser-identity.ts` 统一选择宿主系统对应的两份固定浏览器身份文件。平台登录保存草稿账号文件后必须调用同一个 HTTP `ping()` 完成最终在线校验和昵称读取；不再通过 DOM 或 Playwright 单独同步昵称。
 
-各平台实现有意保持自包含。浏览器启动、Cookie 状态、Electron 发布窗口、页面交互、上传重试和状态解析代码不通过 shared 模块跨平台复用。新增平台时必须分别提供 `Account` 和 `Video` 实现，不再使用旧的 `platformRegistry` 或 `src/infra/platforms` 目录。
+各平台实现有意保持自包含。除浏览器身份、storage-state、日志和视频契约外，Cookie 业务校验、HTTP 请求、上传重试和状态解析不跨平台复用。平台目录内允许少量重复代码，避免形成通用 HTTP、Cookie、分片或视频工具层。新增平台时必须分别提供 `Account` 和 `Video` 实现，不再使用旧的 `platformRegistry` 或 `src/infra/platforms` 目录。
 
 ### 视频上传链路
 
-Bilibili、百家号、抖音和搜狐的发布逻辑分别位于 `src/infra/video` 下对应的 `xx-video.ts`。每个平台由模块私有的 `prepare()` 完成最终投稿前的全部操作，私有 `publish()` 只确认最后一次投稿；需要持有运行时资源的平台再由 `dispose()` 清理。`dryRun()`、`upload()` 与 `fetchPublishedState()` 的完整实现直接位于平台 `Video` 类中，业务层通过统一接口调用。
+Bilibili、百家号、抖音和搜狐的 `xx-video.ts` 是稳定门面，只实现 `dryRun()`、`upload()` 和 `fetchPublishedState()` 并调用同平台语义模块。三个 HTTP 平台以 `publish.ts` 和 `record-status.ts` 为主；百家号额外使用 `media.ts` 处理 MP4 元数据、MD5 和封面；抖音由 `electron-runtime.ts` 管理窗口、IPC 与签名宿主，`upload.ts` 执行 renderer 上传协议。调用关系保持单向，不使用平台目录 barrel 文件。
 
 - 四个平台都要求标题、视频和封面，封面缺失时任务不会提交。
 - Bilibili、百家号和抖音使用平台服务端定时能力，逐条计划按上海时区填写 `YYYY-MM-DD HH:mm`；搜狐仍仅支持立即发布。UI 在平台原始最小提前量上固定预留 10 分钟上传时间，同账号批量任务不按队列位置继续增加余量。

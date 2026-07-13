@@ -5,7 +5,7 @@ import { PlatformTimeoutError } from "../platform-errors.ts";
 import type { Account, AccountLoginOptions, AccountLoginResult, AccountPingResult } from "./account.ts";
 import { runAccountLoginFlow } from "./account-login-flow.ts";
 import { buildCloseButtonScript } from "./account-login-window.ts";
-import { readAccountStorageState } from "./account-storage-state.ts";
+import { readBrowserStorageState } from "../browser-storage-state.ts";
 
 const DOUYIN_ACCOUNT_INFO_URL = "https://creator.douyin.com/web/api/media/user/info/";
 const DOUYIN_LOGIN_URL = "https://creator.douyin.com/";
@@ -29,7 +29,7 @@ const DOUYIN_CLOSE_BUTTON_SCRIPT = buildCloseButtonScript("matrix-douyin-login-c
 async function loadDouyinPingContext(
   accountFile: string,
 ): Promise<{ cookieHeader: string; msToken: string; userAgent: string }> {
-  const state = await readAccountStorageState(
+  const state = await readBrowserStorageState(
     accountFile,
     "抖音账号文件必须是包含 cookies 数组的 Playwright storage-state JSON",
   );

@@ -4,7 +4,7 @@ import { createPartitionStore, resolvePartitionForAccount } from "../db/partitio
 import { createTaskPageModel } from "../page-model/task-page-model.ts";
 import { resolveAccountFilePath } from "./account-service.ts";
 import { PublishAssetCache } from "./publish-asset-cache.ts";
-import type { Video } from "../infra/video/video.ts";
+import type { Video, VideoUploadPayload } from "../infra/video/video.ts";
 import { logger } from "../utils/logger.ts";
 import { startTaskStateMonitor } from "./task-state-service.ts";
 const publishAssetCache = new PublishAssetCache();
@@ -115,8 +115,14 @@ export function resolvePublishOptions(payload: Record<string, any>, platform: st
   return {};
 }
 
-/** 校验下载或本地解析后的发布素材确实是非空文件。 */
-function assertMaterializedPublishAssets(payload: Record<string, any>, platform: string) {
+/** 校验平台入口收到完整文案以及下载或本地解析后的非空素材。 */
+function assertMaterializedVideoUploadPayload(
+  payload: Record<string, any>,
+  platform: string,
+): asserts payload is Record<string, any> & VideoUploadPayload {
+  if (!String(payload.title ?? "").trim()) {
+    throw new Error(`${platform} 发布缺少标题`);
+  }
   for (const [field, label] of [
     ["videoPath", "视频"],
     ["coverPath", "封面"],
@@ -191,9 +197,7 @@ export async function publishAndUpdateRemoteTask(payload: Record<string, any>, v
       ...normalizedPayload,
       remoteTaskId,
     });
-    if (platform === "bilibili" || platform === "baijiahao" || platform === "douyin" || platform === "sohu") {
-      assertMaterializedPublishAssets(materializedPayload, platform);
-    }
+    assertMaterializedVideoUploadPayload(materializedPayload, platform);
 
     // 发布动作
     remoteTaskId = createResult.remoteTaskId;

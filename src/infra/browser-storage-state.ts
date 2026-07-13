@@ -3,10 +3,10 @@ import path from "node:path";
 
 import type { BrowserWindow } from "electron";
 
-import { logger } from "../../utils/logger.ts";
+import { logger } from "../utils/logger.ts";
 
 /** 登录前可注入 Electron Session 的 Cookie。 */
-export interface AccountCookieInput {
+export interface BrowserCookieInput {
   domain?: string;
   expirationDate?: number;
   expires?: number;
@@ -20,7 +20,7 @@ export interface AccountCookieInput {
 }
 
 /** Playwright storage-state 中的 Cookie。 */
-export interface AccountStorageCookie {
+export interface BrowserStorageCookie {
   domain?: string;
   expires?: number;
   httpOnly?: boolean;
@@ -32,39 +32,39 @@ export interface AccountStorageCookie {
 }
 
 /** Playwright storage-state 中的 localStorage 项。 */
-export interface AccountStorageEntry {
+export interface BrowserStorageEntry {
   name?: string;
   value?: string;
 }
 
 /** Playwright storage-state 中的来源数据。 */
-export interface AccountStorageOrigin {
-  localStorage?: AccountStorageEntry[];
+export interface BrowserStorageOrigin {
+  localStorage?: BrowserStorageEntry[];
   origin?: string;
 }
 
-/** 平台账号文件的统一结构。 */
-export interface AccountStorageState {
-  cookies: AccountStorageCookie[];
-  origins?: AccountStorageOrigin[];
+/** 平台浏览器 storage-state 的统一结构。 */
+export interface BrowserStorageState {
+  cookies: BrowserStorageCookie[];
+  origins?: BrowserStorageOrigin[];
 }
 
 /**
- * 读取并校验平台账号 storage-state 的基础结构。
+ * 读取并校验平台浏览器 storage-state 的基础结构。
  *
  * @param accountFile - 账号文件路径
  * @param invalidMessage - 基础结构无效时的错误信息
  * @returns 包含 Cookie 数组的账号状态
  */
-export async function readAccountStorageState(
+export async function readBrowserStorageState(
   accountFile: string,
   invalidMessage: string,
-): Promise<AccountStorageState> {
+): Promise<BrowserStorageState> {
   const state: unknown = JSON.parse(await fs.readFile(accountFile, "utf8"));
   if (!state || typeof state !== "object" || !("cookies" in state) || !Array.isArray(state.cookies)) {
     throw new Error(invalidMessage);
   }
-  return state as AccountStorageState;
+  return state as BrowserStorageState;
 }
 
 /**
@@ -126,7 +126,7 @@ function normalizeElectronCookieSameSite(
  * @param targetUrl - 登录页 URL
  * @returns Electron cookies.set 使用的 URL
  */
-function resolveCookieUrl(cookie: AccountCookieInput, targetUrl: string): string {
+function resolveCookieUrl(cookie: BrowserCookieInput, targetUrl: string): string {
   if (cookie.url) {
     return cookie.url;
   }
@@ -144,10 +144,10 @@ function resolveCookieUrl(cookie: AccountCookieInput, targetUrl: string): string
  * @param targetUrl - 平台登录页 URL
  * @param cookies - 待注入 Cookie
  */
-export async function injectCookiesIntoAccountSession(
+export async function injectCookiesIntoBrowserSession(
   loginWindow: BrowserWindow,
   targetUrl: string,
-  cookies: readonly AccountCookieInput[] | undefined,
+  cookies: readonly BrowserCookieInput[] | undefined,
 ): Promise<void> {
   if (!cookies?.length) {
     return;
@@ -179,7 +179,7 @@ export async function injectCookiesIntoAccountSession(
  * @param accountFile - 账号文件路径
  * @param logPrefix - 登录日志前缀
  */
-export async function exportAccountStorageState(
+export async function exportBrowserStorageState(
   loginWindow: BrowserWindow,
   accountFile: string,
   logPrefix = "login",
@@ -187,7 +187,7 @@ export async function exportAccountStorageState(
   const cookies = await loginWindow.webContents.session.cookies.get({});
   const currentUrl = loginWindow.webContents.getURL();
   const currentOrigin = new URL(currentUrl).origin;
-  let localStorageEntries: AccountStorageEntry[] = [];
+  let localStorageEntries: BrowserStorageEntry[] = [];
 
   try {
     localStorageEntries = await loginWindow.webContents
@@ -211,7 +211,7 @@ export async function exportAccountStorageState(
         })()`,
         true,
       )
-      .then((value: unknown) => (Array.isArray(value) ? (value as AccountStorageEntry[]) : []));
+      .then((value: unknown) => (Array.isArray(value) ? (value as BrowserStorageEntry[]) : []));
   } catch (error) {
     if (!shouldFallbackToCookieOnlyState(error)) {
       throw error;
@@ -231,7 +231,7 @@ export async function exportAccountStorageState(
     })}`,
   );
 
-  const storageState: AccountStorageState = {
+  const storageState: BrowserStorageState = {
     cookies: cookies.map((cookie) => {
       const sameSite = mapCookieSameSite(cookie.sameSite);
       return {

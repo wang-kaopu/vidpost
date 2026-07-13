@@ -6,7 +6,7 @@ import { PlatformTimeoutError } from "../platform-errors.ts";
 import type { Account, AccountLoginOptions, AccountLoginResult, AccountPingResult } from "./account.ts";
 import { runAccountLoginFlow } from "./account-login-flow.ts";
 import { buildCloseButtonScript } from "./account-login-window.ts";
-import { readAccountStorageState, type AccountStorageCookie } from "./account-storage-state.ts";
+import { readBrowserStorageState, type BrowserStorageCookie } from "../browser-storage-state.ts";
 
 const BAIJIAHAO_ACCOUNT_INFO_URL = "https://baijiahao.baidu.com/builder/app/appinfo";
 const BAIJIAHAO_LOGIN_URL = "https://baijiahao.baidu.com/builder/theme/bjh/login";
@@ -21,12 +21,12 @@ const BAIJIAHAO_CLOSE_BUTTON_SCRIPT = buildCloseButtonScript("matrix-baijiahao-l
  * @returns 百家号 HTTP 探活上下文
  */
 async function loadBaijiahaoPingContext(accountFile: string): Promise<{ cookieHeader: string; userAgent: string }> {
-  const state = await readAccountStorageState(
+  const state = await readBrowserStorageState(
     accountFile,
     "百家号账号文件必须是包含 cookies 数组的 Playwright storage-state JSON",
   );
   const nowSeconds = Date.now() / 1_000;
-  const cookies = state.cookies.filter((cookie: AccountStorageCookie) => {
+  const cookies = state.cookies.filter((cookie: BrowserStorageCookie) => {
     const domain = String(cookie.domain || "")
       .replace(/^\.+/u, "")
       .toLowerCase();

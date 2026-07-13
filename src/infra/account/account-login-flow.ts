@@ -9,10 +9,10 @@ import {
   wireLoginWindowCloseControls,
 } from "./account-login-window.ts";
 import {
-  exportAccountStorageState,
-  injectCookiesIntoAccountSession,
-  type AccountCookieInput,
-} from "./account-storage-state.ts";
+  exportBrowserStorageState,
+  injectCookiesIntoBrowserSession,
+  type BrowserCookieInput,
+} from "../browser-storage-state.ts";
 
 /** 平台登录成功判定所需的最小页面状态。 */
 export interface AccountLoginSuccessContext {
@@ -46,7 +46,7 @@ export interface AccountLoginFlowRuntime {
   injectCookies(
     loginWindow: BrowserWindow,
     targetUrl: string,
-    cookies: readonly AccountCookieInput[] | undefined,
+    cookies: readonly BrowserCookieInput[] | undefined,
   ): Promise<void>;
   loadIdentity(): Promise<BrowserIdentity>;
   wireCloseControls(loginWindow: BrowserWindow, closeButtonScript: string, consolePrefix?: string): void;
@@ -55,8 +55,8 @@ export interface AccountLoginFlowRuntime {
 const DEFAULT_LOGIN_RUNTIME: AccountLoginFlowRuntime = {
   configureLoginWindow: configureAccountLoginWindow,
   createLoginWindow: createAccountLoginWindow,
-  exportStorageState: exportAccountStorageState,
-  injectCookies: injectCookiesIntoAccountSession,
+  exportStorageState: exportBrowserStorageState,
+  injectCookies: injectCookiesIntoBrowserSession,
   loadIdentity: loadBrowserIdentity,
   wireCloseControls: wireLoginWindowCloseControls,
 };

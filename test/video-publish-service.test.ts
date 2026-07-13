@@ -9,10 +9,8 @@ import {
 import {
   BaijiahaoVideo,
 } from "../src/infra/video/baijiahao-video.ts";
-import {
-  DouyinVideo,
-  createMachineProfile,
-} from "../src/infra/video/douyin-video.ts";
+import { DouyinVideo } from "../src/infra/video/douyin-video.ts";
+import { createMachineProfile } from "../src/infra/video/douyin/upload.ts";
 import { SohuVideo } from "../src/infra/video/sohu-video.ts";
 import { loadBrowserIdentity } from "../src/infra/browser-identity.ts";
 
@@ -113,16 +111,17 @@ test("platform modules share the operating-system browser identity loader", asyn
   assert.match(identitySource, /browser-identity\.macos\.json/u);
   assert.match(identitySource, /Chrome\/138\.0\.0\.0/u);
 
-  for (const [directory, fileName] of [
-    ["video", "bilibili-video.ts"],
-    ["video", "baijiahao-video.ts"],
-    ["video", "sohu-video.ts"],
+  for (const modulePath of [
+    ["video", "bilibili", "publish.ts"],
+    ["video", "baijiahao", "publish.ts"],
+    ["video", "sohu", "publish.ts"],
+    ["video", "douyin", "electron-runtime.ts"],
     ["account", "bilibili-account.ts"],
     ["account", "baijiahao-account.ts"],
     ["account", "sohu-account.ts"],
     ["account", "douyin-account.ts"],
   ]) {
-    const source = fs.readFileSync(path.join(projectRoot, "src", "infra", directory, fileName), "utf8");
+    const source = fs.readFileSync(path.join(projectRoot, "src", "infra", ...modulePath), "utf8");
     assert.match(source, /loadBrowserIdentity/u);
     assert.doesNotMatch(source, /load(?:Douyin|Baijiahao|Bilibili|Sohu)BrowserIdentity/u);
   }

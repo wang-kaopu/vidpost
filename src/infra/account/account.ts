@@ -1,6 +1,6 @@
 import type { BrowserWindow } from "electron";
 
-import type { AccountCookieInput } from "./account-storage-state.ts";
+import type { BrowserCookieInput } from "../browser-storage-state.ts";
 import { BaijiahaoAccount } from "./baijiahao-account.ts";
 import { BilibiliAccount } from "./bilibili-account.ts";
 import { DouyinAccount } from "./douyin-account.ts";
@@ -13,7 +13,7 @@ export type PlatformType = "baijiahao" | "bilibili" | "douyin" | "sohu";
 export interface AccountLoginOptions {
   accountId?: string;
   accountFile: string;
-  cookies?: AccountCookieInput[];
+  cookies?: BrowserCookieInput[];
   partition?: string;
   timeoutMs: number;
   parentWindow?: BrowserWindow | null;

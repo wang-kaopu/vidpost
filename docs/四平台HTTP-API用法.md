@@ -6,7 +6,7 @@
 
 ## 1. 范围与约定
 
-本文只统计 `src/infra/account/*-account.ts` 和 `src/infra/video/*-video.ts` 中发往四个平台域名的 HTTP 请求，不包括：
+本文只统计 `src/infra/account/*-account.ts`、`src/infra/video/*-video.ts` 门面及其同平台语义目录中发往四个平台域名的 HTTP 请求，不包括：
 
 - Electron 登录窗口的页面导航；
 - 项目自身的任务服务 API；
@@ -2304,7 +2304,7 @@ interface DouyinPostRecord {
 
 | 平台 | 账号请求 | 发布与状态请求 |
 | --- | --- | --- |
-| 哔哩哔哩 | `src/infra/account/bilibili-account.ts` | `src/infra/video/bilibili-video.ts` |
-| 百家号 | `src/infra/account/baijiahao-account.ts` | `src/infra/video/baijiahao-video.ts` |
-| 搜狐号 | `src/infra/account/sohu-account.ts` | `src/infra/video/sohu-video.ts` |
-| 抖音 | `src/infra/account/douyin-account.ts` | `src/infra/video/douyin-video.ts` |
+| 哔哩哔哩 | `src/infra/account/bilibili-account.ts` | `src/infra/video/bilibili/{publish,record-status}.ts` |
+| 百家号 | `src/infra/account/baijiahao-account.ts` | `src/infra/video/baijiahao/{media,publish,record-status}.ts` |
+| 搜狐号 | `src/infra/account/sohu-account.ts` | `src/infra/video/sohu/{publish,record-status}.ts` |
+| 抖音 | `src/infra/account/douyin-account.ts` | `src/infra/video/douyin/{upload,electron-runtime,record-status}.ts` |

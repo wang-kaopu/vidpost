@@ -39,7 +39,8 @@ export async function buildElectron(): Promise<void> {
     build({
       bundle: true,
       stdin: {
-        contents: 'import "./src/infra/video/douyin-video.ts";',
+        contents:
+          'import { runDouyinUploadRenderer } from "./src/infra/video/douyin/upload.ts"; runDouyinUploadRenderer();',
         resolveDir: projectRoot,
         sourcefile: "douyin-publish-renderer-entry.ts",
       },

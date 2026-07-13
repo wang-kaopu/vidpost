@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import { createPartitionStore, resolvePartitionForAccount } from "../src/db/partition-store.ts";
 import { createVideo } from "../src/infra/video/video.ts";
 import { logger } from "../src/utils/logger.ts";
 
@@ -40,6 +41,11 @@ function resolveLatestDouyinAccountFile(): string {
 /** 执行一次真实的抖音预约发布。 */
 async function main(): Promise<void> {
   const accountFile = resolveLatestDouyinAccountFile();
+  const accountId = path.basename(accountFile).split("_", 1)[0]?.trim();
+  if (!accountId) {
+    throw new Error(`无法从账号文件名解析抖音账号 ID: ${accountFile}`);
+  }
+  const browserPartition = resolvePartitionForAccount(createPartitionStore(), accountId);
   if (!fs.existsSync(VIDEO_PATH)) {
     throw new Error(`视频文件不存在: ${VIDEO_PATH}`);
   }
@@ -52,13 +58,14 @@ async function main(): Promise<void> {
   const scheduledAt = formatScheduledAt(scheduledDate);
 
   const payload = {
-    accountFile,
+    browserPartition,
     title: `olivia ${scheduledAt}`,
     description: `olivia scheduled publish ${scheduledAt}`,
     videoPath: VIDEO_PATH,
     coverPath: COVER_PATH,
     scheduledAt,
     timeoutMs: 10 * 60 * 1000,
+    visibility: "public" as const,
   };
 
   logger.info("[douyin:real-publish] start");

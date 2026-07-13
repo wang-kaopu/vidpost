@@ -5,7 +5,7 @@ import { PlatformTimeoutError } from "../platform-errors.ts";
 import type { Account, AccountLoginOptions, AccountLoginResult, AccountPingResult } from "./account.ts";
 import { runAccountLoginFlow } from "./account-login-flow.ts";
 import { buildCloseButtonScript } from "./account-login-window.ts";
-import { readAccountStorageState } from "./account-storage-state.ts";
+import { readBrowserStorageState } from "../browser-storage-state.ts";
 
 const SOHU_ORIGIN = "https://mp.sohu.com";
 const SOHU_ACCOUNT_AUTH_URL = `${SOHU_ORIGIN}/mpbp/bp/account/check/user`;
@@ -25,7 +25,7 @@ const SOHU_CLOSE_BUTTON_SCRIPT = buildCloseButtonScript("matrix-sohu-login-close
  */
 async function pingSohuAccount(accountFile: string): Promise<AccountPingResult> {
   const request = (async (): Promise<AccountPingResult> => {
-    const state = await readAccountStorageState(
+    const state = await readBrowserStorageState(
       accountFile,
       "搜狐账号文件必须是包含 cookies 数组的 Playwright storage-state JSON",
     );

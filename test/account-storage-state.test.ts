@@ -7,9 +7,9 @@ import test from "node:test";
 import type { BrowserWindow } from "electron";
 
 import {
-  exportAccountStorageState,
-  injectCookiesIntoAccountSession,
-} from "../src/infra/account/account-storage-state.ts";
+  exportBrowserStorageState,
+  injectCookiesIntoBrowserSession,
+} from "../src/infra/browser-storage-state.ts";
 
 /** 创建仅实现 storage-state 所需接口的登录窗口替身。 */
 function createStorageWindow(options: {
@@ -39,11 +39,11 @@ function createStorageWindow(options: {
   } as unknown as BrowserWindow;
 }
 
-test("injectCookiesIntoAccountSession converts Cookie fields for Electron", async () => {
+test("injectCookiesIntoBrowserSession converts Cookie fields for Electron", async () => {
   const setCalls: Array<Record<string, unknown>> = [];
   const loginWindow = createStorageWindow({ setCalls });
 
-  await injectCookiesIntoAccountSession(loginWindow, "https://creator.example.com/login", [
+  await injectCookiesIntoBrowserSession(loginWindow, "https://creator.example.com/login", [
     {
       domain: ".example.com",
       expires: 1_800_000_000,
@@ -71,7 +71,7 @@ test("injectCookiesIntoAccountSession converts Cookie fields for Electron", asyn
   ]);
 });
 
-test("exportAccountStorageState writes Cookie and localStorage data", async () => {
+test("exportBrowserStorageState writes Cookie and localStorage data", async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "account-storage-state-"));
   const accountFile = path.join(directory, "nested", "account.json");
   const loginWindow = createStorageWindow({
@@ -90,7 +90,7 @@ test("exportAccountStorageState writes Cookie and localStorage data", async () =
     executeResult: [{ name: "vuex", value: "state" }],
   });
 
-  await exportAccountStorageState(loginWindow, accountFile, "test");
+  await exportBrowserStorageState(loginWindow, accountFile, "test");
 
   assert.deepEqual(JSON.parse(await fs.readFile(accountFile, "utf8")), {
     cookies: [
@@ -109,24 +109,24 @@ test("exportAccountStorageState writes Cookie and localStorage data", async () =
   });
 });
 
-test("exportAccountStorageState falls back to cookies after navigation abort", async () => {
+test("exportBrowserStorageState falls back to cookies after navigation abort", async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "account-storage-fallback-"));
   const accountFile = path.join(directory, "account.json");
   const loginWindow = createStorageWindow({ cookies: [], executeError: new Error("ERR_ABORTED while loading") });
 
-  await exportAccountStorageState(loginWindow, accountFile, "test");
+  await exportBrowserStorageState(loginWindow, accountFile, "test");
 
   const state = JSON.parse(await fs.readFile(accountFile, "utf8"));
   assert.deepEqual(state.cookies, []);
   assert.deepEqual(state.origins[0].localStorage, []);
 });
 
-test("exportAccountStorageState propagates unexpected script failures", async () => {
+test("exportBrowserStorageState propagates unexpected script failures", async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "account-storage-error-"));
   const loginWindow = createStorageWindow({ executeError: new Error("execution denied") });
 
   await assert.rejects(
-    exportAccountStorageState(loginWindow, path.join(directory, "account.json")),
+    exportBrowserStorageState(loginWindow, path.join(directory, "account.json")),
     /execution denied/u,
   );
 });
