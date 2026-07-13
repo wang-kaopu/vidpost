@@ -60,11 +60,11 @@ test('packaging ignore rules drop non-runtime assets and keep renderer build out
   assert.equal(isPackagedPathIgnored(resolveProjectPath('.build', 'main.js'), projectRoot), false)
   assert.equal(isPackagedPathIgnored(resolveProjectPath('.build', 'douyin-publish-renderer.js'), projectRoot), false)
   assert.equal(
-    isPackagedPathIgnored(resolveProjectPath('assets', 'douyin', 'browser-identity.windows.json'), projectRoot),
+    isPackagedPathIgnored(resolveProjectPath('assets', 'browser-identity', 'browser-identity.windows.json'), projectRoot),
     false
   )
   assert.equal(
-    isPackagedPathIgnored(resolveProjectPath('assets', 'douyin', 'browser-identity.macos.json'), projectRoot),
+    isPackagedPathIgnored(resolveProjectPath('assets', 'browser-identity', 'browser-identity.macos.json'), projectRoot),
     false
   )
 })

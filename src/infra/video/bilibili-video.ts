@@ -6,7 +6,7 @@ import axiosRetry from "axios-retry";
 import { fileTypeFromBuffer } from "file-type";
 import pLimit from "p-limit";
 
-import { loadUserAgent } from "../../utils/environment.ts";
+import { loadBrowserIdentity } from "../browser-identity.ts";
 import { logger } from "../../utils/logger.ts";
 
 import type {
@@ -46,9 +46,13 @@ export function parseBilibiliScheduledAt(value: unknown): number | null {
   const timestampMs = Date.UTC(year, month - 1, day, hour - 8, minute);
   const check = new Date(timestampMs + 8 * 60 * 60 * 1_000);
   if (
-    check.getUTCFullYear() !== year || check.getUTCMonth() + 1 !== month
-    || check.getUTCDate() !== day || check.getUTCHours() !== hour || check.getUTCMinutes() !== minute
-  ) throw new Error("Bilibili scheduledAt 包含无效日期");
+    check.getUTCFullYear() !== year ||
+    check.getUTCMonth() + 1 !== month ||
+    check.getUTCDate() !== day ||
+    check.getUTCHours() !== hour ||
+    check.getUTCMinutes() !== minute
+  )
+    throw new Error("Bilibili scheduledAt 包含无效日期");
   return Math.floor(timestampMs / 1_000);
 }
 
@@ -151,23 +155,35 @@ function createHttpClient(
     timeout: 120_000,
   });
   client.interceptors.request.use(async (config) => {
-    logger.info({ type: "http-request", request: { data: config.data, headers: config.headers, method: config.method, params: config.params, url: axios.getUri(config) } });
+    logger.info({
+      type: "http-request",
+      request: {
+        data: config.data,
+        headers: config.headers,
+        method: config.method,
+        params: config.params,
+        url: axios.getUri(config),
+      },
+    });
     return config;
   });
-  client.interceptors.response.use(async (response) => {
-    const serialized: SerializedAxiosResponse = {
-      body: response.data,
-      headers: response.headers,
-      status: response.status,
-      statusText: response.statusText,
-    };
-    responses.push(serialized);
-    logger.info({ type: "http-response", response: serialized });
-    return response;
-  }, async (error) => {
-    logger.error({ type: "http-error", error });
-    throw error;
-  });
+  client.interceptors.response.use(
+    async (response) => {
+      const serialized: SerializedAxiosResponse = {
+        body: response.data,
+        headers: response.headers,
+        status: response.status,
+        statusText: response.statusText,
+      };
+      responses.push(serialized);
+      logger.info({ type: "http-response", response: serialized });
+      return response;
+    },
+    async (error) => {
+      logger.error({ type: "http-error", error });
+      throw error;
+    },
+  );
   if (retryEnabled) {
     axiosRetry(client, {
       retries: 3,
@@ -218,9 +234,7 @@ async function loadCookieContext(cookiesPath: string): Promise<CookieContext> {
  * @returns 可写入 human_type2 的数字 ID 和显示名称
  */
 async function fetchHumanTypes(cookie: CookieContext, http: AxiosInstance): Promise<HumanType[]> {
-  const response = await http.get(HUMAN_TYPE_URL, {
-    headers: { Cookie: cookie.header, Referer: BILIBILI_REFERER },
-  });
+  const response = await http.get(HUMAN_TYPE_URL, { headers: { Cookie: cookie.header, Referer: BILIBILI_REFERER } });
   const body = response.data as {
     code?: number;
     data?: { type_list?: unknown[] };
@@ -262,10 +276,8 @@ async function fetchHumanTypes(cookie: CookieContext, http: AxiosInstance): Prom
  * @param dependencies - 视频服务运行时依赖
  * @returns 可写入 human_type2 的数字 ID 和显示名称
  */
-export async function getBilibiliHumanTypes(
-  cookiesPath: string,
-): Promise<HumanType[]> {
-  const http = createHttpClient(true, [], await loadUserAgent());
+export async function getBilibiliHumanTypes(cookiesPath: string): Promise<HumanType[]> {
+  const http = createHttpClient(true, [], (await loadBrowserIdentity()).userAgent);
   const cookie = await loadCookieContext(isAbsolute(cookiesPath) ? cookiesPath : resolve(process.cwd(), cookiesPath));
   return fetchHumanTypes(cookie, http);
 }
@@ -312,39 +324,47 @@ async function initializeVideoUpload(
 
   const videoName = videoPath.split(/[\\/]/u).at(-1) ?? "video.mp4";
   logger.info({ message: "[1/4] 获取 meta 上传信息", type: "info" });
-  const metaProbe = await probeUpload(cookie, {
-    build: "2140000",
-    name: "file_meta.txt",
-    probe_version: "20250923",
-    profile: "aicovers/bup",
-    r: "upos",
-    size: 2000,
-    ssl: 0,
-    threads: 2,
-    upcdn: "estx",
-    version: "2.14.0.0",
-    webVersion: "2.14.0",
-    zone: "cs",
-  }, retryableHttp);
+  const metaProbe = await probeUpload(
+    cookie,
+    {
+      build: "2140000",
+      name: "file_meta.txt",
+      probe_version: "20250923",
+      profile: "aicovers/bup",
+      r: "upos",
+      size: 2000,
+      ssl: 0,
+      threads: 2,
+      upcdn: "estx",
+      version: "2.14.0.0",
+      webVersion: "2.14.0",
+      zone: "cs",
+    },
+    retryableHttp,
+  );
   if (!metaProbe.upos_uri) {
     throw new Error("meta preupload 未返回 upos_uri");
   }
 
   logger.info({ message: "[2/4] 获取视频上传信息并初始化 multipart", type: "info" });
-  const videoProbe = await probeUpload(cookie, {
-    build: "2140000",
-    name: videoName,
-    probe_version: "20250923",
-    profile: "ugcfx/bup",
-    r: "upos",
-    size: videoInfo.size,
-    ssl: 0,
-    threads: 2,
-    upcdn: "estx",
-    version: "2.14.0.0",
-    webVersion: "2.14.0",
-    zone: "cs",
-  }, retryableHttp);
+  const videoProbe = await probeUpload(
+    cookie,
+    {
+      build: "2140000",
+      name: videoName,
+      probe_version: "20250923",
+      profile: "ugcfx/bup",
+      r: "upos",
+      size: videoInfo.size,
+      ssl: 0,
+      threads: 2,
+      upcdn: "estx",
+      version: "2.14.0.0",
+      webVersion: "2.14.0",
+      zone: "cs",
+    },
+    retryableHttp,
+  );
   if (!videoProbe.auth || !videoProbe.endpoint || !videoProbe.upos_uri || !videoProbe.biz_id) {
     throw new Error("视频 preupload 缺少 auth、endpoint、upos_uri 或 biz_id");
   }
@@ -371,13 +391,7 @@ async function initializeVideoUpload(
 
   const videoKey = multipart.key.replace(/^\/+/, "").split(".")[0] ?? "";
   if (!videoKey) throw new Error("multipart 初始化结果包含无效的视频 key");
-  return {
-    auth: videoProbe.auth,
-    bizId: videoProbe.biz_id,
-    uploadId: multipart.upload_id,
-    uploadUrl,
-    videoKey,
-  };
+  return { auth: videoProbe.auth, bizId: videoProbe.biz_id, uploadId: multipart.upload_id, uploadUrl, videoKey };
 }
 
 /**
@@ -470,11 +484,7 @@ async function uploadAndCompleteVideo(
  * @param coverPath - 本地封面文件路径
  * @returns B 站封面 URL
  */
-async function uploadCover(
-  cookie: CookieContext,
-  coverPath: string,
-  http: AxiosInstance,
-): Promise<string> {
+async function uploadCover(cookie: CookieContext, coverPath: string, http: AxiosInstance): Promise<string> {
   const cover = await readFile(coverPath);
   const detected = await fileTypeFromBuffer(cover);
   if (!detected || !new Set(["image/jpeg", "image/png", "image/webp"]).has(detected.mime)) {
@@ -515,7 +525,7 @@ async function prepare(input: VideoUploadPayload): Promise<BilibiliPreparedConte
   const videoPath = isAbsolute(videoFile) ? videoFile : resolve(process.cwd(), videoFile);
 
   const responses: SerializedAxiosResponse[] = [];
-  const userAgent = await loadUserAgent();
+  const userAgent = (await loadBrowserIdentity()).userAgent;
   const retryableHttp = createHttpClient(true, responses, userAgent);
   const nonRetryableHttp = createHttpClient(false, responses, userAgent);
   const cookie = await loadCookieContext(cookiesPath);
@@ -526,12 +536,7 @@ async function prepare(input: VideoUploadPayload): Promise<BilibiliPreparedConte
   const tags = [...description.matchAll(/#([^#\s]+)/gu)]
     .map((match) => match[1]?.trim())
     .filter((tag): tag is string => Boolean(tag));
-  const publication: PublicationText = {
-    description,
-    dynamic: title,
-    tags: [...new Set(tags)],
-    title,
-  };
+  const publication: PublicationText = { description, dynamic: title, tags: [...new Set(tags)], title };
   const upload = await initializeVideoUpload(cookie, videoPath, retryableHttp, nonRetryableHttp);
   await uploadAndCompleteVideo(upload, videoPath, retryableHttp, nonRetryableHttp);
   const uploaded: BilibiliUploadedResources = {
@@ -574,8 +579,13 @@ async function publish(prepared: BilibiliPreparedContext): Promise<VideoUploadRe
     params: { b_wet: "", csrf: prepared.cookie.csrf, t: Date.now(), web_location: 1, w_rid: "", wts: 1781077232 },
   });
   const body = response.data as { code?: number; data?: { bvid?: string }; message?: string };
-  if (body.code !== 0 || !body.data?.bvid) throw new Error(`投稿失败（code=${String(body.code)}）：${body.message ?? "未知错误"}`);
-  return { success: true, postId: body.data.bvid, link: `https://www.bilibili.com/video/${encodeURIComponent(body.data.bvid)}` };
+  if (body.code !== 0 || !body.data?.bvid)
+    throw new Error(`投稿失败（code=${String(body.code)}）：${body.message ?? "未知错误"}`);
+  return {
+    success: true,
+    postId: body.data.bvid,
+    link: `https://www.bilibili.com/video/${encodeURIComponent(body.data.bvid)}`,
+  };
 }
 
 /** Bilibili 没有需要主动关闭的发布资源。 */
@@ -616,17 +626,37 @@ export function parseBilibiliRecordStatus(rawRecord: unknown): PublishedStateRes
   if (!Number.isFinite(state)) return null;
   const bvid = asString(archive.bvid);
   const aid = asString(archive.aid);
-  const publicLink = bvid ? `https://www.bilibili.com/video/${bvid}` : aid ? `https://www.bilibili.com/video/av${aid}` : null;
+  const publicLink = bvid
+    ? `https://www.bilibili.com/video/${bvid}`
+    : aid
+      ? `https://www.bilibili.com/video/av${aid}`
+      : null;
   if (BILIBILI_REVIEWING_STATES.has(state)) {
-    return { status: "reviewing", link: publicLink, raw: rawRecord, matchedBy: "platform_work_id", reason: stateDescription };
+    return {
+      status: "reviewing",
+      link: publicLink,
+      raw: rawRecord,
+      matchedBy: "platform_work_id",
+      reason: stateDescription,
+    };
   }
   if (BILIBILI_PUBLIC_STATES.has(state)) {
     return { status: "public", link: publicLink, raw: rawRecord, matchedBy: "platform_work_id", reason: null };
   }
   const rejectReason = asString(archive.reject_reason);
-  const mappedDescription = stateDescription ? BILIBILI_STATE_DESCRIPTION_MAP[stateDescription] ?? stateDescription : null;
-  const reasonParts = [mappedDescription, rejectReason, String(state)].filter((value): value is string => Boolean(value));
-  return { status: "non_public", link: publicLink, raw: rawRecord, matchedBy: "platform_work_id", reason: reasonParts.join(" ") };
+  const mappedDescription = stateDescription
+    ? (BILIBILI_STATE_DESCRIPTION_MAP[stateDescription] ?? stateDescription)
+    : null;
+  const reasonParts = [mappedDescription, rejectReason, String(state)].filter((value): value is string =>
+    Boolean(value),
+  );
+  return {
+    status: "non_public",
+    link: publicLink,
+    raw: rawRecord,
+    matchedBy: "platform_work_id",
+    reason: reasonParts.join(" "),
+  };
 }
 
 /** 从投稿管理响应中提取视频记录。 */
@@ -634,11 +664,16 @@ function collectRecords(payload: unknown): Array<Record<string, unknown>> {
   const root = asRecord(payload);
   const data = asRecord(root?.data);
   const records = data?.arc_audits ?? root?.arc_audits;
-  return Array.isArray(records) ? records.map(asRecord).filter((item): item is Record<string, unknown> => item !== null) : [];
+  return Array.isArray(records)
+    ? records.map(asRecord).filter((item): item is Record<string, unknown> => item !== null)
+    : [];
 }
 
 /** 只按投稿接口返回的 bvid 匹配当前任务。 */
-function findRecord(records: Array<Record<string, unknown>>, payload: PublishedStatePayload): { matchedBy: "platform_work_id"; record: Record<string, unknown> } | null {
+function findRecord(
+  records: Array<Record<string, unknown>>,
+  payload: PublishedStatePayload,
+): { matchedBy: "platform_work_id"; record: Record<string, unknown> } | null {
   const attributes = asRecord(payload.attributes);
   const clues = asRecord(attributes?.review_state_clues);
   const publishResult = asRecord(payload.publishResult);
@@ -688,7 +723,7 @@ export class BilibiliVideo implements Video {
     const resolvedAccountFile = isAbsolute(accountFile) ? accountFile : resolve(process.cwd(), accountFile);
     const [cookie, userAgent] = await Promise.all([
       loadCookieContext(resolvedAccountFile),
-      loadUserAgent(),
+      loadBrowserIdentity().then((identity) => identity.userAgent),
     ]);
     let lastPayload: unknown = null;
     for (let pageNumber = 1; pageNumber <= 3; pageNumber += 1) {
@@ -714,6 +749,12 @@ export class BilibiliVideo implements Video {
       if (!parsed) throw new Error("Bilibili 作品状态响应结构错误");
       return { ...parsed, link: parsed.link ?? payload.link ?? null };
     }
-    return { status: "non_public", link: payload.link ?? null, raw: lastPayload, matchedBy: "platform_work_id", reason: "未找到该作品，请前往官方后台查看发布情况" };
+    return {
+      status: "non_public",
+      link: payload.link ?? null,
+      raw: lastPayload,
+      matchedBy: "platform_work_id",
+      reason: "未找到该作品，请前往官方后台查看发布情况",
+    };
   }
 }

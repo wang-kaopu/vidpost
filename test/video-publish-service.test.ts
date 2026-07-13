@@ -14,15 +14,15 @@ import {
   createMachineProfile,
 } from "../src/infra/video/douyin-video.ts";
 import { SohuVideo } from "../src/infra/video/sohu-video.ts";
-import { loadUserAgent } from "../src/utils/environment.ts";
+import { loadBrowserIdentity } from "../src/infra/browser-identity.ts";
 
 const projectRoot = process.cwd();
 const windowsIdentity = JSON.parse(fs.readFileSync(
-  path.join(projectRoot, "assets", "douyin", "browser-identity.windows.json"),
+  path.join(projectRoot, "assets", "browser-identity", "browser-identity.windows.json"),
   "utf8",
 ));
 const macosIdentity = JSON.parse(fs.readFileSync(
-  path.join(projectRoot, "assets", "douyin", "browser-identity.macos.json"),
+  path.join(projectRoot, "assets", "browser-identity", "browser-identity.macos.json"),
   "utf8",
 ));
 
@@ -104,14 +104,14 @@ test("fixed identity assets contain complete Chrome 138 fields", () => {
   }
 });
 
-test("platform modules share the operating-system User-Agent loader", async () => {
+test("platform modules share the operating-system browser identity loader", async () => {
   const expectedIdentity = process.platform === "win32" ? windowsIdentity : macosIdentity;
-  assert.equal(await loadUserAgent(), expectedIdentity.userAgent);
+  assert.deepEqual(await loadBrowserIdentity(), expectedIdentity);
 
-  const environmentSource = fs.readFileSync(path.join(projectRoot, "src", "utils", "environment.ts"), "utf8");
-  assert.match(environmentSource, /browser-identity\.windows\.json/u);
-  assert.match(environmentSource, /browser-identity\.macos\.json/u);
-  assert.match(environmentSource, /Chrome\/138\.0\.0\.0/u);
+  const identitySource = fs.readFileSync(path.join(projectRoot, "src", "infra", "browser-identity.ts"), "utf8");
+  assert.match(identitySource, /browser-identity\.windows\.json/u);
+  assert.match(identitySource, /browser-identity\.macos\.json/u);
+  assert.match(identitySource, /Chrome\/138\.0\.0\.0/u);
 
   for (const [directory, fileName] of [
     ["video", "bilibili-video.ts"],
@@ -123,8 +123,8 @@ test("platform modules share the operating-system User-Agent loader", async () =
     ["account", "douyin-account.ts"],
   ]) {
     const source = fs.readFileSync(path.join(projectRoot, "src", "infra", directory, fileName), "utf8");
-    assert.match(source, /import \{ loadUserAgent \} from "\.\.\/\.\.\/utils\/environment\.ts";/u);
-    assert.doesNotMatch(source, /async function load(?:Baijiahao|Bilibili|Sohu)BrowserUserAgent/u);
+    assert.match(source, /loadBrowserIdentity/u);
+    assert.doesNotMatch(source, /load(?:Douyin|Baijiahao|Bilibili|Sohu)BrowserIdentity/u);
   }
 });
 

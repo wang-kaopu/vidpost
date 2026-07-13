@@ -1,23 +1,7 @@
-import {
-  BaijiahaoVideo,
-  configureBaijiahaoVideoRuntime,
-  destroyBaijiahaoVideoWindows,
-} from "./baijiahao-video.ts";
-import {
-  BilibiliVideo,
-  configureBilibiliVideoRuntime,
-  destroyBilibiliVideoWindows,
-} from "./bilibili-video.ts";
-import {
-  configureDouyinVideoRuntime,
-  destroyDouyinVideoWindows,
-  DouyinVideo,
-} from "./douyin-video.ts";
-import {
-  configureSohuVideoRuntime,
-  destroySohuVideoWindows,
-  SohuVideo,
-} from "./sohu-video.ts";
+import { BaijiahaoVideo, configureBaijiahaoVideoRuntime, destroyBaijiahaoVideoWindows } from "./baijiahao-video.ts";
+import { BilibiliVideo, configureBilibiliVideoRuntime, destroyBilibiliVideoWindows } from "./bilibili-video.ts";
+import { configureDouyinVideoRuntime, destroyDouyinVideoWindows, DouyinVideo } from "./douyin-video.ts";
+import { configureSohuVideoRuntime, destroySohuVideoWindows, SohuVideo } from "./sohu-video.ts";
 
 /** 当前支持视频发布的平台标识。 */
 export type VideoPlatformType = "baijiahao" | "bilibili" | "douyin" | "sohu";
@@ -39,12 +23,7 @@ export type PublishedTaskStatus = "reviewing" | "public" | "non_public";
 
 /** 发布记录状态查询命中的线索。 */
 export type PublishedStateMatchedBy =
-  | "platform_work_id"
-  | "share_url"
-  | "title"
-  | "title_and_time_window"
-  | "manual"
-  | "unknown";
+  "platform_work_id" | "share_url" | "title" | "title_and_time_window" | "manual" | "unknown";
 
 /** 发布记录状态查询参数。 */
 export interface PublishedStatePayload {
@@ -86,11 +65,9 @@ export interface Video {
 
 /** Electron 主进程提供给平台视频实现的运行时能力。 */
 export interface VideoRuntime {
-  BrowserWindow: new(options: Electron.BrowserWindowConstructorOptions) => Electron.BrowserWindow;
+  BrowserWindow: new (options: Electron.BrowserWindowConstructorOptions) => Electron.BrowserWindow;
   electron: typeof import("electron");
-  session: {
-    fromPartition(partition: string): Electron.Session;
-  };
+  session: { fromPartition(partition: string): Electron.Session };
   getCdpEndpoint(): string;
   isQuitting(): boolean;
 }

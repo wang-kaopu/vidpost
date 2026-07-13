@@ -8,7 +8,7 @@ import { createFile, type Movie } from "mp4box";
 import pLimit from "p-limit";
 import sharp from "sharp";
 
-import { loadUserAgent } from "../../utils/environment.ts";
+import { loadBrowserIdentity } from "../browser-identity.ts";
 import { logger } from "../../utils/logger.ts";
 
 import type {
@@ -55,21 +55,19 @@ export function parseBaijiahaoScheduledAt(value: unknown): string | null {
   const timestampMs = Date.UTC(year, month - 1, day, hour - 8, minute);
   const check = new Date(timestampMs + 8 * 60 * 60 * 1_000);
   if (
-    check.getUTCFullYear() !== year || check.getUTCMonth() + 1 !== month
-    || check.getUTCDate() !== day || check.getUTCHours() !== hour || check.getUTCMinutes() !== minute
-  ) throw new Error("百家号 scheduledAt 包含无效日期");
+    check.getUTCFullYear() !== year ||
+    check.getUTCMonth() + 1 !== month ||
+    check.getUTCDate() !== day ||
+    check.getUTCHours() !== hour ||
+    check.getUTCMinutes() !== minute
+  )
+    throw new Error("百家号 scheduledAt 包含无效日期");
   return String(Math.floor(timestampMs / 1_000));
 }
 
 const IMAGE_EDIT_POINT = [
-  {
-    img_type: "cover",
-    img_num: { template: 0, font: 0, filter: 0, paster: 0, cut: 0, any: 0 },
-  },
-  {
-    img_type: "body",
-    img_num: { template: 0, font: 0, filter: 0, paster: 0, cut: 0, any: 0 },
-  },
+  { img_type: "cover", img_num: { template: 0, font: 0, filter: 0, paster: 0, cut: 0, any: 0 } },
+  { img_type: "body", img_num: { template: 0, font: 0, filter: 0, paster: 0, cut: 0, any: 0 } },
 ] as const;
 
 const HORIZONTAL_PUBLISH_DEFAULTS: Record<string, unknown> = {
@@ -79,10 +77,7 @@ const HORIZONTAL_PUBLISH_DEFAULTS: Record<string, unknown> = {
   desc: "",
   bjhtopic_id: "",
   bjhtopic_info: "",
-  cover_image_source: {
-    wide_cover_image_source: "video_cut",
-    vertical_cover_image_source: "video_cut",
-  },
+  cover_image_source: { wide_cover_image_source: "video_cut", vertical_cover_image_source: "video_cut" },
   ducut_info: "",
   content: [{ title: "", mediaId: "", videoName: "", local: 1, desc: "" }],
   video_duration: 0,
@@ -113,10 +108,7 @@ const VERTICAL_PUBLISH_DEFAULTS: Record<string, unknown> = {
   title: "",
   bjhtopic_id: "",
   bjhtopic_info: "",
-  cover_image_source: {
-    wide_cover_image_source: "video_cut",
-    vertical_cover_image_source: "video_cut",
-  },
+  cover_image_source: { wide_cover_image_source: "video_cut", vertical_cover_image_source: "video_cut" },
   ducut_info: "",
   content: [{ title: "", mediaId: "" }],
   video_duration: 0,
@@ -165,9 +157,8 @@ const BAIJIAHAO_ERROR_MESSAGES: Record<string, string> = {
   "您所在网络环境异常，请完成验证":
     "出现验证码了，请先前往多开面板使用该账号发布一条内容，发布成功后即可继续在一键发布中操作",
   "您的点击太快啦，还在努力处理中": "发布频率过快，请5分钟后重试",
-  "账号状态异常": "账号状态异常！请前往官方后台查看",
-  "需要验证通过才可发文":
-    "出现验证码了，请先前往多开面板使用该账号发布一条内容，发布成功后即可继续在一键发布中操作",
+  账号状态异常: "账号状态异常！请前往官方后台查看",
+  需要验证通过才可发文: "出现验证码了，请先前往多开面板使用该账号发布一条内容，发布成功后即可继续在一键发布中操作",
 };
 
 export interface StoredCookie {
@@ -383,13 +374,7 @@ async function inspectMp4(videoPath: string): Promise<VideoMetadata> {
   if (!width || !height || !Number.isFinite(duration) || duration <= 0) {
     throw new Error("MP4 缺少有效的视频尺寸或时长");
   }
-  return {
-    duration,
-    height,
-    size: fileStats.size,
-    videoType: width >= height ? "horizontal" : "vertical",
-    width,
-  };
+  return { duration, height, size: fileStats.size, videoType: width >= height ? "horizontal" : "vertical", width };
 }
 
 /**
@@ -446,19 +431,9 @@ function buildPublishPayload(input: PublishPayloadInput): Record<string, unknown
     payload.desc = input.description;
     payload.vertical_cover = input.verticalCoverUrl;
     payload.content = JSON.stringify([
-      {
-        title: input.title,
-        mediaId: input.mediaId,
-        videoName: input.videoName,
-        local: 1,
-        desc: input.description,
-      },
+      { title: input.title, mediaId: input.mediaId, videoName: input.videoName, local: 1, desc: input.description },
     ]);
-    payload.bjh_video_finger_printing = JSON.stringify({
-      s2l: null,
-      s2game: null,
-      bjh: { duration },
-    });
+    payload.bjh_video_finger_printing = JSON.stringify({ s2l: null, s2game: null, bjh: { duration } });
     payload.cover_images = JSON.stringify([
       { src: input.horizontalCoverUrl, isLegal: 0, cover_source_tag: "video_cut" },
     ]);
@@ -466,12 +441,7 @@ function buildPublishPayload(input: PublishPayloadInput): Record<string, unknown
     if (input.topic) {
       payload.bjhtopic_id = input.topic.id;
       payload.bjhtopic_info = [
-        {
-          id: input.topic.id,
-          title: input.topic.title,
-          guide: "",
-          cover: input.topic.sv_small_images?.https,
-        },
+        { id: input.topic.id, title: input.topic.title, guide: "", cover: input.topic.sv_small_images?.https },
       ];
     }
   } else {
@@ -490,13 +460,7 @@ function buildPublishPayload(input: PublishPayloadInput): Record<string, unknown
     payload.width_in_pixel = input.width;
     payload.height_in_pixel = input.height;
     payload.cover_images = JSON.stringify([
-      {
-        source: "local",
-        src: input.verticalCoverUrl,
-        cropData,
-        isLegal: 0,
-        cover_source_tag: "video_cut",
-      },
+      { source: "local", src: input.verticalCoverUrl, cropData, isLegal: 0, cover_source_tag: "video_cut" },
     ]);
     payload._cover_images_map = JSON.stringify([
       { src: input.verticalCoverUrl, origin_src: input.verticalCoverOriginalUrl },
@@ -512,11 +476,7 @@ function buildPublishPayload(input: PublishPayloadInput): Record<string, unknown
   payload.publish_statement = 0;
   payload.publish_statement_sub = 0;
   payload.activity_list = [{ id: "aigc_bjh_status", is_checked: 0 }];
-  payload.bjh_video_finger_printing = JSON.stringify({
-    s2l: null,
-    s2game: null,
-    bjh: { duration },
-  });
+  payload.bjh_video_finger_printing = JSON.stringify({ s2l: null, s2game: null, bjh: { duration } });
   if (input.timerTime) payload.timer_time = input.timerTime;
   return payload;
 }
@@ -528,9 +488,7 @@ function buildPublishPayload(input: PublishPayloadInput): Record<string, unknown
  * @returns 后续上传接口使用的 app_id
  */
 async function fetchAppId(cookieHeader: string, http: AxiosInstance): Promise<string> {
-  const response = await http.get<AppInfoResponse>(APP_INFO_URL, {
-    headers: { Cookie: cookieHeader },
-  });
+  const response = await http.get<AppInfoResponse>(APP_INFO_URL, { headers: { Cookie: cookieHeader } });
   const appId = response.data.data?.user?.app_id;
   if (appId === undefined || String(appId).length === 0) {
     throw new Error(response.data.errmsg || "用户信息获取失败：响应缺少 data.user.app_id");
@@ -560,10 +518,7 @@ async function preUploadVideo(
       size: String(context.metadata.size),
       org_file_name: context.videoName,
     },
-    {
-      headers: { Cookie: context.cookieHeader },
-      params: { app_id: context.appId },
-    },
+    { headers: { Cookie: context.cookieHeader }, params: { app_id: context.appId } },
   );
   const { error_code: errorCode, mediaId, upload_key: uploadKey } = response.data;
   if (errorCode !== 20_000 || mediaId === undefined || !uploadKey) {
@@ -586,9 +541,7 @@ async function uploadCover(cookieHeader: string, image: Buffer, http: AxiosInsta
   form.append("action[]", "save");
   form.append("base64", image.toString("base64"));
   form.append("videoCover", "frontend");
-  const response = await http.post<CoverUploadResponse>(COVER_UPLOAD_URL, form, {
-    headers: { Cookie: cookieHeader },
-  });
+  const response = await http.post<CoverUploadResponse>(COVER_UPLOAD_URL, form, { headers: { Cookie: cookieHeader } });
   const rawHeaders = response.headers as unknown as Record<string, unknown>;
   const tokenHeader = rawHeaders["token"] ?? rawHeaders["Token"];
   const token = typeof tokenHeader === "string" ? tokenHeader : undefined;
@@ -605,18 +558,21 @@ async function uploadCover(cookieHeader: string, image: Buffer, http: AxiosInsta
  *
  * @param input - 分片、文件和上传上下文
  */
-async function uploadVideoChunk(input: {
-  appId: string;
-  chunk: ChunkDescriptor;
-  chunkBuffer: Buffer;
-  cookieHeader: string;
-  fileMd5: string;
-  fileModifiedAt: number;
-  fileSize: number;
-  totalChunks: number;
-  uploadKey: string;
-  videoName: string;
-}, http: AxiosInstance): Promise<void> {
+async function uploadVideoChunk(
+  input: {
+    appId: string;
+    chunk: ChunkDescriptor;
+    chunkBuffer: Buffer;
+    cookieHeader: string;
+    fileMd5: string;
+    fileModifiedAt: number;
+    fileSize: number;
+    totalChunks: number;
+    uploadKey: string;
+    videoName: string;
+  },
+  http: AxiosInstance,
+): Promise<void> {
   let lastError: unknown;
   for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt += 1) {
     try {
@@ -637,7 +593,9 @@ async function uploadVideoChunk(input: {
         params: { app_id: input.appId },
       });
       if (response.data.error_code !== 20_000) {
-        throw new Error(`分片 ${input.chunk.partNumber} 上传失败（error_code=${String(response.data.error_code)}）：${response.data.error_msg ?? "未知错误"}`);
+        throw new Error(
+          `分片 ${input.chunk.partNumber} 上传失败（error_code=${String(response.data.error_code)}）：${response.data.error_msg ?? "未知错误"}`,
+        );
       }
       return;
     } catch (error) {
@@ -673,27 +631,34 @@ async function uploadVideoChunks(
   let completed = 0;
   try {
     const limit = pLimit(CHUNK_CONCURRENCY);
-    const settled = await Promise.allSettled(chunks.map((chunk) => limit(async () => {
-      const chunkBuffer = Buffer.allocUnsafe(chunk.size);
-      const { bytesRead } = await handle.read(chunkBuffer, 0, chunk.size, chunk.start);
-      if (bytesRead !== chunk.size) {
-        throw new Error(`读取分片 ${chunk.partNumber} 失败：预期 ${chunk.size} 字节，实际 ${bytesRead} 字节`);
-      }
-      await uploadVideoChunk({
-        appId: context.appId,
-        chunk,
-        chunkBuffer,
-        cookieHeader: context.cookieHeader,
-        fileMd5: context.fileMd5,
-        fileModifiedAt: context.fileModifiedAt,
-        fileSize: context.metadata.size,
-        totalChunks: chunks.length,
-        uploadKey,
-        videoName: context.videoName,
-      }, http);
-      completed += 1;
-      logger.info({ message: `[视频分片] ${completed}/${chunks.length} 上传成功`, type: "info" });
-    })));
+    const settled = await Promise.allSettled(
+      chunks.map((chunk) =>
+        limit(async () => {
+          const chunkBuffer = Buffer.allocUnsafe(chunk.size);
+          const { bytesRead } = await handle.read(chunkBuffer, 0, chunk.size, chunk.start);
+          if (bytesRead !== chunk.size) {
+            throw new Error(`读取分片 ${chunk.partNumber} 失败：预期 ${chunk.size} 字节，实际 ${bytesRead} 字节`);
+          }
+          await uploadVideoChunk(
+            {
+              appId: context.appId,
+              chunk,
+              chunkBuffer,
+              cookieHeader: context.cookieHeader,
+              fileMd5: context.fileMd5,
+              fileModifiedAt: context.fileModifiedAt,
+              fileSize: context.metadata.size,
+              totalChunks: chunks.length,
+              uploadKey,
+              videoName: context.videoName,
+            },
+            http,
+          );
+          completed += 1;
+          logger.info({ message: `[视频分片] ${completed}/${chunks.length} 上传成功`, type: "info" });
+        }),
+      ),
+    );
     const failure = settled.find((result) => result.status === "rejected");
     if (failure?.status === "rejected") throw failure.reason;
   } finally {
@@ -778,7 +743,7 @@ async function prepare(input: VideoUploadPayload): Promise<BaijiahaoPreparedCont
   const coverPath = isAbsolute(coverFile) ? coverFile : resolve(process.cwd(), coverFile);
   const videoPath = isAbsolute(videoFile) ? videoFile : resolve(process.cwd(), videoFile);
   const responses: SerializedAxiosResponse[] = [];
-  const userAgent = await loadUserAgent();
+  const userAgent = (await loadBrowserIdentity()).userAgent;
   const http = axios.create({
     headers: { "User-Agent": userAgent },
     maxBodyLength: Number.POSITIVE_INFINITY,
@@ -786,23 +751,35 @@ async function prepare(input: VideoUploadPayload): Promise<BaijiahaoPreparedCont
     timeout: 120_000,
   });
   http.interceptors.request.use(async (config) => {
-    logger.info({ type: "http-request", request: { data: config.data, headers: config.headers, method: config.method, params: config.params, url: axios.getUri(config) } });
+    logger.info({
+      type: "http-request",
+      request: {
+        data: config.data,
+        headers: config.headers,
+        method: config.method,
+        params: config.params,
+        url: axios.getUri(config),
+      },
+    });
     return config;
   });
-  http.interceptors.response.use(async (response) => {
-    const serialized: SerializedAxiosResponse = {
-      body: response.data,
-      headers: response.headers,
-      status: response.status,
-      statusText: response.statusText,
-    };
-    responses.push(serialized);
-    logger.info({ type: "http-response", response: serialized });
-    return response;
-  }, async (error) => {
-    logger.error({ type: "http-error", error });
-    throw error;
-  });
+  http.interceptors.response.use(
+    async (response) => {
+      const serialized: SerializedAxiosResponse = {
+        body: response.data,
+        headers: response.headers,
+        status: response.status,
+        statusText: response.statusText,
+      };
+      responses.push(serialized);
+      logger.info({ type: "http-response", response: serialized });
+      return response;
+    },
+    async (error) => {
+      logger.error({ type: "http-error", error });
+      throw error;
+    },
+  );
   const topicPattern = /#([^#\s]+)(?=\s|#|$)/gu;
   const topicNames = [...introduction.matchAll(topicPattern)]
     .map((match) => match[1])
@@ -829,7 +806,10 @@ async function prepare(input: VideoUploadPayload): Promise<BaijiahaoPreparedCont
     videoName: basename(videoPath),
   };
 
-  logger.info({ message: `[1/7] 获取账号 app_id（${metadata.width}×${metadata.height}，${metadata.videoType}）`, type: "info" });
+  logger.info({
+    message: `[1/7] 获取账号 app_id（${metadata.width}×${metadata.height}，${metadata.videoType}）`,
+    type: "info",
+  });
   context.appId = await fetchAppId(cookieHeader, http);
   logger.info({ message: "[2/7] 创建视频预上传任务", type: "info" });
   const uploadContext = await preUploadVideo(context, http);
@@ -936,7 +916,13 @@ export function parseBaijiahaoRecordStatus(rawRecord: unknown): PublishedStateRe
     return { status: "public", link, raw: rawRecord, matchedBy: "platform_work_id", reason: null };
   }
   if (status === "rejected") {
-    return { status: "non_public", link, raw: rawRecord, matchedBy: "platform_work_id", reason: `${asString(record.audit_msg) ?? "审核未通过"} 状态码${status}` };
+    return {
+      status: "non_public",
+      link,
+      raw: rawRecord,
+      matchedBy: "platform_work_id",
+      reason: `${asString(record.audit_msg) ?? "审核未通过"} 状态码${status}`,
+    };
   }
   if (status === "withdraw") {
     return { status: "non_public", link, raw: rawRecord, matchedBy: "platform_work_id", reason: "作品已撤回" };
@@ -948,12 +934,19 @@ export function parseBaijiahaoRecordStatus(rawRecord: unknown): PublishedStateRe
 export function collectBaijiahaoRecordsFromPayload(rawPayload: unknown): Array<Record<string, unknown>> {
   const root = asRecord(rawPayload);
   const candidate = asRecord(root?.data)?.list ?? root?.list;
-  const values = Array.isArray(candidate) ? candidate : asRecord(candidate) ? Object.values(candidate as Record<string, unknown>) : [];
+  const values = Array.isArray(candidate)
+    ? candidate
+    : asRecord(candidate)
+      ? Object.values(candidate as Record<string, unknown>)
+      : [];
   return values.map(asRecord).filter((item): item is Record<string, unknown> => item !== null);
 }
 
 /** 只按投稿接口返回的 nid 匹配百家号作品。 */
-export function findBaijiahaoRecordInList(records: Array<Record<string, unknown>>, payload: PublishedStatePayload): { matchedBy: "platform_work_id"; record: Record<string, unknown> } | null {
+export function findBaijiahaoRecordInList(
+  records: Array<Record<string, unknown>>,
+  payload: PublishedStatePayload,
+): { matchedBy: "platform_work_id"; record: Record<string, unknown> } | null {
   const attributes = asRecord(payload.attributes);
   const clues = asRecord(attributes?.review_state_clues);
   const result = asRecord(payload.publishResult);
@@ -1000,7 +993,7 @@ export class BaijiahaoVideo implements Video {
     const resolvedAccountFile = isAbsolute(accountFile) ? accountFile : resolve(process.cwd(), accountFile);
     const [cookieHeader, userAgent] = await Promise.all([
       loadCookieHeader(resolvedAccountFile),
-      loadUserAgent(),
+      loadBrowserIdentity().then((identity) => identity.userAgent),
     ]);
     const response = await axios.get(BAIJIAHAO_RECORD_STATUS_URL, {
       headers: { Cookie: cookieHeader, Referer: `${BAIJIAHAO_ORIGIN}/builder/rc/content`, "User-Agent": userAgent },
@@ -1014,7 +1007,13 @@ export class BaijiahaoVideo implements Video {
     }
     const matched = findBaijiahaoRecordInList(collectBaijiahaoRecordsFromPayload(root), payload);
     if (!matched) {
-      return { status: "non_public", link: payload.link ?? null, raw: root, matchedBy: "platform_work_id", reason: "未找到该作品，请前往官方后台查看发布情况" };
+      return {
+        status: "non_public",
+        link: payload.link ?? null,
+        raw: root,
+        matchedBy: "platform_work_id",
+        reason: "未找到该作品，请前往官方后台查看发布情况",
+      };
     }
     const parsed = parseBaijiahaoRecordStatus(matched.record);
     if (!parsed) throw new Error("百家号作品状态响应结构错误");

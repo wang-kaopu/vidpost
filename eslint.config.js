@@ -4,32 +4,18 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  {
-    ignores: [".build/**", "app/dist/**", "node_modules/**", "out/**"],
-  },
-  {
-    ...js.configs.recommended,
-    files: ["**/*.{js,mjs,cjs}"],
-  },
+  { ignores: [".build/**", "app/dist/**", "node_modules/**", "out/**"] },
+  { ...js.configs.recommended, files: ["**/*.{js,mjs,cjs}"] },
   ...tseslint.configs.recommended,
   ...pluginVue.configs["flat/recommended"],
   {
     files: ["**/*.{js,mjs,cjs,ts,mts,cts,vue}"],
-    languageOptions: {
-      globals: {
-        ...globals.node,
-        ...globals.browser,
-      },
-    },
+    languageOptions: { globals: { ...globals.node, ...globals.browser } },
     rules: {
       "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-unused-vars": [
         "error",
-        {
-          argsIgnorePattern: "^_",
-          caughtErrorsIgnorePattern: "^_",
-          varsIgnorePattern: "^_",
-        },
+        { argsIgnorePattern: "^_", caughtErrorsIgnorePattern: "^_", varsIgnorePattern: "^_" },
       ],
       "no-console": "error",
       "vue/first-attribute-linebreak": "off",
@@ -43,25 +29,7 @@ export default tseslint.config(
       "vue/singleline-html-element-content-newline": "off",
     },
   },
-  {
-    files: ["app/**/*.vue"],
-    languageOptions: {
-      parserOptions: {
-        parser: tseslint.parser,
-      },
-    },
-  },
-  {
-    files: ["src/utils/logger.ts", "app/src/utils/logger.ts", "test/logger.test.ts"],
-    rules: {
-      "no-console": "off",
-    },
-  },
-  {
-    files: ["src/infra/account/*.ts", "src/infra/video/sohu-video.ts"],
-    rules: {
-      "@typescript-eslint/no-unused-vars": "off",
-      "no-var": "off",
-    },
-  },
+  { files: ["app/**/*.vue"], languageOptions: { parserOptions: { parser: tseslint.parser } } },
+  { files: ["src/utils/logger.ts", "app/src/utils/logger.ts", "test/logger.test.ts"], rules: { "no-console": "off" } },
+  { files: ["src/infra/video/sohu-video.ts"], rules: { "@typescript-eslint/no-unused-vars": "off", "no-var": "off" } },
 );

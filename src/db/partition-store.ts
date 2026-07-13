@@ -1,17 +1,29 @@
-import fs from 'node:fs'
-import path from 'node:path'
+import fs from "node:fs";
+import path from "node:path";
 
-export const PARTITION_MAP_TABLE_KEY = 'partition_map_table'
-const DEFAULT_STORE_FILE = 'partition-map.json'
+export const PARTITION_MAP_TABLE_KEY = "partition_map_table";
+const DEFAULT_STORE_FILE = "partition-map.json";
+
+/** 账号 ID 到 Electron partition 的持久化映射。 */
+export type PartitionMapTable = Record<string, string>;
+
+/** partition JSON Store 对外提供的最小读写接口。 */
+export interface PartitionStore {
+  storePath: string;
+  get(key: string): unknown;
+  set(key: string, value: unknown): void;
+}
+
+type PartitionStoreData = Record<string, unknown>;
 
 /**
  * 返回账号浏览器环境映射表的默认本地持久化路径。
  *
  * @returns 本地 JSON store 文件路径
  */
-export function resolveDefaultPartitionStorePath() {
-  const homeDir = process.env.HOME || process.env.USERPROFILE || '.'
-  return path.join(homeDir, '.agenthunt', DEFAULT_STORE_FILE)
+export function resolveDefaultPartitionStorePath(): string {
+  const homeDir = process.env.HOME || process.env.USERPROFILE || ".";
+  return path.join(homeDir, ".agenthunt", DEFAULT_STORE_FILE);
 }
 
 /**
@@ -20,8 +32,8 @@ export function resolveDefaultPartitionStorePath() {
  * @param accountId - 账号稳定标识
  * @returns 可放入 partition 的安全片段
  */
-export function encodePartitionAccountId(accountId) {
-  return Buffer.from(String(accountId), 'utf8').toString('base64url')
+export function encodePartitionAccountId(accountId: string | number): string {
+  return Buffer.from(String(accountId), "utf8").toString("base64url");
 }
 
 /**
@@ -30,33 +42,33 @@ export function encodePartitionAccountId(accountId) {
  * @param storePath - JSON store 文件路径
  * @returns 具备 get/set 能力的本地 Store
  */
-export function createPartitionStore(storePath = resolveDefaultPartitionStorePath()) {
-  const readAll = () => {
+export function createPartitionStore(storePath = resolveDefaultPartitionStorePath()): PartitionStore {
+  const readAll = (): PartitionStoreData => {
     try {
-      const content = fs.readFileSync(storePath, 'utf8')
-      const parsed = JSON.parse(content)
-      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+      const content = fs.readFileSync(storePath, "utf8");
+      const parsed = JSON.parse(content);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as PartitionStoreData) : {};
     } catch {
-      return {}
+      return {};
     }
-  }
+  };
 
-  const writeAll = (data) => {
-    fs.mkdirSync(path.dirname(storePath), { recursive: true })
-    fs.writeFileSync(storePath, JSON.stringify(data, null, 2), 'utf8')
-  }
+  const writeAll = (data: PartitionStoreData): void => {
+    fs.mkdirSync(path.dirname(storePath), { recursive: true });
+    fs.writeFileSync(storePath, JSON.stringify(data, null, 2), "utf8");
+  };
 
   return {
     storePath,
-    get(key) {
-      return readAll()[key]
+    get(key: string): unknown {
+      return readAll()[key];
     },
-    set(key, value) {
-      const data = readAll()
-      data[key] = value
-      writeAll(data)
+    set(key: string, value: unknown): void {
+      const data = readAll();
+      data[key] = value;
+      writeAll(data);
     },
-  }
+  };
 }
 
 /**
@@ -65,12 +77,12 @@ export function createPartitionStore(storePath = resolveDefaultPartitionStorePat
  * @param store - 本地持久化 Store
  * @returns 账号 ID 到 partition 的映射
  */
-export function readPartitionMapTable(store) {
-  const table = store.get(PARTITION_MAP_TABLE_KEY)
-  if (!table || typeof table !== 'object' || Array.isArray(table)) {
-    return {}
+export function readPartitionMapTable(store: PartitionStore): PartitionMapTable {
+  const table = store.get(PARTITION_MAP_TABLE_KEY);
+  if (!table || typeof table !== "object" || Array.isArray(table)) {
+    return {};
   }
-  return { ...table }
+  return { ...table } as PartitionMapTable;
 }
 
 /**
@@ -80,26 +92,26 @@ export function readPartitionMapTable(store) {
  * @param accountId - 账号稳定标识
  * @returns 账号专属的 persist partition
  */
-export function resolvePartitionForAccount(store, accountId) {
-  const normalizedAccountId = String(accountId || '').trim()
+export function resolvePartitionForAccount(store: PartitionStore, accountId: string | number): string {
+  const normalizedAccountId = String(accountId || "").trim();
   if (!normalizedAccountId) {
-    throw new Error('resolvePartitionForAccount requires a non-empty accountId')
+    throw new Error("resolvePartitionForAccount requires a non-empty accountId");
   }
 
-  const table = readPartitionMapTable(store)
-  let partition = table[normalizedAccountId]
+  const table = readPartitionMapTable(store);
+  let partition = table[normalizedAccountId];
 
   if (!partition) {
-    partition = `persist:rpa-${encodePartitionAccountId(normalizedAccountId)}`
-    table[normalizedAccountId] = partition
-    store.set(PARTITION_MAP_TABLE_KEY, table)
+    partition = `persist:rpa-${encodePartitionAccountId(normalizedAccountId)}`;
+    table[normalizedAccountId] = partition;
+    store.set(PARTITION_MAP_TABLE_KEY, table);
   }
 
-  if (typeof partition !== 'string' || !partition.startsWith('persist:')) {
-    throw new Error(`账号 ${normalizedAccountId} 的 partition 非法: ${String(partition)}`)
+  if (typeof partition !== "string" || !partition.startsWith("persist:")) {
+    throw new Error(`账号 ${normalizedAccountId} 的 partition 非法: ${String(partition)}`);
   }
 
-  return partition
+  return partition;
 }
 
 /**
@@ -110,20 +122,24 @@ export function resolvePartitionForAccount(store, accountId) {
  * @param toAccountId - 正式账号标识
  * @returns 正式账号绑定的 partition
  */
-export function movePartitionMapping(store, fromAccountId, toAccountId) {
-  const sourceId = String(fromAccountId || '').trim()
-  const targetId = String(toAccountId || '').trim()
+export function movePartitionMapping(
+  store: PartitionStore,
+  fromAccountId: string | number,
+  toAccountId: string | number,
+): string {
+  const sourceId = String(fromAccountId || "").trim();
+  const targetId = String(toAccountId || "").trim();
   if (!sourceId || !targetId) {
-    throw new Error('movePartitionMapping requires non-empty account ids')
+    throw new Error("movePartitionMapping requires non-empty account ids");
   }
 
-  const table = readPartitionMapTable(store)
-  const partition = table[sourceId] || resolvePartitionForAccount(store, sourceId)
-  const latestTable = readPartitionMapTable(store)
-  latestTable[targetId] = partition
-  delete latestTable[sourceId]
-  store.set(PARTITION_MAP_TABLE_KEY, latestTable)
-  return partition
+  const table = readPartitionMapTable(store);
+  const partition = table[sourceId] || resolvePartitionForAccount(store, sourceId);
+  const latestTable = readPartitionMapTable(store);
+  latestTable[targetId] = partition;
+  delete latestTable[sourceId];
+  store.set(PARTITION_MAP_TABLE_KEY, latestTable);
+  return partition;
 }
 
 /**
@@ -132,13 +148,13 @@ export function movePartitionMapping(store, fromAccountId, toAccountId) {
  * @param store - 本地持久化 Store
  * @param accountId - 账号或草稿账号标识
  */
-export function deletePartitionMapping(store, accountId) {
-  const normalizedAccountId = String(accountId || '').trim()
+export function deletePartitionMapping(store: PartitionStore, accountId: string | number): void {
+  const normalizedAccountId = String(accountId || "").trim();
   if (!normalizedAccountId) {
-    return
+    return;
   }
 
-  const table = readPartitionMapTable(store)
-  delete table[normalizedAccountId]
-  store.set(PARTITION_MAP_TABLE_KEY, table)
+  const table = readPartitionMapTable(store);
+  delete table[normalizedAccountId];
+  store.set(PARTITION_MAP_TABLE_KEY, table);
 }

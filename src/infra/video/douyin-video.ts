@@ -11,19 +11,27 @@ import pLimit from "p-limit";
 import type { BrowserWindow, Event as ElectronEvent, IpcMainEvent, IpcRenderer, Session } from "electron";
 
 import { logger, type Logger } from "../../utils/logger.ts";
+import { loadBrowserIdentity, type BrowserIdentity } from "../browser-identity.ts";
 
-import type { PublishedStatePayload, PublishedStateResult, Video, VideoRuntime, VideoUploadPayload, VideoUploadResult } from "./video.ts";
+import type {
+  PublishedStatePayload,
+  PublishedStateResult,
+  Video,
+  VideoRuntime,
+  VideoUploadPayload,
+  VideoUploadResult,
+} from "./video.ts";
 
-interface LogEvent { message?: string; type: string; [key: string]: unknown }
-interface SerializedAxiosResponse { body: unknown; headers: unknown; status: number; statusText: string }
-
-interface DouyinBrowserIdentity {
-  acceptLanguage: string;
-  browserPlatform: "MacIntel" | "Win32";
-  language: "zh-CN";
-  secChUa: string;
-  secChUaPlatform: '"macOS"' | '"Windows"';
-  userAgent: string;
+interface LogEvent {
+  message?: string;
+  type: string;
+  [key: string]: unknown;
+}
+interface SerializedAxiosResponse {
+  body: unknown;
+  headers: unknown;
+  status: number;
+  statusText: string;
 }
 
 /** 安全输出结构化日志，日志失败不影响业务。 */
@@ -60,49 +68,14 @@ export function parseDouyinScheduledAt(value: unknown): number {
   const timestampMs = Date.UTC(year, month - 1, day, hour - 8, minute);
   const check = new Date(timestampMs + 8 * 60 * 60 * 1_000);
   if (
-    check.getUTCFullYear() !== year || check.getUTCMonth() + 1 !== month
-    || check.getUTCDate() !== day || check.getUTCHours() !== hour || check.getUTCMinutes() !== minute
-  ) throw new Error("抖音 scheduledAt 包含无效日期");
+    check.getUTCFullYear() !== year ||
+    check.getUTCMonth() + 1 !== month ||
+    check.getUTCDate() !== day ||
+    check.getUTCHours() !== hour ||
+    check.getUTCMinutes() !== minute
+  )
+    throw new Error("抖音 scheduledAt 包含无效日期");
   return Math.floor(timestampMs / 1_000);
-}
-
-/**
- * 从指定应用目录的 assets 中严格读取当前系统对应的抖音 Chrome 138 身份。
- *
- * @param appPath - Electron `app.getAppPath()` 返回的应用目录
- * @returns 当前 Windows 或 macOS 固定浏览器身份
- */
-async function loadDouyinBrowserIdentity(appPath: string): Promise<DouyinBrowserIdentity> {
-  const fileName = process.platform === "win32"
-    ? "browser-identity.windows.json"
-    : "browser-identity.macos.json";
-
-  const identityPath = join(appPath, "assets", "douyin", fileName);
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(await readFile(identityPath, "utf8"));
-  } catch (error) {
-    throw new Error(`读取抖音浏览器身份失败: ${identityPath}: ${error instanceof Error ? error.message : String(error)}`);
-  }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error(`抖音浏览器身份格式无效: ${identityPath}`);
-  }
-
-  const identity = parsed as Record<string, unknown>;
-  const expectedPlatform = process.platform === "win32" ? "Win32" : "MacIntel";
-  const expectedSecChUaPlatform = process.platform === "win32" ? '"Windows"' : '"macOS"';
-  if (
-    typeof identity.acceptLanguage !== "string" || !identity.acceptLanguage.trim() ||
-    identity.browserPlatform !== expectedPlatform ||
-    identity.language !== "zh-CN" ||
-    typeof identity.secChUa !== "string" || !identity.secChUa.trim() ||
-    !identity.secChUa.includes('"Chromium";v="138"') ||
-    identity.secChUaPlatform !== expectedSecChUaPlatform ||
-    typeof identity.userAgent !== "string" || !identity.userAgent.includes("Chrome/138.0.0.0")
-  ) {
-    throw new Error(`抖音浏览器身份字段不完整或与当前系统不匹配: ${identityPath}`);
-  }
-  return identity as unknown as DouyinBrowserIdentity;
 }
 
 export interface DouyinVideoOptions {
@@ -115,7 +88,7 @@ export interface DouyinVideoOptions {
 }
 
 interface DouyinWorkerOptions {
-  browserIdentity: DouyinBrowserIdentity;
+  browserIdentity: BrowserIdentity;
   browserPartition: string;
   coverPath: string;
   electronRendererPath: string;
@@ -266,14 +239,19 @@ function serializeV4Query(query: Record<string, SignatureQueryValue>): string {
       continue;
     }
 
-    const encodedKey = encodeURIComponent(key).replace(/[!'()*]/gu, (character) =>
-      `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
-    );
-    const values = Array.isArray(value) ? value : [value];
-    const encodedValues = values.map((item) => encodeURIComponent(String(item)).replace(
+    const encodedKey = encodeURIComponent(key).replace(
       /[!'()*]/gu,
       (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
-    )).sort();
+    );
+    const values = Array.isArray(value) ? value : [value];
+    const encodedValues = values
+      .map((item) =>
+        encodeURIComponent(String(item)).replace(
+          /[!'()*]/gu,
+          (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+        ),
+      )
+      .sort();
     for (const encodedValue of encodedValues) {
       pairs.push(`${encodedKey}=${encodedValue}`);
     }
@@ -301,11 +279,7 @@ function buildCanonicalHeaders(
   const selected = new Map<string, string>();
   for (const [rawName, rawValue] of Object.entries(headers)) {
     const name = rawName.toLowerCase();
-    if (
-      rawValue !== undefined &&
-      candidates.has(name) &&
-      !IGNORED_HEADER_NAMES.has(name)
-    ) {
+    if (rawValue !== undefined && candidates.has(name) && !IGNORED_HEADER_NAMES.has(name)) {
       selected.set(name, rawValue.trim().replace(/\s+/gu, " "));
     }
   }
@@ -338,13 +312,9 @@ function signDouyinV4(input: DouyinV4SignatureInput): DouyinV4SignatureResult {
   }
 
   const canonicalQuery = serializeV4Query(input.query);
-  const { canonicalHeaders, signedHeaders } = buildCanonicalHeaders(
-    input.headers,
-    input.needSignHeaderKeys,
-  );
-  const payloadHash = input.bodyText === undefined
-    ? EMPTY_SHA256
-    : createHash("sha256").update(input.bodyText).digest("hex");
+  const { canonicalHeaders, signedHeaders } = buildCanonicalHeaders(input.headers, input.needSignHeaderKeys);
+  const payloadHash =
+    input.bodyText === undefined ? EMPTY_SHA256 : createHash("sha256").update(input.bodyText).digest("hex");
   const canonicalRequest = [
     input.method.toUpperCase(),
     input.pathName ?? "/",
@@ -367,15 +337,7 @@ function signDouyinV4(input: DouyinV4SignatureInput): DouyinV4SignatureResult {
     `${ALGORITHM} Credential=${input.accessKeyId}/${credentialScope}, ` +
     `SignedHeaders=${signedHeaders}, Signature=${signature}`;
 
-  return {
-    authorization,
-    canonicalQuery,
-    canonicalRequest,
-    payloadHash,
-    signedHeaders,
-    signature,
-    stringToSign,
-  };
+  return { authorization, canonicalQuery, canonicalRequest, payloadHash, signedHeaders, signature, stringToSign };
 }
 
 const DOUYIN_CHUNK_SIZE = 5 * 1024 * 1024;
@@ -418,24 +380,19 @@ export interface ChunkDescriptor {
  * @param identity - 从 assets 读取的当前系统固定 Chrome 138 身份
  * @returns 发布链路统一使用的浏览器配置
  */
-export function createMachineProfile(
-  identity: DouyinBrowserIdentity,
-): MachineProfile {
-  const expectedSecChUaPlatform = identity.browserPlatform === "MacIntel"
-    ? '"macOS"'
-    : identity.browserPlatform === "Win32" ? '"Windows"' : null;
+export function createMachineProfile(identity: BrowserIdentity): MachineProfile {
+  const expectedSecChUaPlatform =
+    identity.browserPlatform === "MacIntel" ? '"macOS"' : identity.browserPlatform === "Win32" ? '"Windows"' : null;
   if (!expectedSecChUaPlatform || identity.secChUaPlatform !== expectedSecChUaPlatform) {
     throw new Error(`不支持的抖音浏览器身份平台: ${String(identity.browserPlatform)}`);
   }
-  const hostScreen = (globalThis as typeof globalThis & {
-    screen?: { height?: number; width?: number };
-  }).screen;
-  const screenHeight = Number.isFinite(hostScreen?.height) && Number(hostScreen?.height) > 0
-    ? Math.round(Number(hostScreen?.height))
-    : 1080;
-  const screenWidth = Number.isFinite(hostScreen?.width) && Number(hostScreen?.width) > 0
-    ? Math.round(Number(hostScreen?.width))
-    : 1920;
+  const hostScreen = (globalThis as typeof globalThis & { screen?: { height?: number; width?: number } }).screen;
+  const screenHeight =
+    Number.isFinite(hostScreen?.height) && Number(hostScreen?.height) > 0
+      ? Math.round(Number(hostScreen?.height))
+      : 1080;
+  const screenWidth =
+    Number.isFinite(hostScreen?.width) && Number(hostScreen?.width) > 0 ? Math.round(Number(hostScreen?.width)) : 1920;
 
   const shared = {
     language: identity.language,
@@ -484,10 +441,7 @@ function buildCommonParams(profile: MachineProfile): CommonParams {
  * @param chunkSize - 单片字节上限
  * @returns 保持文件顺序的分片列表
  */
-function createChunkDescriptors(
-  fileSize: number,
-  chunkSize = DOUYIN_CHUNK_SIZE,
-): ChunkDescriptor[] {
+function createChunkDescriptors(fileSize: number, chunkSize = DOUYIN_CHUNK_SIZE): ChunkDescriptor[] {
   if (!Number.isSafeInteger(fileSize) || fileSize <= 0) {
     throw new Error("视频文件必须是非空且大小可安全表示的文件");
   }
@@ -553,11 +507,7 @@ export interface BuildPublishPayloadInput {
 
 export type QueryParams = Record<string, string | number | boolean | null | undefined>;
 
-const VISIBILITY_VALUES: Record<DouyinVisibility, 0 | 1 | 2> = {
-  friends: 2,
-  public: 0,
-  self: 1,
-};
+const VISIBILITY_VALUES: Record<DouyinVisibility, 0 | 1 | 2> = { friends: 2, public: 0, self: 1 };
 
 /**
  * 按插入顺序序列化普通 Creator Query，每个值只编码一次。
@@ -567,8 +517,7 @@ const VISIBILITY_VALUES: Record<DouyinVisibility, 0 | 1 | 2> = {
  */
 function serializeQuery(params: QueryParams): string {
   return Object.entries(params)
-    .filter((entry): entry is [string, string | number | boolean] =>
-      entry[1] !== null && entry[1] !== undefined)
+    .filter((entry): entry is [string, string | number | boolean] => entry[1] !== null && entry[1] !== undefined)
     .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
     .join("&");
 }
@@ -583,7 +532,7 @@ function serializeQuery(params: QueryParams): string {
 function removeMatchedHashtags(description: string, topics: PublishTopic[]): string {
   const matched = new Set(topics.map(({ name }) => name));
   return description
-    .replace(/#([^#\s]+)(?=\s|#|$)/gu, (full, name: string) => matched.has(name) ? "" : full)
+    .replace(/#([^#\s]+)(?=\s|#|$)/gu, (full, name: string) => (matched.has(name) ? "" : full))
     .replace(/[ \t]{2,}/gu, " ")
     .replace(/^[ \t]+|[ \t]+$/gmu, "")
     .trim();
@@ -652,12 +601,7 @@ function buildCoverEditLog(): Record<string, unknown> {
  * @param input - 封面 URI、URL 和尺寸
  * @returns JSON 字符串形式的封面扩展信息
  */
-function buildCoverToolsExtendInfo(input: {
-  height: number;
-  uri: string;
-  url: string;
-  width: number;
-}): string {
+function buildCoverToolsExtendInfo(input: { height: number; uri: string; url: string; width: number }): string {
   const editLog = buildCoverEditLog();
   const coverInfo = {
     videoName: "",
@@ -691,10 +635,7 @@ function buildCoverToolsExtendInfo(input: {
     recommendCoverTime: 0,
     coverInfo,
     coverUrl: input.url,
-    coverHorizontalInfo: {
-      ...coverInfo,
-      horizontalDefaultUri: undefined,
-    },
+    coverHorizontalInfo: { ...coverInfo, horizontalDefaultUri: undefined },
     coverHorizontalUrl: input.url,
     pasterInfo: {},
     stateInfo: null,
@@ -852,12 +793,7 @@ function buildPublishPayload(input: BuildPublishPayloadInput): Record<string, un
       selected_member: { is_selected_member_video: false },
       chapter: { chapter: JSON.stringify(chapter) },
       anchor: {},
-      sync: {
-        dx_upgraded: 1,
-        xg_user_id: "",
-        should_sync: false,
-        sync_to_toutiao: 0,
-      },
+      sync: { dx_upgraded: 1, xg_user_id: "", should_sync: false, sync_to_toutiao: 0 },
       open_platform: {},
       aigc: { meta: "{}", ContentPropagator: "", PropagateID: "", ReservedCode2: "{}" },
       assistant: { is_preview: 0, is_post_assistant: 1 },
@@ -915,7 +851,6 @@ function withQuery(baseUrl: string, params: QueryParams): string {
   return query ? `${baseUrl}?${query}` : baseUrl;
 }
 
-
 /**
  * 从 VOD/ImageX Apply 响应选择当前链路使用的上传节点。
  *
@@ -924,16 +859,9 @@ function withQuery(baseUrl: string, params: QueryParams): string {
  */
 function pickDouyinUploadNode(body: unknown): DouyinUploadNode {
   // VOD 和 ImageX 的真实响应都使用 UploadNodes；DouyinUploadNodes 是旧 Service 中的错误字段名。
-  const typed = body as {
-    Result?: { InnerUploadAddress?: { UploadNodes?: DouyinUploadNode[] } };
-  };
+  const typed = body as { Result?: { InnerUploadAddress?: { UploadNodes?: DouyinUploadNode[] } } };
   const node = typed.Result?.InnerUploadAddress?.UploadNodes?.[0];
-  if (
-    !node?.UploadHost ||
-    !node.SessionKey ||
-    !node.StoreInfos?.[0]?.StoreUri ||
-    !node.StoreInfos[0].Auth
-  ) {
+  if (!node?.UploadHost || !node.SessionKey || !node.StoreInfos?.[0]?.StoreUri || !node.StoreInfos[0].Auth) {
     throw new Error("上传凭证响应缺少 UploadHost、StoreUri、Auth 或 SessionKey");
   }
   return node;
@@ -972,9 +900,8 @@ export function getDouyinVerificationErrorMessage(headers: unknown): string | nu
   if (!headers || typeof headers !== "object") return null;
 
   const headerRecord = headers as Record<string, unknown> & { get?: (name: string) => unknown };
-  let headerValue = typeof headerRecord.get === "function"
-    ? headerRecord.get("x-tt-verify-passport-decision")
-    : undefined;
+  let headerValue =
+    typeof headerRecord.get === "function" ? headerRecord.get("x-tt-verify-passport-decision") : undefined;
   if (headerValue === undefined) {
     const headerEntry = Object.entries(headerRecord).find(
       ([name]) => name.toLowerCase() === "x-tt-verify-passport-decision",
@@ -995,9 +922,10 @@ export function getDouyinVerificationErrorMessage(headers: unknown): string | nu
   if (decision.account_flow !== "verify") return null;
 
   const fields: string[] = [];
-  const userInfo = decision.user_info && typeof decision.user_info === "object" && !Array.isArray(decision.user_info)
-    ? decision.user_info as Record<string, unknown>
-    : null;
+  const userInfo =
+    decision.user_info && typeof decision.user_info === "object" && !Array.isArray(decision.user_info)
+      ? (decision.user_info as Record<string, unknown>)
+      : null;
   let nickname = typeof userInfo?.nickname === "string" ? userInfo.nickname.trim() : "";
   if (nickname && !/\p{Script=Han}/u.test(nickname)) {
     const decodedNickname = Buffer.from(nickname, "latin1").toString("utf8");
@@ -1007,9 +935,10 @@ export function getDouyinVerificationErrorMessage(headers: unknown): string | nu
   }
   if (nickname) fields.push(`账号=${nickname}`);
 
-  const eventParams = decision.event_params && typeof decision.event_params === "object" && !Array.isArray(decision.event_params)
-    ? decision.event_params as Record<string, unknown>
-    : null;
+  const eventParams =
+    decision.event_params && typeof decision.event_params === "object" && !Array.isArray(decision.event_params)
+      ? (decision.event_params as Record<string, unknown>)
+      : null;
   const verifyReason = typeof eventParams?.verify_reason === "string" ? eventParams.verify_reason.trim() : "";
   const verifyScene = typeof eventParams?.verify_scene === "string" ? eventParams.verify_scene.trim() : "";
   if (verifyReason) fields.push(`验证原因=${verifyReason}`);
@@ -1017,8 +946,13 @@ export function getDouyinVerificationErrorMessage(headers: unknown): string | nu
 
   const rawVerifyWays = decision.verify_way_name_list;
   const verifyWays = Array.isArray(rawVerifyWays)
-    ? rawVerifyWays.filter((value): value is string => typeof value === "string" && Boolean(value.trim())).map((value) => value.trim()).join(",")
-    : typeof rawVerifyWays === "string" ? rawVerifyWays.trim() : "";
+    ? rawVerifyWays
+        .filter((value): value is string => typeof value === "string" && Boolean(value.trim()))
+        .map((value) => value.trim())
+        .join(",")
+    : typeof rawVerifyWays === "string"
+      ? rawVerifyWays.trim()
+      : "";
   if (verifyWays) fields.push(`验证方式=${verifyWays}`);
 
   return fields.length > 0 ? `账号需要身份验证：${fields.join("，")}` : "账号需要身份验证";
@@ -1058,19 +992,14 @@ async function getCsrfToken(cookieHeader: string, userAgent: string): Promise<st
  * @returns VOD 请求需要的 uid
  */
 async function getAccountUid(cookieHeader: string, msToken: string, userAgent: string): Promise<string> {
-  const response = await HTTP.get(
-    withQuery(`${CREATOR_ORIGIN}/web/api/media/user/info/`, { a_bogus: "", msToken }),
-    { headers: { Cookie: cookieHeader, "User-Agent": userAgent } },
-  );
-  const body = response.data as {
-    status_code?: number;
-    status_msg?: string;
-    user?: { uid?: string };
-  };
+  const response = await HTTP.get(withQuery(`${CREATOR_ORIGIN}/web/api/media/user/info/`, { a_bogus: "", msToken }), {
+    headers: { Cookie: cookieHeader, "User-Agent": userAgent },
+  });
+  const body = response.data as { status_code?: number; status_msg?: string; user?: { uid?: string } };
   if (!body.user?.uid) {
     throw new Error(
       `账号信息响应缺少 user.uid：status_code=${body.status_code ?? "缺失"}，` +
-      `${body.status_msg || "无状态说明"}，结构=${JSON.stringify(describeResponseShape(response.data))}`,
+        `${body.status_msg || "无状态说明"}，结构=${JSON.stringify(describeResponseShape(response.data))}`,
     );
   }
   return body.user.uid;
@@ -1090,10 +1019,7 @@ async function getDouyinUploadCredentials(input: {
   userAgent: string;
 }): Promise<DouyinUploadCredentials> {
   const response = await HTTP.get(
-    withQuery(`${CREATOR_ORIGIN}/web/api/media/upload/auth/v5/`, {
-      ...input.commonParams,
-      msToken: input.msToken,
-    }),
+    withQuery(`${CREATOR_ORIGIN}/web/api/media/upload/auth/v5/`, { ...input.commonParams, msToken: input.msToken }),
     {
       headers: {
         Cookie: input.cookieHeader,
@@ -1138,10 +1064,7 @@ async function applyVideoUpload(input: {
     user_id: input.uid,
   };
   const amzDate = new Date().toISOString().replace(/[:-]|\.\d{3}/gu, "");
-  const signingHeaders = {
-    "X-Amz-Date": amzDate,
-    "X-Amz-Security-Token": input.credentials.SessionToken,
-  };
+  const signingHeaders = { "X-Amz-Date": amzDate, "X-Amz-Security-Token": input.credentials.SessionToken };
   const signed = await RENDERER_IPC.invoke(RENDERER_CHANNELS.signV4, {
     accessKeyId: input.credentials.AccessKeyID,
     amzDate,
@@ -1189,10 +1112,7 @@ async function initializeMultipart(uploadUrl: string, headers: Record<string, st
  * @param descriptor - 分片字节范围
  * @returns 分片 Buffer
  */
-async function readChunk(
-  file: Awaited<ReturnType<typeof open>>,
-  descriptor: ChunkDescriptor,
-): Promise<Buffer> {
+async function readChunk(file: Awaited<ReturnType<typeof open>>, descriptor: ChunkDescriptor): Promise<Buffer> {
   const buffer = Buffer.allocUnsafe(descriptor.size);
   const result = await file.read(buffer, 0, descriptor.size, descriptor.start);
   if (result.bytesRead !== descriptor.size) {
@@ -1241,11 +1161,7 @@ async function uploadVideoChunks(input: {
 }): Promise<void> {
   const store = input.node.StoreInfos[0];
   assert(store);
-  const commonHeaders = {
-    Authorization: store.Auth,
-    Host: input.node.UploadHost,
-    "X-Storage-U": input.uid,
-  };
+  const commonHeaders = { Authorization: store.Auth, Host: input.node.UploadHost, "X-Storage-U": input.uid };
   const file = await open(input.videoPath, "r");
   const limit = pLimit(CHUNK_CONCURRENCY);
   let completed = 0;
@@ -1274,24 +1190,26 @@ async function uploadVideoChunks(input: {
                 }
               : {}),
           });
-          const body = response.data as {
-            code?: number;
-            data?: Partial<MultipartPartResult>;
-            message?: string;
-          };
+          const body = response.data as { code?: number; data?: Partial<MultipartPartResult>; message?: string };
           if (body.code !== 2000 || !body.data) {
             throw new Error(body.message || `视频分片 ${descriptor.partNumber} 未返回 code=2000`);
           }
           if (!input.uploadId) {
             completed += 1;
-            await emitLog(RENDERER_LOGGER, { message: `      视频分片进度 ${completed}/${input.descriptors.length}`, type: "info" });
+            await emitLog(RENDERER_LOGGER, {
+              message: `      视频分片进度 ${completed}/${input.descriptors.length}`,
+              type: "info",
+            });
             return { crc32, part_number: descriptor.partNumber };
           }
           if (!body.data.part_number || !body.data.crc32) {
             throw new Error(`视频分片 ${descriptor.partNumber} 响应缺少 part_number 或 crc32`);
           }
           completed += 1;
-          await emitLog(RENDERER_LOGGER, { message: `      视频分片进度 ${completed}/${input.descriptors.length}`, type: "info" });
+          await emitLog(RENDERER_LOGGER, {
+            message: `      视频分片进度 ${completed}/${input.descriptors.length}`,
+            type: "info",
+          });
           return { crc32: body.data.crc32, part_number: body.data.part_number };
         }, descriptor.partNumber),
       ),
@@ -1306,10 +1224,7 @@ async function uploadVideoChunks(input: {
     if (input.uploadId) {
       const finishBody = results.map(({ part_number, crc32 }) => `${part_number}:${crc32}`).join(",");
       const response = await HTTP.post(input.uploadUrl, finishBody, {
-        headers: {
-          ...commonHeaders,
-          "Content-Type": "text/plain;charset=UTF-8",
-        },
+        headers: { ...commonHeaders, "Content-Type": "text/plain;charset=UTF-8" },
         params: { phase: "finish", uploadid: input.uploadId, uploadmode: "partial" },
       });
       const body = response.data as { code?: number; message?: string };
@@ -1342,10 +1257,7 @@ async function commitVideoUpload(input: {
   };
   const bodyText = JSON.stringify({
     SessionKey: input.node.SessionKey,
-    Functions: [
-      { name: "GetMeta" },
-      { name: "Snapshot", input: { SnapshotTime: 0 } },
-    ],
+    Functions: [{ name: "GetMeta" }, { name: "Snapshot", input: { SnapshotTime: 0 } }],
   });
   const amzDate = new Date().toISOString().replace(/[:-]|\.\d{3}/gu, "");
   const signingHeaders = {
@@ -1395,19 +1307,14 @@ async function commitVideoUpload(input: {
   if (body.ResponseMetadata?.Error) {
     throw new Error(
       `CommitUploadInner 失败：${body.ResponseMetadata.Error.Code ?? "未知"} ` +
-      `${body.ResponseMetadata.Error.Message ?? "未知错误"}`,
+        `${body.ResponseMetadata.Error.Message ?? "未知错误"}`,
     );
   }
   const result = body.Result?.Results?.[0];
   if (!result?.Vid) {
-    throw new Error(
-      `CommitUploadInner 响应缺少 Vid；结构=${JSON.stringify(describeResponseShape(response.data))}`,
-    );
+    throw new Error(`CommitUploadInner 响应缺少 Vid；结构=${JSON.stringify(describeResponseShape(response.data))}`);
   }
-  return {
-    ...(result.PosterUri ? { posterUri: result.PosterUri } : {}),
-    videoId: result.Vid,
-  };
+  return { ...(result.PosterUri ? { posterUri: result.PosterUri } : {}), videoId: result.Vid };
 }
 
 /**
@@ -1423,11 +1330,7 @@ async function verifyVideo(input: {
   userAgent: string;
   videoId: string;
 }): Promise<void> {
-  const query = {
-    ...input.commonParams,
-    msToken: input.msToken,
-    video_id: input.videoId,
-  };
+  const query = { ...input.commonParams, msToken: input.msToken, video_id: input.videoId };
   const headers = {
     Cookie: input.cookieHeader,
     Referer: CREATOR_REFERER,
@@ -1454,10 +1357,7 @@ async function applyImageUpload(credentials: DouyinUploadCredentials): Promise<D
     user_id: "",
   };
   const amzDate = new Date().toISOString().replace(/[:-]|\.\d{3}/gu, "");
-  const signingHeaders = {
-    "X-Amz-Date": amzDate,
-    "X-Amz-Security-Token": credentials.SessionToken,
-  };
+  const signingHeaders = { "X-Amz-Date": amzDate, "X-Amz-Security-Token": credentials.SessionToken };
   const signed = await RENDERER_IPC.invoke(RENDERER_CHANNELS.signV4, {
     accessKeyId: credentials.AccessKeyID,
     amzDate,
@@ -1564,9 +1464,8 @@ async function commitImageUpload(credentials: DouyinUploadCredentials, node: Dou
     },
     transformRequest: [() => bodyText],
   });
-  const result = (response.data as {
-    Result?: { Results?: Array<{ Uri?: string; UriStatus?: number }> };
-  }).Result?.Results?.[0];
+  const result = (response.data as { Result?: { Results?: Array<{ Uri?: string; UriStatus?: number }> } }).Result
+    ?.Results?.[0];
   if (result?.UriStatus !== 2000 || !result.Uri) {
     throw new Error("CommitImageUpload 响应缺少成功 Uri");
   }
@@ -1586,10 +1485,7 @@ async function getImageUrl(input: {
   userAgent: string;
 }): Promise<string> {
   const response = await HTTP.get(
-    withQuery(`${CREATOR_ORIGIN}/aweme/v1/creator/get/url/`, {
-      ...input.commonParams,
-      uri: input.uri,
-    }),
+    withQuery(`${CREATOR_ORIGIN}/aweme/v1/creator/get/url/`, { ...input.commonParams, uri: input.uri }),
     {
       headers: {
         Cookie: input.cookieHeader,
@@ -1625,21 +1521,13 @@ async function searchTopics(input: {
           keyword: name,
           source: "challenge_create",
         }),
-        {
-          headers: {
-            Cookie: input.cookieHeader,
-            Referer: CREATOR_REFERER,
-            "User-Agent": input.userAgent,
-          },
-        },
+        { headers: { Cookie: input.cookieHeader, Referer: CREATOR_REFERER, "User-Agent": input.userAgent } },
       );
       const body = response.data as {
         status_code?: number;
         sug_list?: Array<{ cha_name?: string; challenge_id?: string | number; cid?: string | number }>;
       };
-      const match = body.status_code === 0
-        ? body.sug_list?.find(({ cha_name }) => cha_name === name)
-        : undefined;
+      const match = body.status_code === 0 ? body.sug_list?.find(({ cha_name }) => cha_name === name) : undefined;
       const id = match?.cid ?? match?.challenge_id;
       return id === undefined ? null : { id: String(id), name };
     }),
@@ -1658,7 +1546,7 @@ async function prepareInRenderer(options: DouyinWorkerOptions): Promise<DouyinPr
   const responseStart = RENDERER_RESPONSES.length;
   const profile = createMachineProfile(options.browserIdentity);
   const commonParams = buildCommonParams(profile);
-  const state = await RENDERER_IPC.invoke(RENDERER_CHANNELS.getSessionState) as DouyinSessionState;
+  const state = (await RENDERER_IPC.invoke(RENDERER_CHANNELS.getSessionState)) as DouyinSessionState;
   const { cookieHeader, msToken } = state;
   if (!cookieHeader || !msToken) {
     throw new Error("Electron Session 未返回 Cookie 或 msToken");
@@ -1678,7 +1566,10 @@ async function prepareInRenderer(options: DouyinWorkerOptions): Promise<DouyinPr
   const publishTitle = lines[firstNonEmptyIndex]?.trim() ?? "";
   if ([...publishTitle].length > 20) throw new Error("文案首行标题不能超过 20 个字符");
   const publishText: PublishText = {
-    description: lines.slice(firstNonEmptyIndex + 1).join("\n").trim(),
+    description: lines
+      .slice(firstNonEmptyIndex + 1)
+      .join("\n")
+      .trim(),
     title: publishTitle,
   };
   const coverDimensions = await new Promise<{ height: number; width: number }>((resolvePromise, reject) => {
@@ -1718,7 +1609,10 @@ async function prepareInRenderer(options: DouyinWorkerOptions): Promise<DouyinPr
   } else {
     await emitLog(RENDERER_LOGGER, { message: "[5/17] 视频不超过 5 MiB，跳过 multipart 初始化", type: "info" });
   }
-  await emitLog(RENDERER_LOGGER, { message: `[6/17] 上传 ${descriptors.length} 个视频分片（并发 ${CHUNK_CONCURRENCY}）`, type: "info" });
+  await emitLog(RENDERER_LOGGER, {
+    message: `[6/17] 上传 ${descriptors.length} 个视频分片（并发 ${CHUNK_CONCURRENCY}）`,
+    type: "info",
+  });
   await uploadVideoChunks({
     descriptors,
     node: videoNode,
@@ -1727,7 +1621,10 @@ async function prepareInRenderer(options: DouyinWorkerOptions): Promise<DouyinPr
     uploadUrl: videoUploadUrl,
     videoPath: options.videoPath,
   });
-  await emitLog(RENDERER_LOGGER, { message: uploadId ? "[7/17] multipart 视频已完成合并" : "[7/17] 单分片视频无需 finish", type: "info" });
+  await emitLog(RENDERER_LOGGER, {
+    message: uploadId ? "[7/17] multipart 视频已完成合并" : "[7/17] 单分片视频无需 finish",
+    type: "info",
+  });
 
   await emitLog(RENDERER_LOGGER, { message: "[8/17] 提交 VOD 上传会话", type: "info" });
   const video = await commitVideoUpload({ credentials, node: videoNode, uid });
@@ -1749,12 +1646,7 @@ async function prepareInRenderer(options: DouyinWorkerOptions): Promise<DouyinPr
   await emitLog(RENDERER_LOGGER, { message: "[13/17] 提交 ImageX 上传会话", type: "info" });
   const imageUri = await commitImageUpload(credentials, imageNode);
   await emitLog(RENDERER_LOGGER, { message: "[14/17] 获取封面访问 URL", type: "info" });
-  const coverUrl = await getImageUrl({
-    commonParams,
-    cookieHeader,
-    uri: imageUri,
-    userAgent: profile.userAgent,
-  });
+  const coverUrl = await getImageUrl({ commonParams, cookieHeader, uri: imageUri, userAgent: profile.userAgent });
   await emitLog(RENDERER_LOGGER, { message: "[15/17] 搜索文案话题", type: "info" });
   const topics = await searchTopics({
     commonParams,
@@ -1776,19 +1668,15 @@ async function prepareInRenderer(options: DouyinWorkerOptions): Promise<DouyinPr
     visibility: options.visibility,
   });
   const bodyText = JSON.stringify(publishPayload);
-  const queryString = serializeQuery({
-    ...commonParams,
-    read_aid: 2906,
-    msToken,
-  });
+  const queryString = serializeQuery({ ...commonParams, read_aid: 2906, msToken });
   const unsignedUrl = `${CREATOR_ORIGIN}/web/api/media/aweme/create_v2/?${queryString}`;
 
   await emitLog(RENDERER_LOGGER, { message: "[16/17] 使用 Creator 官方 BDMS 生成 a_bogus", type: "info" });
-  const signed = await RENDERER_IPC.invoke(RENDERER_CHANNELS.signCreate, {
+  const signed = (await RENDERER_IPC.invoke(RENDERER_CHANNELS.signCreate, {
     bodyText,
     csrfToken,
     unsignedUrl,
-  }) as DouyinSigningResult;
+  })) as DouyinSigningResult;
 
   return {
     bodyText,
@@ -1831,10 +1719,7 @@ async function prepareInRenderer(options: DouyinWorkerOptions): Promise<DouyinPr
  * @returns item_id 和完整响应
  */
 async function publishInRenderer(prepared: DouyinPreparedContext): Promise<DouyinPublishResponse> {
-  await emitLog(RENDERER_LOGGER, {
-    message: `[17/17] 提交发布（可见性：${prepared.visibility}）`,
-    type: "info",
-  });
+  await emitLog(RENDERER_LOGGER, { message: `[17/17] 提交发布（可见性：${prepared.visibility}）`, type: "info" });
   let response;
   try {
     response = await RENDERER_HTTP.post(prepared.signed.signedUrl, prepared.bodyText, {
@@ -1857,16 +1742,12 @@ async function publishInRenderer(prepared: DouyinPreparedContext): Promise<Douyi
   }
   const verificationMessage = getDouyinVerificationErrorMessage(response.headers);
   if (verificationMessage) throw new Error(verificationMessage);
-  const result = response.data as {
-    item_id?: string | number;
-    status_code?: number;
-    status_msg?: string;
-  };
+  const result = response.data as { item_id?: string | number; status_code?: number; status_msg?: string };
   if (result.status_code !== 0 || !result.item_id) {
     throw new Error(
       `create_v2 失败：status_code=${result.status_code ?? "缺失"}，` +
-      `${result.status_msg || "响应缺少成功 item_id"}，` +
-      `结构=${JSON.stringify(describeResponseShape(response.data))}`,
+        `${result.status_msg || "响应缺少成功 item_id"}，` +
+        `结构=${JSON.stringify(describeResponseShape(response.data))}`,
     );
   }
   await emitLog(RENDERER_LOGGER, { message: `发布成功，作品 ID：${result.item_id}`, type: "info" });
@@ -1887,7 +1768,7 @@ async function publishInRenderer(prepared: DouyinPreparedContext): Promise<Douyi
  * @param accountSession - 两个隐藏窗口共享的账号 Session
  * @param identity - 本次发布从 assets 读取的固定浏览器身份
  */
-function installRequestHeaderBridge(accountSession: Session, identity: DouyinBrowserIdentity): void {
+function installRequestHeaderBridge(accountSession: Session, identity: BrowserIdentity): void {
   accountSession.webRequest.onBeforeSendHeaders((details, callback) => {
     const headers = details.requestHeaders;
     const markerName = Object.keys(headers).find((name) => name.toLowerCase() === "_setrequestheaders");
@@ -1927,10 +1808,10 @@ function installRequestHeaderBridge(accountSession: Session, identity: DouyinBro
 async function waitForBdms(window: BrowserWindow): Promise<void> {
   const deadline = Date.now() + BDMS_READY_TIMEOUT;
   while (Date.now() < deadline) {
-    const ready = await window.webContents.executeJavaScript(
+    const ready = (await window.webContents.executeJavaScript(
       "document.readyState === 'complete' && Boolean(window.bdms) && Boolean(window._SdkGlueInit)",
       true,
-    ) as boolean;
+    )) as boolean;
     if (ready) {
       return;
     }
@@ -1946,11 +1827,14 @@ async function waitForBdms(window: BrowserWindow): Promise<void> {
  * @returns 原始 xmst 与 security-sdk 字符串
  */
 async function readSecurityStorage(signerWindow: BrowserWindow): Promise<SecurityStorage> {
-  return signerWindow.webContents.executeJavaScript(`({
+  return signerWindow.webContents.executeJavaScript(
+    `({
     xmst: localStorage.getItem("xmst"),
     signData: localStorage.getItem("security-sdk/s_sdk_sign_data_key/web_protect"),
     cryptSdk: localStorage.getItem("security-sdk/s_sdk_crypt_sdk"),
-  })`, true) as Promise<SecurityStorage>;
+  })`,
+    true,
+  ) as Promise<SecurityStorage>;
 }
 
 /**
@@ -2029,18 +1913,14 @@ async function createTicketGuardHeaders(
   }
 
   const timestamp = Math.floor(Date.now() / 1_000);
-  const content =
-    `ticket=${ticket}&path=/web/api/media/aweme/create_v2/&timestamp=${timestamp}`;
-  const signature = signEcdsa("sha256", Buffer.from(content, "utf8"), {
-    dsaEncoding: "der",
-    key: privateKey,
-  }).toString("base64");
-  const dynamicHeader = Buffer.from(JSON.stringify({
-    ts_sign: tsSign,
-    req_content: "ticket,path,timestamp",
-    req_sign: signature,
-    timestamp,
-  }), "utf8").toString("base64");
+  const content = `ticket=${ticket}&path=/web/api/media/aweme/create_v2/&timestamp=${timestamp}`;
+  const signature = signEcdsa("sha256", Buffer.from(content, "utf8"), { dsaEncoding: "der", key: privateKey }).toString(
+    "base64",
+  );
+  const dynamicHeader = Buffer.from(
+    JSON.stringify({ ts_sign: tsSign, req_content: "ticket,path,timestamp", req_sign: signature, timestamp }),
+    "utf8",
+  ).toString("base64");
 
   const ticketCookies = await accountSession.cookies.get({ name: "bd_ticket_guard_client_data" });
   const ticketCookie = ticketCookies[0]?.value;
@@ -2061,10 +1941,7 @@ async function createTicketGuardHeaders(
   for (const [name, value] of Object.entries(decoded as Record<string, unknown>)) {
     staticHeaders[name] = String(value);
   }
-  return {
-    "bd-ticket-guard-client-data": dynamicHeader,
-    ...staticHeaders,
-  };
+  return { "bd-ticket-guard-client-data": dynamicHeader, ...staticHeaders };
 }
 
 /**
@@ -2115,59 +1992,49 @@ async function captureSignedUrl(
         }
       };
 
-      const onMessage = (
-        _event: ElectronEvent,
-        method: string,
-        parameters: Record<string, unknown>,
-      ): void => {
+      const onMessage = (_event: ElectronEvent, method: string, parameters: Record<string, unknown>): void => {
         if (method !== "Fetch.requestPaused") {
           return;
         }
         const requestId = parameters.requestId;
-        const request = parameters.request as {
-          method?: string;
-          postData?: string;
-          url?: string;
-        } | undefined;
+        const request = parameters.request as { method?: string; postData?: string; url?: string } | undefined;
         if (typeof requestId !== "string" || !request?.url) {
           finish(new Error("CDP Fetch.requestPaused 缺少 requestId 或 URL"));
           return;
         }
 
-        void debuggerClient.sendCommand("Fetch.failRequest", {
-          errorReason: "Aborted",
-          requestId,
-        }).then(() => {
-          if (request.method !== "POST") {
-            finish(new Error("BDMS 签名请求方法不是 POST"));
-            return;
-          }
-          if (request.postData !== bodyText) {
-            finish(new Error("BDMS 签名请求 Body 与最终 bodyText 不一致"));
-            return;
-          }
-          const url = new URL(request.url as string);
-          if (url.searchParams.getAll("msToken").length !== 1) {
-            finish(new Error("BDMS 签名 URL 中 msToken 数量不是 1"));
-            return;
-          }
-          if (url.searchParams.getAll("a_bogus").length !== 1 || !url.searchParams.get("a_bogus")) {
-            finish(new Error("BDMS 未生成 a_bogus"));
-            return;
-          }
-          finish(null, request.url);
-        }).catch((error: unknown) => {
-          finish(error instanceof Error ? error : new Error(String(error)));
-        });
+        void debuggerClient
+          .sendCommand("Fetch.failRequest", { errorReason: "Aborted", requestId })
+          .then(() => {
+            if (request.method !== "POST") {
+              finish(new Error("BDMS 签名请求方法不是 POST"));
+              return;
+            }
+            if (request.postData !== bodyText) {
+              finish(new Error("BDMS 签名请求 Body 与最终 bodyText 不一致"));
+              return;
+            }
+            const url = new URL(request.url as string);
+            if (url.searchParams.getAll("msToken").length !== 1) {
+              finish(new Error("BDMS 签名 URL 中 msToken 数量不是 1"));
+              return;
+            }
+            if (url.searchParams.getAll("a_bogus").length !== 1 || !url.searchParams.get("a_bogus")) {
+              finish(new Error("BDMS 未生成 a_bogus"));
+              return;
+            }
+            finish(null, request.url);
+          })
+          .catch((error: unknown) => {
+            finish(error instanceof Error ? error : new Error(String(error)));
+          });
       };
 
       debuggerClient.on("message", onMessage);
-      const request = JSON.stringify({
-        bodyText,
-        csrfToken,
-        unsignedUrl,
-      });
-      void signerWindow.webContents.executeJavaScript(`(() => {
+      const request = JSON.stringify({ bodyText, csrfToken, unsignedUrl });
+      void signerWindow.webContents
+        .executeJavaScript(
+          `(() => {
         const input = ${request};
         void window.fetch(input.unsignedUrl, {
           method: "POST",
@@ -2179,9 +2046,12 @@ async function captureSignedUrl(
           },
           body: input.bodyText,
         }).catch(() => undefined);
-      })()`, true).catch((error: unknown) => {
-        finish(error instanceof Error ? error : new Error(String(error)));
-      });
+      })()`,
+          true,
+        )
+        .catch((error: unknown) => {
+          finish(error instanceof Error ? error : new Error(String(error)));
+        });
     });
   } finally {
     try {
@@ -2201,10 +2071,7 @@ async function captureSignedUrl(
  * @param identity - 本次发布从 assets 读取的固定浏览器身份
  * @returns 完成 BDMS 初始化的隐藏窗口
  */
-async function createSignerWindow(
-  accountSession: Session,
-  identity: DouyinBrowserIdentity,
-): Promise<BrowserWindow> {
+async function createSignerWindow(accountSession: Session, identity: BrowserIdentity): Promise<BrowserWindow> {
   const window = new MAIN_ELECTRON.BrowserWindow({
     show: false,
     width: 1280,
@@ -2240,7 +2107,7 @@ async function createServiceNetworkWindow(
   accountSession: Session,
   rendererPath: string,
   channelPrefix: string,
-  identity: DouyinBrowserIdentity,
+  identity: BrowserIdentity,
   onCreated?: (window: BrowserWindow) => void,
 ): Promise<BrowserWindow> {
   const window = new MAIN_ELECTRON.BrowserWindow({
@@ -2273,7 +2140,8 @@ function runElectronRenderer(): void {
   const rendererRequire = (globalThis as typeof globalThis & { require: NodeRequire }).require;
   const electron: typeof import("electron") = rendererRequire("electron");
   RENDERER_IPC = electron.ipcRenderer;
-  const channelPrefix = process.argv.find((value) => value.startsWith(CHANNEL_ARGUMENT))?.slice(CHANNEL_ARGUMENT.length) || "douyin";
+  const channelPrefix =
+    process.argv.find((value) => value.startsWith(CHANNEL_ARGUMENT))?.slice(CHANNEL_ARGUMENT.length) || "douyin";
   RENDERER_CHANNELS = {
     command: `${channelPrefix}:command`,
     getSessionState: `${channelPrefix}:get-session-state`,
@@ -2307,7 +2175,16 @@ function runElectronRenderer(): void {
     timeout: REQUEST_TIMEOUT,
   });
   RENDERER_HTTP.interceptors.request.use(async (config) => {
-    await emitLog(RENDERER_LOGGER, { type: "http-request", request: { data: config.data, headers: config.headers, method: config.method, params: config.params, url: axios.getUri(config) } });
+    await emitLog(RENDERER_LOGGER, {
+      type: "http-request",
+      request: {
+        data: config.data,
+        headers: config.headers,
+        method: config.method,
+        params: config.params,
+        url: axios.getUri(config),
+      },
+    });
     const headers = AxiosHeaders.from(config.headers);
     const bridged: Record<string, string> = {};
     for (const name of ["Cookie", "Host", "Origin", "Referer", "User-Agent"]) {
@@ -2321,20 +2198,23 @@ function runElectronRenderer(): void {
     config.headers = headers;
     return config;
   });
-  RENDERER_HTTP.interceptors.response.use(async (response) => {
-    const serialized: SerializedAxiosResponse = {
-      body: response.data,
-      headers: response.headers,
-      status: response.status,
-      statusText: response.statusText,
-    };
-    RENDERER_RESPONSES.push(serialized);
-    await emitLog(RENDERER_LOGGER, { type: "http-response", response: serialized });
-    return response;
-  }, async (error) => {
-    await emitLog(RENDERER_LOGGER, { type: "http-error", error });
-    throw error;
-  });
+  RENDERER_HTTP.interceptors.response.use(
+    async (response) => {
+      const serialized: SerializedAxiosResponse = {
+        body: response.data,
+        headers: response.headers,
+        status: response.status,
+        statusText: response.statusText,
+      };
+      RENDERER_RESPONSES.push(serialized);
+      await emitLog(RENDERER_LOGGER, { type: "http-response", response: serialized });
+      return response;
+    },
+    async (error) => {
+      await emitLog(RENDERER_LOGGER, { type: "http-error", error });
+      throw error;
+    },
+  );
   HTTP = RENDERER_HTTP;
   RENDERER_IPC.on(RENDERER_CHANNELS.command, (_event, message: WorkerEnvelope) => {
     void (async () => {
@@ -2409,8 +2289,6 @@ function formatError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-
-
 let publishElectron: typeof import("electron") | undefined;
 const preparedWorkers = new WeakMap<DouyinPreparedContext, InProcessWorker>();
 const activeWorkers = new Set<InProcessWorker>();
@@ -2444,19 +2322,32 @@ async function createInProcessWorker(options: DouyinWorkerOptions, logger: Logge
     readyResolve = resolvePromise;
     readyReject = reject;
   });
-  const readyTimeout = setTimeout(() => readyReject?.(new Error(`Douyin 发布网络窗口在 ${BDMS_READY_TIMEOUT}ms 内未就绪`)), BDMS_READY_TIMEOUT);
+  const readyTimeout = setTimeout(
+    () => readyReject?.(new Error(`Douyin 发布网络窗口在 ${BDMS_READY_TIMEOUT}ms 内未就绪`)),
+    BDMS_READY_TIMEOUT,
+  );
   void ready.finally(() => clearTimeout(readyTimeout)).catch(() => undefined);
 
   const readyListener = (event: IpcMainEvent, envelope: WorkerEnvelope): void => {
-    if (event.sender.id === networkWindow?.webContents.id && envelope.version === SERVICE_PROTOCOL_VERSION) readyResolve?.();
+    if (event.sender.id === networkWindow?.webContents.id && envelope.version === SERVICE_PROTOCOL_VERSION)
+      readyResolve?.();
   };
   const logListener = (event: IpcMainEvent, envelope: WorkerEnvelope): void => {
-    if (event.sender.id === networkWindow?.webContents.id && envelope.version === SERVICE_PROTOCOL_VERSION && envelope.event) {
+    if (
+      event.sender.id === networkWindow?.webContents.id &&
+      envelope.version === SERVICE_PROTOCOL_VERSION &&
+      envelope.event
+    ) {
       void emitLog(logger, envelope.event);
     }
   };
   const resultListener = (event: IpcMainEvent, envelope: WorkerEnvelope): void => {
-    if (event.sender.id !== networkWindow?.webContents.id || envelope.version !== SERVICE_PROTOCOL_VERSION || !envelope.requestId) return;
+    if (
+      event.sender.id !== networkWindow?.webContents.id ||
+      envelope.version !== SERVICE_PROTOCOL_VERSION ||
+      !envelope.requestId
+    )
+      return;
     const command = pending.get(envelope.requestId);
     if (!command) return;
     pending.delete(envelope.requestId);
@@ -2473,28 +2364,42 @@ async function createInProcessWorker(options: DouyinWorkerOptions, logger: Logge
       const cookieMsToken = [...cookies].reverse().find(({ name }) => name === "msToken")?.value;
       const msToken = storage.xmst || cookieMsToken;
       if (!msToken) throw new Error("Creator partition 缺少 xmst/msToken");
-      return {
-        cookieHeader: cookies.map(({ name, value }) => `${name}=${value}`).join("; "),
-        msToken,
-      };
+      return { cookieHeader: cookies.map(({ name, value }) => `${name}=${value}`).join("; "), msToken };
     });
     electron.ipcMain.handle(channels.signV4, (event, input: DouyinV4SignatureInput) => {
       if (event.sender.id !== networkWindow?.webContents.id) throw new Error("非法抖音 V4 签名请求来源");
       return signDouyinV4(input);
     });
-    electron.ipcMain.handle(channels.signCreate, async (event, input: { bodyText: string; csrfToken: string; unsignedUrl: string }): Promise<MainSigningResult> => {
-      if (event.sender.id !== networkWindow?.webContents.id) throw new Error("非法抖音投稿签名请求来源");
-      return {
-        signedUrl: await captureSignedUrl(signerWindow as BrowserWindow, input.unsignedUrl, input.bodyText, input.csrfToken),
-        ticketHeaders: await createTicketGuardHeaders(accountSession, signerWindow as BrowserWindow),
-      };
-    });
+    electron.ipcMain.handle(
+      channels.signCreate,
+      async (
+        event,
+        input: { bodyText: string; csrfToken: string; unsignedUrl: string },
+      ): Promise<MainSigningResult> => {
+        if (event.sender.id !== networkWindow?.webContents.id) throw new Error("非法抖音投稿签名请求来源");
+        return {
+          signedUrl: await captureSignedUrl(
+            signerWindow as BrowserWindow,
+            input.unsignedUrl,
+            input.bodyText,
+            input.csrfToken,
+          ),
+          ticketHeaders: await createTicketGuardHeaders(accountSession, signerWindow as BrowserWindow),
+        };
+      },
+    );
     electron.ipcMain.on(channels.ready, readyListener);
     electron.ipcMain.on(channels.log, logListener);
     electron.ipcMain.on(channels.result, resultListener);
-    networkWindow = await createServiceNetworkWindow(accountSession, options.electronRendererPath, channelPrefix, options.browserIdentity, (created) => {
-      networkWindow = created;
-    });
+    networkWindow = await createServiceNetworkWindow(
+      accountSession,
+      options.electronRendererPath,
+      channelPrefix,
+      options.browserIdentity,
+      (created) => {
+        networkWindow = created;
+      },
+    );
     networkWindow.once("closed", () => {
       const error = new Error("Douyin 发布网络窗口意外关闭");
       readyReject?.(error);
@@ -2519,7 +2424,11 @@ async function createInProcessWorker(options: DouyinWorkerOptions, logger: Logge
 }
 
 /** 向指定发布窗口发送关联命令。 */
-async function sendInProcessCommand<T>(worker: InProcessWorker, kind: "prepare" | "publish", payload: unknown): Promise<T> {
+async function sendInProcessCommand<T>(
+  worker: InProcessWorker,
+  kind: "prepare" | "publish",
+  payload: unknown,
+): Promise<T> {
   const requestId = randomUUID();
   const result = new Promise<T>((resolvePromise, reject) => {
     worker.pending.set(requestId, { reject, resolve: (value) => resolvePromise(value as T) });
@@ -2570,14 +2479,15 @@ async function prepare(input: VideoUploadPayload): Promise<DouyinPreparedContext
   const coverFile = String(input.coverPath ?? input.thumbnailPath ?? "").trim();
   const title = String(input.title ?? "").trim();
   const introduction = String(input.introduction ?? input.description ?? title).trim();
-  if (!browserPartition || !videoFile || !coverFile || !title) throw new Error("抖音发布缺少 browserPartition、封面、视频或标题");
+  if (!browserPartition || !videoFile || !coverFile || !title)
+    throw new Error("抖音发布缺少 browserPartition、封面、视频或标题");
   const visibility = String(input.visibility ?? "public");
   if (visibility !== "self" && visibility !== "friends" && visibility !== "public") {
     throw new Error("抖音 visibility 只支持 self、friends 或 public");
   }
   const electron = publishElectron;
   if (!electron) throw new Error("抖音发布运行时尚未配置");
-  const browserIdentity = await loadDouyinBrowserIdentity(electron.app.getAppPath());
+  const browserIdentity = await loadBrowserIdentity(electron.app.getAppPath());
   const rendererPath = join(dirname(fileURLToPath(import.meta.url)), "douyin-publish-renderer.js");
   const options: DouyinWorkerOptions = {
     browserIdentity,
@@ -2589,21 +2499,28 @@ async function prepare(input: VideoUploadPayload): Promise<DouyinPreparedContext
     videoPath: isAbsolute(videoFile) ? videoFile : resolve(process.cwd(), videoFile),
     visibility,
   };
-  await Promise.all([access(rendererPath), access(options.videoPath), access(options.coverPath)]).catch((error: unknown) => {
-    throw new Error(`抖音输入或 renderer 构建产物不存在；请先执行 npm run build:electron：${error instanceof Error ? error.message : String(error)}`);
-  });
+  await Promise.all([access(rendererPath), access(options.videoPath), access(options.coverPath)]).catch(
+    (error: unknown) => {
+      throw new Error(
+        `抖音输入或 renderer 构建产物不存在；请先执行 npm run build:electron：${error instanceof Error ? error.message : String(error)}`,
+      );
+    },
+  );
   let worker: InProcessWorker | undefined;
   try {
     worker = await createInProcessWorker(options, logger);
     await worker.ready;
     const prepared = {
-      ...await sendInProcessCommand<Omit<DouyinPreparedContext, "workerId">>(worker, "prepare", options),
+      ...(await sendInProcessCommand<Omit<DouyinPreparedContext, "workerId">>(worker, "prepare", options)),
       workerId: worker.id,
     };
     preparedWorkers.set(prepared, worker);
     return prepared;
   } catch (error) {
-    if (worker) await disposeWorker(worker).catch((cleanupError: unknown) => logger.error("Douyin prepare 失败后的清理也失败：", cleanupError));
+    if (worker)
+      await disposeWorker(worker).catch((cleanupError: unknown) =>
+        logger.error("Douyin prepare 失败后的清理也失败：", cleanupError),
+      );
     throw error;
   }
 }
@@ -2613,7 +2530,11 @@ async function publish(prepared: DouyinPreparedContext): Promise<VideoUploadResu
   const worker = preparedWorkers.get(prepared);
   if (!worker) throw new Error("抖音准备上下文无效或已经释放");
   const result = await sendInProcessCommand<DouyinPublishResponse>(worker, "publish", prepared);
-  return { success: true, postId: result.itemId, link: `https://www.douyin.com/video/${encodeURIComponent(result.itemId)}` };
+  return {
+    success: true,
+    postId: result.itemId,
+    link: `https://www.douyin.com/video/${encodeURIComponent(result.itemId)}`,
+  };
 }
 
 /** 关闭 prepare 创建的抖音窗口、IPC 和 Session；清理失败只写日志。 */
@@ -2632,11 +2553,13 @@ async function dispose(prepared?: DouyinPreparedContext): Promise<void> {
 export const DOUYIN_RECORD_STATUS_URL = "https://creator.douyin.com/web/api/media/aweme/post/";
 const DOUYIN_REJECT_REASON_MAP: Record<string, string> = {
   "Network Error": "网络错误，请稍后重试",
-  "Request failed with status code 403": "该账号状态可能异常，请尝试清除账号缓存重新登录并切换网络后重新发布，或直接前往【多开面板】中发布",
+  "Request failed with status code 403":
+    "该账号状态可能异常，请尝试清除账号缓存重新登录并切换网络后重新发布，或直接前往【多开面板】中发布",
   "Request failed with status code 502": "网络错误，请稍后重试",
   "Unexpected end of JSON input": "账号信息缺失，请前往【多开面板-添加账号】重新扫码登录该账号后重试",
   sms: "出现验证码了，请前往多开面板，在官方后台发布一次内容完成验证",
-  无响应: "出现验证码了，请先前往【多开面板】使用该抖音账号发布一条内容完成验证，发布成功后即可继续在【一键发布】中操作",
+  无响应:
+    "出现验证码了，请先前往【多开面板】使用该抖音账号发布一条内容完成验证，发布成功后即可继续在【一键发布】中操作",
   需优化: "审核未通过，作品需优化",
 };
 
@@ -2664,14 +2587,18 @@ export function parseDouyinRecordStatus(rawRecord: unknown): PublishedStateResul
   const record = asRecord(rawRecord);
   if (!record || !Number.isFinite(Number(record.status_value))) return null;
   const statusValue = Number(record.status_value);
-  const link = asString(record.share_url) ?? (asString(record.aweme_id) ? `https://www.iesdouyin.com/share/video/${asString(record.aweme_id)}/` : null);
-  if (statusValue === 141) return { status: "reviewing", link, raw: rawRecord, matchedBy: "platform_work_id", reason: null };
+  const link =
+    asString(record.share_url) ??
+    (asString(record.aweme_id) ? `https://www.iesdouyin.com/share/video/${asString(record.aweme_id)}/` : null);
+  if (statusValue === 141)
+    return { status: "reviewing", link, raw: rawRecord, matchedBy: "platform_work_id", reason: null };
   if ([102, 140, 143].includes(statusValue)) {
     return { status: "public", link, raw: rawRecord, matchedBy: "platform_work_id", reason: null };
   }
   const statusDescription = asString(asRecord(record.review_struct)?.status_desc);
-  const reason = (statusDescription ? DOUYIN_REJECT_REASON_MAP[statusDescription] ?? statusDescription : null)
-    ?? `审核未通过 状态码${statusValue}`;
+  const reason =
+    (statusDescription ? (DOUYIN_REJECT_REASON_MAP[statusDescription] ?? statusDescription) : null) ??
+    `审核未通过 状态码${statusValue}`;
   return { status: "non_public", link, raw: rawRecord, matchedBy: "platform_work_id", reason };
 }
 
@@ -2679,17 +2606,22 @@ export function parseDouyinRecordStatus(rawRecord: unknown): PublishedStateResul
 function collectDouyinRecords(rawPayload: unknown): Array<Record<string, unknown>> {
   const root = asRecord(rawPayload);
   const candidate = root?.aweme_list;
-  return Array.isArray(candidate) ? candidate.map(asRecord).filter((item): item is Record<string, unknown> => item !== null) : [];
+  return Array.isArray(candidate)
+    ? candidate.map(asRecord).filter((item): item is Record<string, unknown> => item !== null)
+    : [];
 }
 
 /** 读取抖音 storage-state 并生成 creator.douyin.com Cookie Header。 */
 async function loadDouyinCookieHeader(accountFile: string): Promise<string> {
   const parsed = JSON.parse(await readFile(accountFile, "utf8")) as unknown;
   const root = asRecord(parsed);
-  if (!Array.isArray(root?.cookies)) throw new Error("抖音 Cookie 文件必须是包含 cookies 数组的 Playwright storage-state JSON");
+  if (!Array.isArray(root?.cookies))
+    throw new Error("抖音 Cookie 文件必须是包含 cookies 数组的 Playwright storage-state JSON");
   const nowSeconds = Date.now() / 1_000;
   const cookies = (root.cookies as DouyinStoredCookie[]).flatMap((cookie) => {
-    const domain = String(cookie.domain || "").replace(/^\.+/u, "").toLowerCase();
+    const domain = String(cookie.domain || "")
+      .replace(/^\.+/u, "")
+      .toLowerCase();
     const validDomain = domain === "douyin.com" || domain.endsWith(".douyin.com");
     const unexpired = cookie.expires === -1 || cookie.expires > nowSeconds;
     return validDomain && unexpired && cookie.name && cookie.value ? [`${cookie.name}=${cookie.value}`] : [];
@@ -2699,7 +2631,10 @@ async function loadDouyinCookieHeader(accountFile: string): Promise<string> {
 }
 
 /** 只按投稿接口返回的平台作品 ID 匹配抖音作品。 */
-function findDouyinRecord(records: Array<Record<string, unknown>>, payload: PublishedStatePayload): Record<string, unknown> | null {
+function findDouyinRecord(
+  records: Array<Record<string, unknown>>,
+  payload: PublishedStatePayload,
+): Record<string, unknown> | null {
   const attributes = asRecord(payload.attributes);
   const clues = asRecord(attributes?.review_state_clues);
   const result = asRecord(payload.publishResult);
@@ -2751,7 +2686,7 @@ export class DouyinVideo implements Video {
     const resolvedAccountFile = isAbsolute(accountFile) ? accountFile : resolve(process.cwd(), accountFile);
     const [cookieHeader, browserIdentity] = await Promise.all([
       loadDouyinCookieHeader(resolvedAccountFile),
-      loadDouyinBrowserIdentity(publishElectron?.app.getAppPath() ?? process.cwd()),
+      loadBrowserIdentity(publishElectron?.app.getAppPath() ?? process.cwd()),
     ]);
     const response = await axios.get(DOUYIN_RECORD_STATUS_URL, {
       headers: {

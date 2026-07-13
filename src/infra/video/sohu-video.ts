@@ -7,7 +7,7 @@ import axiosRetry from "axios-retry";
 import pLimit from "p-limit";
 import sharp from "sharp";
 
-import { loadUserAgent } from "../../utils/environment.ts";
+import { loadBrowserIdentity } from "../browser-identity.ts";
 import { logger } from "../../utils/logger.ts";
 
 import type {
@@ -49,10 +49,7 @@ export interface StoredCookie {
 
 interface StorageState {
   cookies: StoredCookie[];
-  origins?: Array<{
-    localStorage: Array<{ name: string; value: string }>;
-    origin: string;
-  }>;
+  origins?: Array<{ localStorage: Array<{ name: string; value: string }>; origin: string }>;
 }
 
 interface SohuResponse<T = unknown> {
@@ -158,10 +155,9 @@ function serializeHeaders(headers: unknown): unknown {
   const values = headers instanceof AxiosHeaders ? headers.toJSON() : headers;
   if (!values || typeof values !== "object") return values;
   const sensitive = new Set(["cookie", "set-cookie", "dv-id", "sp-cm", "mp-cv"]);
-  return Object.fromEntries(Object.entries(values).map(([name, value]) => [
-    name,
-    sensitive.has(name.toLowerCase()) ? "<redacted>" : value,
-  ]));
+  return Object.fromEntries(
+    Object.entries(values).map(([name, value]) => [name, sensitive.has(name.toLowerCase()) ? "<redacted>" : value]),
+  );
 }
 
 /** 将请求体转换成不会输出二进制内容的日志值。 */
@@ -210,32 +206,35 @@ function createHttpClient(account: SohuAccountContext, userAgent: string, enable
     retryDelay: axiosRetry.exponentialDelay,
   });
   http.interceptors.request.use(logHttpRequest);
-  http.interceptors.response.use((response) => {
-    logger.info({
-      type: "sohu-http-response",
-      response: {
-        body: response.data,
-        headers: serializeHeaders(response.headers),
-        status: response.status,
-        url: response.config.url,
-      },
-    });
-    return response;
-  }, (error: unknown) => {
-    if (axios.isAxiosError(error)) {
-      logger.error({
-        type: "sohu-http-error",
-        error: {
-          body: error.response?.data,
-          message: error.message,
-          method: error.config?.method?.toUpperCase(),
-          status: error.response?.status,
-          url: error.config?.url,
+  http.interceptors.response.use(
+    (response) => {
+      logger.info({
+        type: "sohu-http-response",
+        response: {
+          body: response.data,
+          headers: serializeHeaders(response.headers),
+          status: response.status,
+          url: response.config.url,
         },
       });
-    }
-    throw error;
-  });
+      return response;
+    },
+    (error: unknown) => {
+      if (axios.isAxiosError(error)) {
+        logger.error({
+          type: "sohu-http-error",
+          error: {
+            body: error.response?.data,
+            message: error.message,
+            method: error.config?.method?.toUpperCase(),
+            status: error.response?.status,
+            url: error.config?.url,
+          },
+        });
+      }
+      throw error;
+    },
+  );
   return http;
 }
 
@@ -243,9 +242,11 @@ function createHttpClient(account: SohuAccountContext, userAgent: string, enable
 export async function loadSohuAccountContext(accountFile: string): Promise<SohuAccountContext> {
   const state = JSON.parse(await readFile(accountFile, "utf8")) as StorageState;
   const now = Date.now() / 1_000;
-  const cookies = state.cookies.filter((cookie) =>
-    ["sohu.com", ".sohu.com", "mp.sohu.com"].includes(cookie.domain)
-    && (cookie.expires === -1 || cookie.expires > now));
+  const cookies = state.cookies.filter(
+    (cookie) =>
+      ["sohu.com", ".sohu.com", "mp.sohu.com"].includes(cookie.domain) &&
+      (cookie.expires === -1 || cookie.expires > now),
+  );
   if (cookies.length === 0) throw new SohuInfraError("搜狐账号凭据不完整，请重新登录：缺少有效 Cookie");
 
   const origin = state.origins?.find((item) => item.origin === SOHU_ORIGIN);
@@ -253,18 +254,14 @@ export async function loadSohuAccountContext(accountFile: string): Promise<SohuA
   const vuexValue = localStorage.get("vuex");
   if (!vuexValue) throw new SohuInfraError("搜狐账号凭据不完整，请重新登录：缺少 vuex");
   const vuex = JSON.parse(vuexValue) as {
-    app?: {
-      UandAStatus?: { userCode?: string };
-      userInfo?: { id?: string | number };
-    };
+    app?: { UandAStatus?: { userCode?: string }; userInfo?: { id?: string | number } };
   };
   const accountId = String(vuex.app?.userInfo?.id ?? "").trim();
   if (!accountId) throw new SohuInfraError("搜狐账号凭据不完整，请重新登录：缺少平台 accountId");
   const userCode = vuex.app?.UandAStatus?.userCode;
   const mpCv = cookies.find((cookie) => cookie.name === "mp-cv")?.value;
-  const spCm = (userCode ? localStorage.get(`${userCode}-sp-cm`) : undefined)
-    ?? localStorage.get("preview-sp-cm")
-    ?? mpCv;
+  const spCm =
+    (userCode ? localStorage.get(`${userCode}-sp-cm`) : undefined) ?? localStorage.get("preview-sp-cm") ?? mpCv;
   if (!spCm) throw new SohuInfraError("搜狐账号凭据不完整，请重新登录：缺少 sp-cm");
   const dvId = localStorage.get("preview-dv-id");
   if (!dvId) throw new SohuInfraError("搜狐账号凭据不完整，请重新登录：缺少 dv-id");
@@ -318,7 +315,9 @@ export function createSohuBrief(introduction: string, tags: unknown): string {
 
 /** 应用搜狐标题和简介规则，构造最终发布文案。 */
 export function createSohuPublication(title: unknown, introduction: unknown, tags: unknown): SohuPublication {
-  const normalizedTitle = String(title ?? "").trim().slice(0, 60);
+  const normalizedTitle = String(title ?? "")
+    .trim()
+    .slice(0, 60);
   if (normalizedTitle.length < 5) throw new SohuInfraError("搜狐视频标题长度必须至少为 5 个字符");
   const description = String(introduction ?? normalizedTitle).trim();
   return { brief: createSohuBrief(description, tags), title: normalizedTitle };
@@ -337,13 +336,10 @@ async function parseUploadInput(input: VideoUploadPayload): Promise<SohuUploadIn
   if (!accountFile || !coverFile || !videoFile || !rawTitle) {
     throw new SohuInfraError("搜狐发布缺少账号、封面、视频或标题");
   }
-  const publication = createSohuPublication(
-    rawTitle,
-    input.introduction ?? input.description ?? rawTitle,
-    input.tags,
-  );
+  const publication = createSohuPublication(rawTitle, input.introduction ?? input.description ?? rawTitle, input.tags);
   if (!Number.isSafeInteger(channelId) || channelId <= 0) throw new SohuInfraError("搜狐发布缺少有效的 channelId");
-  if (!Number.isSafeInteger(videoChannelId) || videoChannelId <= 0) throw new SohuInfraError("搜狐发布缺少有效的 videoChannelId");
+  if (!Number.isSafeInteger(videoChannelId) || videoChannelId <= 0)
+    throw new SohuInfraError("搜狐发布缺少有效的 videoChannelId");
   const resolvedAccountFile = isAbsolute(accountFile) ? accountFile : resolve(process.cwd(), accountFile);
   const coverPath = isAbsolute(coverFile) ? coverFile : resolve(process.cwd(), coverFile);
   const videoPath = isAbsolute(videoFile) ? videoFile : resolve(process.cwd(), videoFile);
@@ -352,7 +348,13 @@ async function parseUploadInput(input: VideoUploadPayload): Promise<SohuUploadIn
     stat(coverPath),
     stat(videoPath),
   ]);
-  if (!accountStats.isFile() || !coverStats.isFile() || coverStats.size <= 0 || !videoStats.isFile() || videoStats.size <= 0) {
+  if (
+    !accountStats.isFile() ||
+    !coverStats.isFile() ||
+    coverStats.size <= 0 ||
+    !videoStats.isFile() ||
+    videoStats.size <= 0
+  ) {
     throw new SohuInfraError("搜狐发布的账号、封面或视频文件无效");
   }
   return {
@@ -375,14 +377,10 @@ async function assertAuthenticated(http: AxiosInstance, accountId: string): Prom
 /** 查询并规范化当前搜狐账号的一级、二级频道树。 */
 async function fetchSohuChannels(http: AxiosInstance, accountId: string): Promise<SohuChannel[]> {
   const [channelsResponse, videoChannelsResponse] = await Promise.all([
-    http.get<SohuResponse<RawChannel[]> | RawChannel[]>(SOHU_CHANNELS_URL, {
-      params: { accountId, status: 1 },
-    }),
+    http.get<SohuResponse<RawChannel[]> | RawChannel[]>(SOHU_CHANNELS_URL, { params: { accountId, status: 1 } }),
     http.get<SohuResponse<RawVideoChannel[]>>(SOHU_VIDEO_CHANNELS_URL, { params: { accountId } }),
   ]);
-  const rawChannels = Array.isArray(channelsResponse.data)
-    ? channelsResponse.data
-    : (channelsResponse.data.data ?? []);
+  const rawChannels = Array.isArray(channelsResponse.data) ? channelsResponse.data : (channelsResponse.data.data ?? []);
   const rawVideoChannels = videoChannelsResponse.data.data ?? [];
   const videoChannels = rawVideoChannels.flatMap((channel) => {
     const id = Number(channel.id);
@@ -396,13 +394,15 @@ async function fetchSohuChannels(http: AxiosInstance, accountId: string): Promis
     const id = Number(channel.id);
     const name = String(channel.name ?? "").trim();
     if (!Number.isSafeInteger(id) || id <= 0 || !name) return [];
-    return [{
-      id,
-      name,
-      videoChannels: videoChannels
-        .filter((videoChannel) => videoChannel.channelId === id)
-        .map(({ id: videoChannelId, name: videoChannelName }) => ({ id: videoChannelId, name: videoChannelName })),
-    }];
+    return [
+      {
+        id,
+        name,
+        videoChannels: videoChannels
+          .filter((videoChannel) => videoChannel.channelId === id)
+          .map(({ id: videoChannelId, name: videoChannelName }) => ({ id: videoChannelId, name: videoChannelName })),
+      },
+    ];
   });
   if (!channels.some((channel) => channel.videoChannels.length > 0)) {
     throw new SohuInfraError("当前搜狐账号没有可用的一级、二级频道组合");
@@ -415,7 +415,7 @@ export async function getSohuChannels(accountFile: string): Promise<SohuChannel[
   const resolvedAccountFile = isAbsolute(accountFile) ? accountFile : resolve(process.cwd(), accountFile);
   const [account, userAgent] = await Promise.all([
     loadSohuAccountContext(resolvedAccountFile),
-    loadUserAgent(),
+    loadBrowserIdentity().then((identity) => identity.userAgent),
   ]);
   const http = createHttpClient(account, userAgent);
   await assertAuthenticated(http, account.accountId);
@@ -423,11 +423,7 @@ export async function getSohuChannels(accountFile: string): Promise<SohuChannel[
 }
 
 /** 断言 payload 频道 ID 属于账号当前返回的同一父子组合。 */
-export function assertSohuChannelSelection(
-  channels: SohuChannel[],
-  channelId: number,
-  videoChannelId: number,
-): void {
+export function assertSohuChannelSelection(channels: SohuChannel[], channelId: number, videoChannelId: number): void {
   const channel = channels.find((candidate) => candidate.id === channelId);
   if (!channel) throw new SohuInfraError(`搜狐 channelId=${channelId} 不在当前账号的频道列表中`);
   if (!channel.videoChannels.some((candidate) => candidate.id === videoChannelId)) {
@@ -470,19 +466,24 @@ async function uploadVideo(
   const file = await open(videoPath, "r");
   try {
     const limit = pLimit(SOHU_CHUNK_CONCURRENCY);
-    await Promise.all(createSohuVideoChunks(videoStats.size).map((chunk) => limit(async () => {
-      const length = chunk.end - chunk.start;
-      const buffer = Buffer.allocUnsafe(length);
-      const { bytesRead } = await file.read(buffer, 0, length, chunk.start);
-      if (bytesRead !== length) throw new SohuInfraError(`读取搜狐视频分片 ${chunk.partNumber} 不完整`);
-      const form = new FormData();
-      form.append("file", new Blob([new Uint8Array(buffer)], { type: "application/octet-stream" }), videoName);
-      const separator = uploadUrl.includes("?") ? "&" : "?";
-      const url = `${uploadUrl}${separator}id=${encodeURIComponent(videoId)}`
-        + `&type=6&partNo=${chunk.partNumber}&outType=3&partsize=${SOHU_CHUNK_SIZE}`;
-      const response = await http.post<SohuResponse>(url, form, { params: { accountId } });
-      assertSohuSuccess(response.data, [100], `上传搜狐视频分片 ${chunk.partNumber}`);
-    })));
+    await Promise.all(
+      createSohuVideoChunks(videoStats.size).map((chunk) =>
+        limit(async () => {
+          const length = chunk.end - chunk.start;
+          const buffer = Buffer.allocUnsafe(length);
+          const { bytesRead } = await file.read(buffer, 0, length, chunk.start);
+          if (bytesRead !== length) throw new SohuInfraError(`读取搜狐视频分片 ${chunk.partNumber} 不完整`);
+          const form = new FormData();
+          form.append("file", new Blob([new Uint8Array(buffer)], { type: "application/octet-stream" }), videoName);
+          const separator = uploadUrl.includes("?") ? "&" : "?";
+          const url =
+            `${uploadUrl}${separator}id=${encodeURIComponent(videoId)}` +
+            `&type=6&partNo=${chunk.partNumber}&outType=3&partsize=${SOHU_CHUNK_SIZE}`;
+          const response = await http.post<SohuResponse>(url, form, { params: { accountId } });
+          assertSohuSuccess(response.data, [100], `上传搜狐视频分片 ${chunk.partNumber}`);
+        }),
+      ),
+    );
   } finally {
     await file.close();
   }
@@ -522,7 +523,10 @@ async function uploadCover(http: AxiosInstance, accountId: string, coverPath: st
     form,
   );
   const originalUrl = uploadResponse.data.url ?? uploadResponse.data.data?.url;
-  if (!originalUrl) throw new SohuInfraError(`上传搜狐封面失败：${uploadResponse.data.msg ?? uploadResponse.data.message ?? "响应缺少 url"}`);
+  if (!originalUrl)
+    throw new SohuInfraError(
+      `上传搜狐封面失败：${uploadResponse.data.msg ?? uploadResponse.data.message ?? "响应缺少 url"}`,
+    );
   const ratio = metadata.width / metadata.height;
   const cropHeight = ratio > 1.5 ? metadata.height : Math.floor((metadata.width * 2) / 3);
   const cropWidth = ratio > 1.5 ? Math.floor(metadata.height * 1.5) : metadata.width;
@@ -536,7 +540,10 @@ async function uploadCover(http: AxiosInstance, accountId: string, coverPath: st
     toUrlEncoded({ accountId, url: transformedUrl }),
   );
   const coverUrl = compressedResponse.data.url ?? compressedResponse.data.data?.url;
-  if (!coverUrl) throw new SohuInfraError(`生成搜狐封面失败：${compressedResponse.data.msg ?? compressedResponse.data.message ?? "响应缺少 url"}`);
+  if (!coverUrl)
+    throw new SohuInfraError(
+      `生成搜狐封面失败：${compressedResponse.data.msg ?? compressedResponse.data.message ?? "响应缺少 url"}`,
+    );
   return coverUrl;
 }
 
@@ -578,7 +585,7 @@ async function prepare(input: VideoUploadPayload): Promise<SohuPreparedContext> 
   const parsed = await parseUploadInput(input);
   const [account, userAgent] = await Promise.all([
     loadSohuAccountContext(parsed.accountFile),
-    loadUserAgent(),
+    loadBrowserIdentity().then((identity) => identity.userAgent),
   ]);
   const http = createHttpClient(account, userAgent);
   await assertAuthenticated(http, account.accountId);
@@ -621,12 +628,7 @@ async function publish(prepared: SohuPreparedContext): Promise<VideoUploadResult
   );
   assertSohuSuccess(response.data, [2_000_000], "发布搜狐视频");
   const postId = extractSohuPublishedPostId(response.data);
-  return {
-    success: true,
-    title: prepared.publication.title,
-    postId,
-    response: response.data,
-  };
+  return { success: true, title: prepared.publication.title, postId, response: response.data };
 }
 
 /** 从搜狐投稿成功响应的标量 data 中提取视频唯一 ID。 */
@@ -693,9 +695,8 @@ export function parseSohuRecordStatus(rawRecord: unknown): PublishedStateResult 
   return createPublishedStateResult({
     status: mapping.status,
     raw: rawRecord,
-    reason: mapping.status === "non_public" && rejectReason
-      ? rejectReason
-      : `${mapping.label}（搜狐状态码 ${statusValue}）`,
+    reason:
+      mapping.status === "non_public" && rejectReason ? rejectReason : `${mapping.label}（搜狐状态码 ${statusValue}）`,
   });
 }
 
@@ -704,9 +705,7 @@ function resolveSohuPlatformWorkId(payload: PublishedStatePayload): string | nul
   const attributes = asRecord(payload.attributes);
   const clues = asRecord(attributes?.review_state_clues);
   const result = asRecord(payload.publishResult);
-  return [clues?.platform_work_id, result?.postId]
-    .map(normalizeSohuRecordId)
-    .find(Boolean) ?? null;
+  return [clues?.platform_work_id, result?.postId].map(normalizeSohuRecordId).find(Boolean) ?? null;
 }
 
 /** 将搜狐 record.id 收窄为可用于唯一匹配的字符串。 */
@@ -784,12 +783,13 @@ export async function fetchPublishedState(payload: PublishedStatePayload): Promi
   if (!accountFile) throw new SohuInfraError("搜狐发布状态查询缺少 accountFile");
   const platformWorkId = resolveSohuPlatformWorkId(payload);
   if (!platformWorkId) throw new SohuInfraError("搜狐发布状态查询缺少平台作品 ID");
-  const timeoutMs = typeof payload.timeoutMs === "number" && Number.isFinite(payload.timeoutMs) && payload.timeoutMs > 0
-    ? payload.timeoutMs
-    : DEFAULT_RECORD_STATUS_TIMEOUT_MS;
+  const timeoutMs =
+    typeof payload.timeoutMs === "number" && Number.isFinite(payload.timeoutMs) && payload.timeoutMs > 0
+      ? payload.timeoutMs
+      : DEFAULT_RECORD_STATUS_TIMEOUT_MS;
   const [account, userAgent] = await Promise.all([
     loadSohuAccountContext(accountFile),
-    loadUserAgent(),
+    loadBrowserIdentity().then((identity) => identity.userAgent),
   ]);
   const http = createHttpClient(account, userAgent, false);
   const scannedPages: Array<{ pageNumber: number; recordCount: number }> = [];
