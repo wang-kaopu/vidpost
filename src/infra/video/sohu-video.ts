@@ -654,19 +654,6 @@ async function prepare(input: VideoUploadPayload): Promise<SohuPreparedContext> 
   };
 }
 
-/** 从搜狐最终发布响应中提取作品 ID，不使用视频上传任务 ID。 */
-export function extractSohuPublishedWorkId(response: unknown): string | null {
-  const body = asRecord(response);
-  const data = asRecord(body?.data);
-  for (const candidate of [body?.clientNewsId, data?.clientNewsId, body?.id, data?.id]) {
-    if (typeof candidate === "string" || typeof candidate === "number") {
-      const normalized = String(candidate).trim();
-      if (normalized) return normalized;
-    }
-  }
-  return null;
-}
-
 /** 查询发布额度并发送唯一一次最终发布请求。 */
 async function publish(prepared: SohuPreparedContext): Promise<VideoUploadResult> {
   const limitResponse = await prepared.http.get<SohuResponse<Record<string, number>>>(SOHU_PUBLISH_LIMIT_URL, {
@@ -681,7 +668,14 @@ async function publish(prepared: SohuPreparedContext): Promise<VideoUploadResult
     { headers: { "Content-Type": "application/json" } },
   );
   assertSohuSuccess(response.data, [2_000_000], "发布搜狐视频");
-  const postId = extractSohuPublishedWorkId(response.data);
+  const responseBody = asRecord(response.data);
+  const responseData = asRecord(responseBody?.data);
+  const postId = [responseBody?.clientNewsId, responseData?.clientNewsId, responseBody?.id, responseData?.id]
+    .flatMap((candidate) => {
+      if (typeof candidate !== "string" && typeof candidate !== "number") return [];
+      const normalized = String(candidate).trim();
+      return normalized ? [normalized] : [];
+    })[0] ?? "";
   return {
     success: true,
     title: prepared.publication.title,

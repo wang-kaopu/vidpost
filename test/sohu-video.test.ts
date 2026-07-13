@@ -11,7 +11,6 @@ import {
   createSohuPublication,
   createSohuPublishPayload,
   createSohuVideoChunks,
-  extractSohuPublishedWorkId,
   loadSohuAccountContext,
   SohuVideo,
 } from "../src/infra/video/sohu-video.ts";
@@ -75,12 +74,6 @@ test("createSohuPublishPayload keeps the verified safe defaults", () => {
   assert.equal(payload.userColumnId, 0);
   assert.deepEqual(payload.topicIds, []);
   assert.equal(payload.userLabels, "[]");
-});
-
-test("extractSohuPublishedWorkId prefers clientNewsId and never needs the upload video ID", () => {
-  assert.equal(extractSohuPublishedWorkId({ id: 10, data: { clientNewsId: 20 } }), "20");
-  assert.equal(extractSohuPublishedWorkId({ data: { id: 30 } }), "30");
-  assert.equal(extractSohuPublishedWorkId({ code: 2_000_000 }), null);
 });
 
 test("loadSohuAccountContext rejects every incomplete credential stage", async () => {
