@@ -15,6 +15,7 @@ import PlatformPickerDialog from "./PlatformPickerDialog.vue";
 import PublishPlanDialog from "./PublishPlanDialog.vue";
 import type { AccountItem, WorkItem } from "@/types";
 import { useNotificationCenter } from "@/notifications";
+import { IMMEDIATE_PUBLISH_VALUE, validateScheduledAt } from "@/utils/publish-schedule";
 import { useDialogLayer } from "../composables/useDialogLayer";
 
 type SelectedWorkRow = {
@@ -67,8 +68,6 @@ type PublishPlanDraft = {
   videoChannelId: number | null;
   visibility: "public" | "friends" | "self";
 };
-
-const IMMEDIATE_PUBLISH_VALUE = "0";
 
 const works = ref<WorkItem[]>([]);
 const loading = ref(false);
@@ -424,7 +423,7 @@ const handlePublishPlanFieldUpdate = (payload: {
   };
 };
 
-const handlePublishPlanApplyAll = (payload: { title: string; summary: string; scheduledAt: string }): void => {
+const handlePublishPlanApplyAll = (payload: { title: string; summary: string }): void => {
   const nextDrafts: Record<string, PublishPlanDraft> = {};
 
   for (const group of publishPlanGroups.value) {
@@ -432,7 +431,7 @@ const handlePublishPlanApplyAll = (payload: { title: string; summary: string; sc
       nextDrafts[row.id] = {
         title: payload.title,
         summary: payload.summary,
-        scheduledAt: IMMEDIATE_PUBLISH_VALUE,
+        scheduledAt: publishPlanDrafts.value[row.id]?.scheduledAt ?? IMMEDIATE_PUBLISH_VALUE,
         humanTypeId: publishPlanDrafts.value[row.id]?.humanTypeId ?? null,
         channelId: publishPlanDrafts.value[row.id]?.channelId ?? null,
         videoChannelId: publishPlanDrafts.value[row.id]?.videoChannelId ?? null,
@@ -451,11 +450,9 @@ const buildPublishTaskScheduleValidationError = (task: {
   title: string;
   scheduledAt: string;
 }): string | null => {
-  const normalizedScheduledAt = String(task.scheduledAt || "").trim();
   const taskLabel = `${task.platformLabel}账号「${task.accountName}」`;
-  return normalizedScheduledAt === IMMEDIATE_PUBLISH_VALUE
-    ? null
-    : `${taskLabel} 当前仅支持立即发布，请将《${task.title}》的发布时间设为立即发布`;
+  const validationError = validateScheduledAt(task.platform, String(task.scheduledAt || "").trim());
+  return validationError ? `${taskLabel}《${task.title}》：${validationError}` : null;
 };
 
 const resetPublishPlanState = (): void => {

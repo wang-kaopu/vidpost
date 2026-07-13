@@ -20,6 +20,9 @@ bin-release/
 # 依赖
 node_modules
 app/node_modules
+app/dist/*
+!app/dist/platform-icons/
+!app/dist/platform-icons/**
 
 # ai coding config
 .omx/

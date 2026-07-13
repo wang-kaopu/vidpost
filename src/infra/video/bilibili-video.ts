@@ -33,6 +33,26 @@ const HUMAN_TYPE_URL = "https://member.bilibili.com/x/vupre/web/archive/human/ty
 const PUBLISH_URL = "https://member.bilibili.com/x/vu/web/add/v3";
 const CHUNK_SIZE = 10 * 1024 * 1024;
 
+/** 将 B 站任务的上海发布时间转换为 Unix 秒；立即发布返回 null。 */
+export function parseBilibiliScheduledAt(value: unknown): number | null {
+  const scheduledAt = String(value ?? "").trim();
+  if (!scheduledAt || scheduledAt === "0") return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/u.exec(scheduledAt);
+  if (!match) throw new Error("Bilibili scheduledAt 格式必须为 YYYY-MM-DD HH:mm");
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const timestampMs = Date.UTC(year, month - 1, day, hour - 8, minute);
+  const check = new Date(timestampMs + 8 * 60 * 60 * 1_000);
+  if (
+    check.getUTCFullYear() !== year || check.getUTCMonth() + 1 !== month
+    || check.getUTCDate() !== day || check.getUTCHours() !== hour || check.getUTCMinutes() !== minute
+  ) throw new Error("Bilibili scheduledAt 包含无效日期");
+  return Math.floor(timestampMs / 1_000);
+}
+
 /** 从 assets 中严格读取当前系统对应的 Bilibili Chrome 138 User-Agent。 */
 async function loadBilibiliBrowserUserAgent(): Promise<string> {
   const fileName = process.platform === "win32"
@@ -518,8 +538,7 @@ const preparedRuntime = new WeakMap<BilibiliPreparedContext, { http: AxiosInstan
 
 /** 完成 Bilibili 最终投稿前的全部校验和素材上传。 */
 async function prepare(input: VideoUploadPayload): Promise<BilibiliPreparedContext> {
-  const scheduledAt = String(input.scheduledAt ?? "").trim();
-  if (scheduledAt && scheduledAt !== "0") throw new Error('Bilibili 当前仅支持立即发布，scheduledAt 必须为 "0"');
+  const dtime = parseBilibiliScheduledAt(input.scheduledAt);
   const accountFile = String(input.accountFile ?? "").trim();
   const coverFile = String(input.coverPath ?? input.thumbnailPath ?? "").trim();
   const videoFile = String(input.videoPath ?? input.filePath ?? "").trim();
@@ -575,6 +594,7 @@ async function prepare(input: VideoUploadPayload): Promise<BilibiliPreparedConte
       videos: [{ cid: uploaded.bizId, desc: "", filename: uploaded.videoKey, title: publication.title }],
       watermark: { state: 1 },
       subtitle: { lan: "", open: 0 },
+      ...(dtime === null ? {} : { dtime }),
     },
     publication,
     uploaded,

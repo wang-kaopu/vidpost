@@ -51,11 +51,8 @@ test("platform modules expose publishing only through Video instances", async ()
   }
 });
 
-test("migrated platform uploads reject scheduled publishing before touching files", async () => {
+test("Sohu rejects scheduled publishing before touching files", async () => {
   const scheduled = { scheduledAt: "2026-07-11 12:00" };
-  await assert.rejects(new BilibiliVideo().upload(scheduled), /仅支持立即发布/u);
-  await assert.rejects(new BaijiahaoVideo().upload(scheduled), /仅支持立即发布/u);
-  await assert.rejects(new DouyinVideo().upload(scheduled), /仅支持立即发布/u);
   await assert.rejects(new SohuVideo().upload(scheduled), /仅支持立即发布/u);
 });
 

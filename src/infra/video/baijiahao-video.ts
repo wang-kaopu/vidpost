@@ -78,6 +78,26 @@ const CHUNK_CONCURRENCY = 3;
 const MP4_READ_SIZE = 1024 * 1024;
 const RETRY_DELAYS_MS = [1_000, 2_000, 4_000] as const;
 
+/** 将百家号任务的上海发布时间转换为 Unix 秒字符串；立即发布返回 null。 */
+export function parseBaijiahaoScheduledAt(value: unknown): string | null {
+  const scheduledAt = String(value ?? "").trim();
+  if (!scheduledAt || scheduledAt === "0") return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/u.exec(scheduledAt);
+  if (!match) throw new Error("百家号 scheduledAt 格式必须为 YYYY-MM-DD HH:mm");
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const timestampMs = Date.UTC(year, month - 1, day, hour - 8, minute);
+  const check = new Date(timestampMs + 8 * 60 * 60 * 1_000);
+  if (
+    check.getUTCFullYear() !== year || check.getUTCMonth() + 1 !== month
+    || check.getUTCDate() !== day || check.getUTCHours() !== hour || check.getUTCMinutes() !== minute
+  ) throw new Error("百家号 scheduledAt 包含无效日期");
+  return String(Math.floor(timestampMs / 1_000));
+}
+
 const IMAGE_EDIT_POINT = [
   {
     img_type: "cover",
@@ -239,6 +259,7 @@ export interface PublishPayloadInput {
   mediaId: string;
   size: number;
   title: string;
+  timerTime?: string;
   topic?: BaijiahaoTopic;
   verticalCoverOriginalUrl: string;
   verticalCoverUrl: string;
@@ -533,6 +554,7 @@ function buildPublishPayload(input: PublishPayloadInput): Record<string, unknown
     s2game: null,
     bjh: { duration },
   });
+  if (input.timerTime) payload.timer_time = input.timerTime;
   return payload;
 }
 
@@ -779,8 +801,7 @@ const preparedRuntime = new WeakMap<BaijiahaoPreparedContext, { http: AxiosInsta
 
 /** 完成百家号最终发布前的全部校验、转码和素材上传。 */
 async function prepare(input: VideoUploadPayload): Promise<BaijiahaoPreparedContext> {
-  const scheduledAt = String(input.scheduledAt ?? "").trim();
-  if (scheduledAt && scheduledAt !== "0") throw new Error('百家号当前仅支持立即发布，scheduledAt 必须为 "0"');
+  const timerTime = parseBaijiahaoScheduledAt(input.scheduledAt);
   const accountFile = String(input.accountFile ?? "").trim();
   const coverFile = String(input.coverPath ?? input.thumbnailPath ?? "").trim();
   const videoFile = String(input.videoPath ?? input.filePath ?? "").trim();
@@ -876,6 +897,7 @@ async function prepare(input: VideoUploadPayload): Promise<BaijiahaoPreparedCont
     mediaId: uploadContext.mediaId,
     size: metadata.size,
     title: publication.title,
+    ...(timerTime ? { timerTime } : {}),
     ...(topic ? { topic } : {}),
     verticalCoverOriginalUrl: verticalCover.originalUrl,
     verticalCoverUrl: verticalCover.url,

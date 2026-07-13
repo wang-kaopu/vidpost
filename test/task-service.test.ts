@@ -10,11 +10,8 @@ test('normalizeScheduledAt should treat only "0" as immediate publish sentinel',
   assert.equal(normalizeScheduledAt('0'), '0')
 })
 
-test('normalizeScheduledAt should reject every scheduled publish time', () => {
-  assert.throws(
-    () => normalizeScheduledAt('2026-05-01 12:30'),
-    /当前仅支持立即发布/,
-  )
+test('normalizeScheduledAt should preserve a non-empty scheduled publish time', () => {
+  assert.equal(normalizeScheduledAt('2026-05-01 12:30'), '2026-05-01 12:30')
 })
 
 test('resolvePublishOptions persists platform-specific publish options', () => {

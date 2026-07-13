@@ -1,6 +1,14 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useDialogLayer } from "../composables/useDialogLayer";
+import {
+  getScheduledPublishBounds,
+  IMMEDIATE_PUBLISH_VALUE,
+  normalizeScheduledAtInput,
+  supportsScheduledPublish,
+  toDatetimeLocalValue,
+  validateScheduledAt,
+} from "../utils/publish-schedule";
 
 type PublishPlanRow = {
   id: string;
@@ -35,8 +43,6 @@ type PublishPlanGroup = {
   rows: PublishPlanRow[];
 };
 
-const IMMEDIATE_PUBLISH_VALUE = "0";
-
 const props = withDefaults(
   defineProps<{
     visible: boolean;
@@ -61,8 +67,11 @@ const emit = defineEmits<{
     field: "title" | "summary" | "scheduledAt" | "humanTypeId" | "channelId" | "videoChannelId" | "visibility";
     value: string | number | null;
   }];
-  "apply-all": [payload: { title: string; summary: string; scheduledAt: string }];
+  "apply-all": [payload: { title: string; summary: string }];
 }>();
+
+const scheduleNowMs = ref(Date.now());
+let scheduleClock: number | null = null;
 
 const totalPlanCount = computed(() => props.groups.reduce((total, group) => total + group.rows.length, 0));
 const canConfirm = computed(() => totalPlanCount.value > 0 && props.groups.every((group) =>
@@ -87,44 +96,66 @@ const canConfirm = computed(() => totalPlanCount.value > 0 && props.groups.every
         && channel.videoChannels.some((videoChannel) => videoChannel.id === row.videoChannelId)
       )
     ))
+    && validateScheduledAt(row.platformKey, row.scheduledAt, scheduleNowMs.value) === null
   )
 ));
 
 const globalTitle = ref("");
 const globalSummary = ref("");
-const globalTimedPublish = ref(false);
-const globalScheduleTime = ref("");
-
 const applyAll = (): void => {
   emit("apply-all", {
     title: globalTitle.value,
     summary: globalSummary.value,
-    scheduledAt: IMMEDIATE_PUBLISH_VALUE,
   });
 };
 
 const isRowTimedPublishEnabled = (scheduledAt: string): boolean => scheduledAt !== IMMEDIATE_PUBLISH_VALUE;
 
-const toDatetimeLocal = (str: string): string => str.replace(" ", "T").slice(0, 16);
+/** 切换单行定时发布，并在首次开启时填入平台最早合法时间。 */
+const toggleRowTimedPublish = (row: PublishPlanRow): void => {
+  if (!supportsScheduledPublish(row.platformKey)) return;
+  emit("update-row-field", {
+    rowId: row.id,
+    field: "scheduledAt",
+    value: isRowTimedPublishEnabled(row.scheduledAt)
+      ? IMMEDIATE_PUBLISH_VALUE
+      : normalizeScheduledAtInput(getScheduledPublishBounds(row.platformKey, scheduleNowMs.value).defaultValue),
+  });
+};
+
+/** 返回单行时间控件及错误提示需要的动态状态。 */
+const getRowScheduleState = (row: PublishPlanRow) => {
+  const bounds = supportsScheduledPublish(row.platformKey)
+    ? getScheduledPublishBounds(row.platformKey, scheduleNowMs.value)
+    : null;
+  return {
+    bounds,
+    error: validateScheduledAt(row.platformKey, row.scheduledAt, scheduleNowMs.value),
+    supported: bounds !== null,
+  };
+};
 
 watch(
   () => props.visible,
   (visible) => {
     if (!visible) {
+      if (scheduleClock !== null) window.clearInterval(scheduleClock);
+      scheduleClock = null;
       return;
     }
 
+    scheduleNowMs.value = Date.now();
+    if (scheduleClock !== null) window.clearInterval(scheduleClock);
+    scheduleClock = window.setInterval(() => {
+      scheduleNowMs.value = Date.now();
+    }, 30_000);
     globalTitle.value = "";
     globalSummary.value = "";
-    globalTimedPublish.value = false;
-    globalScheduleTime.value = "";
   },
 );
 
-watch(globalTimedPublish, (enabled) => {
-  if (!enabled) {
-    globalScheduleTime.value = "";
-  }
+onBeforeUnmount(() => {
+  if (scheduleClock !== null) window.clearInterval(scheduleClock);
 });
 
 useDialogLayer(() => props.visible);
@@ -159,44 +190,15 @@ useDialogLayer(() => props.visible);
           </div>
 
           <div class="publish-plan-global-grid">
-            <div class="publish-plan-global-left">
-              <label class="publish-plan-field publish-plan-field--title">
-                <span>标题</span>
-                <input
-                  :value="globalTitle"
-                  type="text"
-                  placeholder="标题"
-                  @input="globalTitle = ($event.target as HTMLInputElement).value"
-                />
-              </label>
-              <section class="publish-plan-timing-card is-disabled">
-                <div class="publish-plan-timing-card-header">
-                  <div class="publish-plan-timing-copy">
-                    <span class="publish-plan-timing-title">定时发布</span>
-                    <span class="publish-plan-timing-hint">
-                      当前平台仅支持立即发布
-                    </span>
-                  </div>
-                  <button
-                    class="publish-plan-switch-control"
-                    :class="{ active: globalTimedPublish }"
-                    type="button"
-                    :aria-pressed="false"
-                    disabled
-                  >
-                    <span />
-                  </button>
-                </div>
-                <label class="publish-plan-field publish-plan-field--schedule">
-                  <span>发布时间</span>
-                  <input
-                    :value="toDatetimeLocal(globalScheduleTime)"
-                    type="datetime-local"
-                    disabled
-                  />
-                </label>
-              </section>
-            </div>
+            <label class="publish-plan-field publish-plan-field--title">
+              <span>标题</span>
+              <input
+                :value="globalTitle"
+                type="text"
+                placeholder="标题"
+                @input="globalTitle = ($event.target as HTMLInputElement).value"
+              />
+            </label>
             <label class="publish-plan-field publish-plan-field--summary">
               <span>简介</span>
               <textarea
@@ -335,14 +337,21 @@ useDialogLayer(() => props.visible);
                   />
                 </td>
                 <td>
-                  <div class="publish-plan-table-timing is-disabled">
+                  <div
+                    class="publish-plan-table-timing"
+                    :class="{
+                      active: isRowTimedPublishEnabled(row.scheduledAt),
+                      'is-disabled': !getRowScheduleState(row).supported,
+                    }"
+                  >
                     <div class="publish-plan-table-timing-head">
                       <button
                         class="publish-plan-switch-control"
                         :class="{ active: isRowTimedPublishEnabled(row.scheduledAt) }"
                         type="button"
-                        :aria-pressed="false"
-                        disabled
+                        :aria-pressed="isRowTimedPublishEnabled(row.scheduledAt)"
+                        :disabled="!getRowScheduleState(row).supported"
+                        @click="toggleRowTimedPublish(row)"
                       >
                         <span />
                       </button>
@@ -350,10 +359,26 @@ useDialogLayer(() => props.visible);
                         class="publish-plan-table-timing-status"
                         :class="{ active: isRowTimedPublishEnabled(row.scheduledAt) }"
                       >
-                        立即发布
+                        {{ isRowTimedPublishEnabled(row.scheduledAt) ? "定时发布" : "立即发布" }}
                       </span>
                     </div>
-                    <span class="publish-plan-immediate-text">当前平台仅支持立即发布</span>
+                    <label v-if="isRowTimedPublishEnabled(row.scheduledAt) && getRowScheduleState(row).bounds" class="publish-plan-row-schedule">
+                      <input
+                        :value="toDatetimeLocalValue(row.scheduledAt)"
+                        type="datetime-local"
+                        :min="getRowScheduleState(row).bounds?.min"
+                        :max="getRowScheduleState(row).bounds?.max"
+                        @input="emit('update-row-field', {
+                          rowId: row.id,
+                          field: 'scheduledAt',
+                          value: normalizeScheduledAtInput(($event.target as HTMLInputElement).value),
+                        })"
+                      />
+                    </label>
+                    <span v-if="!getRowScheduleState(row).supported" class="publish-plan-immediate-text">当前平台仅支持立即发布</span>
+                    <small v-else-if="getRowScheduleState(row).error" class="publish-plan-schedule-error">
+                      {{ getRowScheduleState(row).error }}
+                    </small>
                   </div>
                 </td>
                 <td>

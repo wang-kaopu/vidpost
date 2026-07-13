@@ -47,6 +47,26 @@ const REQUEST_TIMEOUT = 10 * 60 * 1000;
 const BDMS_READY_TIMEOUT = 60_000;
 const SIGNING_TIMEOUT = 30_000;
 
+/** 将抖音任务的上海发布时间转换为 Unix 秒；立即发布返回 0。 */
+export function parseDouyinScheduledAt(value: unknown): number {
+  const scheduledAt = String(value ?? "").trim();
+  if (!scheduledAt || scheduledAt === "0") return 0;
+  const match = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/u.exec(scheduledAt);
+  if (!match) throw new Error("抖音 scheduledAt 格式必须为 YYYY-MM-DD HH:mm");
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const timestampMs = Date.UTC(year, month - 1, day, hour - 8, minute);
+  const check = new Date(timestampMs + 8 * 60 * 60 * 1_000);
+  if (
+    check.getUTCFullYear() !== year || check.getUTCMonth() + 1 !== month
+    || check.getUTCDate() !== day || check.getUTCHours() !== hour || check.getUTCMinutes() !== minute
+  ) throw new Error("抖音 scheduledAt 包含无效日期");
+  return Math.floor(timestampMs / 1_000);
+}
+
 /**
  * 从指定应用目录的 assets 中严格读取当前系统对应的抖音 Chrome 138 身份。
  *
@@ -101,6 +121,7 @@ interface DouyinWorkerOptions {
   coverPath: string;
   electronRendererPath: string;
   publicationText: string;
+  timing: number;
   videoPath: string;
   visibility: DouyinVisibility;
 }
@@ -526,6 +547,7 @@ export interface BuildPublishPayloadInput {
   now?: number;
   topics: PublishTopic[];
   title: string;
+  timing: number;
   videoId: string;
   visibility: DouyinVisibility;
 }
@@ -799,7 +821,7 @@ function buildPublishPayload(input: BuildPublishPayloadInput): Record<string, un
         interaction_stickers: "[]",
         visibility_type: VISIBILITY_VALUES[input.visibility],
         download: 1,
-        timing: 0,
+        timing: input.timing,
         creation_id: Math.random().toString(36).slice(-8) + now,
         media_type: 4,
         video_id: input.videoId,
@@ -1749,6 +1771,7 @@ async function prepareInRenderer(options: DouyinWorkerOptions): Promise<DouyinPr
     coverWidth: coverDimensions.width,
     description: publishText.description,
     title: publishText.title,
+    timing: options.timing,
     topics,
     videoId: video.videoId,
     visibility: options.visibility,
@@ -2542,8 +2565,7 @@ async function disposeWorker(worker: InProcessWorker): Promise<void> {
 
 /** 完成抖音最终发布前的全部校验、签名和素材上传。 */
 async function prepare(input: VideoUploadPayload): Promise<DouyinPreparedContext> {
-  const scheduledAt = String(input.scheduledAt ?? "").trim();
-  if (scheduledAt && scheduledAt !== "0") throw new Error('抖音当前仅支持立即发布，scheduledAt 必须为 "0"');
+  const timing = parseDouyinScheduledAt(input.scheduledAt);
   const browserPartition = String(input.browserPartition ?? "").trim();
   const videoFile = String(input.videoPath ?? input.filePath ?? "").trim();
   const coverFile = String(input.coverPath ?? input.thumbnailPath ?? "").trim();
@@ -2564,6 +2586,7 @@ async function prepare(input: VideoUploadPayload): Promise<DouyinPreparedContext
     coverPath: isAbsolute(coverFile) ? coverFile : resolve(process.cwd(), coverFile),
     electronRendererPath: rendererPath,
     publicationText: `${title}\n${introduction}`.trimEnd(),
+    timing,
     videoPath: isAbsolute(videoFile) ? videoFile : resolve(process.cwd(), videoFile),
     visibility,
   };

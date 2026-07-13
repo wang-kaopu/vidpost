@@ -74,13 +74,10 @@ export function resetAccountQueuesForTest(): void {
 }
 
 const IMMEDIATE_PUBLISH_VALUE = '0'
-/** 将发布任务统一限制为立即发布。 */
+/** 将缺失的发布时间规范为立即发布标记，非空值交给平台协议消费。 */
 export function normalizeScheduledAt(value) {
     const normalized = String(value ?? '').trim()
-    if (!normalized || normalized === IMMEDIATE_PUBLISH_VALUE) {
-        return IMMEDIATE_PUBLISH_VALUE
-    }
-    throw new Error('当前仅支持立即发布，scheduledAt 必须为字符串 "0"')
+    return normalized || IMMEDIATE_PUBLISH_VALUE
 }
 
 /** 校验并提取各平台发布所需的非敏感专属选项。 */
