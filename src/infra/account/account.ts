@@ -26,13 +26,21 @@ export interface AccountLoginResult {
   nickname?: string;
 }
 
+/** 平台账号在线状态检测结果。 */
+export interface AccountPingResult {
+  /** 平台是否明确确认当前登录态有效。 */
+  online: boolean;
+  /** 平台返回的最新账号昵称。 */
+  nickname?: string;
+}
+
 /** 平台账号资源需要实现的统一能力。 */
 export interface Account {
   /** 完成平台登录并持久化账号状态。 */
   login(options: AccountLoginOptions): Promise<AccountLoginResult>;
 
-  /** 检查本地账号状态是否仍然有效。 */
-  ping(accountFile: string): Promise<boolean>;
+  /** 检查本地账号状态是否仍然有效，并返回平台侧最新账号信息。 */
+  ping(accountFile: string): Promise<AccountPingResult>;
 
   /** 从平台读取当前账号昵称。 */
   syncNickname(accountFile: string, timeoutMs: number): Promise<string | undefined>;

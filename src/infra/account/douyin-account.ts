@@ -1,4 +1,6 @@
-import type { Account, AccountLoginOptions, AccountLoginResult } from "./account.ts";
+import axios from "axios";
+
+import type { Account, AccountLoginOptions, AccountLoginResult, AccountPingResult } from "./account.ts";
 import { logger } from "../../utils/logger.ts";
 
 import "playwright";
@@ -46,10 +48,6 @@ interface DouyinBrowserIdentity {
 var PLAYWRIGHT_HEADLESS_CONFIG = {
   default: false,
   probe: false,
-  "ping:douyin": true,
-  "ping:bilibili": true,
-  "ping:sohu": true,
-  "ping:baijiahao": true,
   "login-success:douyin": true,
   "login-success:bilibili": true,
   "login-success:sohu": true,
@@ -265,74 +263,101 @@ async function createContextFromAccountFile(accountFile, headlessMode = "default
     throw error;
   }
 }
-async function collectProbeSnapshot(page, settleMs) {
-  await sleep(settleMs);
-  return {
-    finalUrl: page.url(),
-    title: await page.title(),
-    html: await page.content()
-  };
-}
-async function probePlatformLogin(options, judge) {
-  const timeoutMs = options.timeoutMs ?? DEFAULT_BROWSER_TIMEOUT_MS;
-  const settleMs = options.settleMs ?? 1500;
-  const context = await createContextFromAccountFile(options.accountFile, options.headlessMode ?? "probe");
-  const browser = context.browser();
-  try {
-    const page = await context.newPage();
-    page.setDefaultTimeout(timeoutMs);
-    page.setDefaultNavigationTimeout(timeoutMs);
-    await page.goto(options.targetUrl, { waitUntil: "domcontentloaded", timeout: timeoutMs });
-    await page.waitForLoadState("domcontentloaded", { timeout: Math.min(timeoutMs, 1e4) }).catch(() => void 0);
-    await page.waitForLoadState("load", { timeout: Math.min(timeoutMs, 1e4) }).catch(() => void 0);
-    await page.waitForLoadState("networkidle", { timeout: Math.min(timeoutMs, 1e4) }).catch(() => void 0);
-    const startedAt = Date.now();
-    let lastSnapshot = await collectProbeSnapshot(page, Math.min(settleMs, 1500));
-    if (await judge({ page, ...lastSnapshot })) {
-      return true;
-    }
-    while (Date.now() - startedAt < settleMs) {
-      await sleep(500);
-      await page.waitForLoadState("networkidle", { timeout: 1500 }).catch(() => void 0);
-      lastSnapshot = await collectProbeSnapshot(page, 300);
-      if (await judge({ page, ...lastSnapshot })) {
-        return true;
-      }
-    }
-    return false;
-  } catch (error) {
-    if (error instanceof Error && /Timeout/i.test(error.message)) {
-      throw new PlatformTimeoutError(options.platform, "probe-login", timeoutMs);
-    }
-    throw error;
-  } finally {
-    await context.close().catch(() => void 0);
-    await browser?.close().catch(() => void 0);
-  }
+const DOUYIN_ACCOUNT_INFO_URL = "https://creator.douyin.com/web/api/media/user/info/";
+const ACCOUNT_PING_ATTEMPTS = 3;
+const ACCOUNT_PING_TIMEOUT_MS = 20_000;
+
+interface StoredAccountCookie {
+  domain?: string;
+  expires?: number;
+  name?: string;
+  value?: string;
 }
 
-var DOUYIN_PROBE_URL = "https://creator.douyin.com/creator-micro/home";
-var DOUYIN_SUCCESS_HINTS = ["\u521B\u4F5C\u8005", "\u4F5C\u54C1\u7BA1\u7406", "\u6570\u636E\u6982\u89C8", "\u5185\u5BB9\u7BA1\u7406", "\u6295\u7A3F", "\u53D1\u5E03\u89C6\u9891"];
-var DOUYIN_LOGIN_HINTS = ["\u767B\u5F55\u6296\u97F3\u521B\u4F5C\u8005\u4E2D\u5FC3", "\u626B\u7801\u767B\u5F55", "\u624B\u673A\u53F7\u767B\u5F55", "\u9A8C\u8BC1\u7801\u767B\u5F55"];
-async function cookieAuth(accountFile) {
-  return probePlatformLogin(
-    {
-      accountFile,
-      platform: "douyin",
-      targetUrl: DOUYIN_PROBE_URL,
-      headlessMode: "ping:douyin"
-    },
-    async ({ finalUrl, html, title }) => {
-      const pageText = `${title}
-${html}`;
-      const normalizedUrl = finalUrl.toLowerCase();
-      const hasSuccessHint = DOUYIN_SUCCESS_HINTS.some((hint) => pageText.includes(hint));
-      const hasLoginHint = DOUYIN_LOGIN_HINTS.some((hint) => pageText.includes(hint));
-      const inCreatorArea = normalizedUrl.includes("creator.douyin.com/creator-micro/");
-      const onLoginPage = normalizedUrl.includes("login") || hasLoginHint;
-      return inCreatorArea && !onLoginPage && hasSuccessHint;
+/** 从抖音账号文件读取有效 Cookie、可选 msToken 和当前宿主系统 UA。 */
+async function loadDouyinPingContext(accountFile: string): Promise<{ cookieHeader: string; msToken: string; userAgent: string }> {
+  const state: unknown = JSON.parse(await fs.readFile(accountFile, "utf8"));
+  if (!state || typeof state !== "object" || !("cookies" in state) || !Array.isArray(state.cookies)) {
+    throw new Error("抖音账号文件必须是包含 cookies 数组的 Playwright storage-state JSON");
+  }
+  const nowSeconds = Date.now() / 1_000;
+  const cookies = (state.cookies as StoredAccountCookie[]).filter((cookie) => {
+    const domain = String(cookie.domain || "").replace(/^\.+/u, "").toLowerCase();
+    const isDouyinCookie = domain === "douyin.com" || domain.endsWith(".douyin.com");
+    const isUnexpired = cookie.expires === -1 || (typeof cookie.expires === "number" && cookie.expires > nowSeconds);
+    return isDouyinCookie && isUnexpired && Boolean(cookie.name) && typeof cookie.value === "string";
+  });
+  if (!cookies.length) throw new Error("抖音账号文件中没有可用的 douyin.com Cookie");
+  // 与原包一致：Cookie 快照没有 msToken 时仍请求平台，由用户接口判断登录状态。
+  const msToken = [...cookies].reverse().find((cookie) => cookie.name === "msToken")?.value ?? "";
+
+  const fileName = process.platform === "win32" ? "browser-identity.windows.json" : "browser-identity.macos.json";
+  const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    path.join(process.cwd(), "assets", "douyin", fileName),
+    path.resolve(moduleDirectory, "../../../assets/douyin", fileName),
+    path.resolve(moduleDirectory, "../assets/douyin", fileName)
+  ];
+  const expectedPlatform = process.platform === "win32" ? "Win32" : "MacIntel";
+  let userAgent = "";
+  for (const candidate of candidates) {
+    try {
+      const identity = JSON.parse(await fs.readFile(candidate, "utf8"));
+      if (
+        identity?.browserPlatform === expectedPlatform &&
+        typeof identity.userAgent === "string" &&
+        identity.userAgent.includes("Chrome/138.0.0.0")
+      ) {
+        userAgent = identity.userAgent;
+        break;
+      }
+    } catch {
+      continue;
     }
-  );
+  }
+  if (!userAgent) throw new Error("抖音账号检测缺少与当前系统匹配的 Chrome 138 User-Agent");
+  return {
+    cookieHeader: cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; "),
+    msToken,
+    userAgent
+  };
+}
+
+/** 通过抖音用户接口检测账号状态，整体等待最多 20 秒。 */
+async function cookieAuth(accountFile: string): Promise<AccountPingResult> {
+  const request = async (): Promise<AccountPingResult> => {
+    const context = await loadDouyinPingContext(accountFile);
+    for (let attempt = 0; attempt < ACCOUNT_PING_ATTEMPTS; attempt += 1) {
+      try {
+        const response = await axios.get(DOUYIN_ACCOUNT_INFO_URL, {
+          headers: { Cookie: context.cookieHeader, "User-Agent": context.userAgent },
+          params: { msToken: context.msToken, a_bogus: "" }
+        });
+        const user = response.data?.user;
+        if (user && typeof user === "object") {
+          return { online: true, nickname: typeof user.nickname === "string" ? user.nickname : undefined };
+        }
+      } catch (error) {
+        if (axios.isAxiosError(error) && (error.response?.status === 401 || error.response?.status === 403)) {
+          return { online: false };
+        }
+        throw error;
+      }
+    }
+    return { online: false };
+  };
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<AccountPingResult>((_resolve, reject) => {
+    timeoutHandle = setTimeout(
+      () => reject(new PlatformTimeoutError("douyin", "account-ping", ACCOUNT_PING_TIMEOUT_MS)),
+      ACCOUNT_PING_TIMEOUT_MS
+    );
+  });
+  try {
+    return await Promise.race([request(), timeout]);
+  } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
+  }
 }
 
 import electron from "electron";
@@ -928,7 +953,7 @@ class DouyinAccount implements Account {
     return runDouyinLogin(options) as Promise<AccountLoginResult>;
   }
   /** 检查抖音 Cookie 是否有效。 */
-  ping(accountFile: string): Promise<boolean> {
+  ping(accountFile: string): Promise<AccountPingResult> {
     return cookieAuth(accountFile);
   }
   /** 读取抖音账号昵称。 */

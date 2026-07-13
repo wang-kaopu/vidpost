@@ -1,4 +1,6 @@
-import type { Account, AccountLoginOptions, AccountLoginResult } from "./account.ts";
+import axios from "axios";
+
+import type { Account, AccountLoginOptions, AccountLoginResult, AccountPingResult } from "./account.ts";
 import { logger } from "../../utils/logger.ts";
 
 import "playwright";
@@ -37,10 +39,6 @@ import { chromium } from "playwright";
 var PLAYWRIGHT_HEADLESS_CONFIG = {
   default: false,
   probe: false,
-  "ping:douyin": true,
-  "ping:bilibili": true,
-  "ping:sohu": true,
-  "ping:baijiahao": true,
   "login-success:douyin": true,
   "login-success:bilibili": true,
   "login-success:sohu": true,
@@ -256,81 +254,94 @@ async function createContextFromAccountFile(accountFile, headlessMode = "default
     throw error;
   }
 }
-async function collectProbeSnapshot(page, settleMs) {
-  await sleep(settleMs);
-  return {
-    finalUrl: page.url(),
-    title: await page.title(),
-    html: await page.content()
-  };
-}
-async function probePlatformLogin(options, judge) {
-  const timeoutMs = options.timeoutMs ?? DEFAULT_BROWSER_TIMEOUT_MS;
-  const settleMs = options.settleMs ?? 1500;
-  const context = await createContextFromAccountFile(options.accountFile, options.headlessMode ?? "probe");
-  const browser = context.browser();
-  try {
-    const page = await context.newPage();
-    page.setDefaultTimeout(timeoutMs);
-    page.setDefaultNavigationTimeout(timeoutMs);
-    await page.goto(options.targetUrl, { waitUntil: "domcontentloaded", timeout: timeoutMs });
-    await page.waitForLoadState("domcontentloaded", { timeout: Math.min(timeoutMs, 1e4) }).catch(() => void 0);
-    await page.waitForLoadState("load", { timeout: Math.min(timeoutMs, 1e4) }).catch(() => void 0);
-    await page.waitForLoadState("networkidle", { timeout: Math.min(timeoutMs, 1e4) }).catch(() => void 0);
-    const startedAt = Date.now();
-    let lastSnapshot = await collectProbeSnapshot(page, Math.min(settleMs, 1500));
-    if (await judge({ page, ...lastSnapshot })) {
-      return true;
-    }
-    while (Date.now() - startedAt < settleMs) {
-      await sleep(500);
-      await page.waitForLoadState("networkidle", { timeout: 1500 }).catch(() => void 0);
-      lastSnapshot = await collectProbeSnapshot(page, 300);
-      if (await judge({ page, ...lastSnapshot })) {
-        return true;
-      }
-    }
-    return false;
-  } catch (error) {
-    if (error instanceof Error && /Timeout/i.test(error.message)) {
-      throw new PlatformTimeoutError(options.platform, "probe-login", timeoutMs);
-    }
-    throw error;
-  } finally {
-    await context.close().catch(() => void 0);
-    await browser?.close().catch(() => void 0);
-  }
+const BAIJIAHAO_ACCOUNT_INFO_URL = "https://baijiahao.baidu.com/builder/app/appinfo";
+const ACCOUNT_PING_ATTEMPTS = 3;
+const ACCOUNT_PING_TIMEOUT_MS = 20_000;
+
+interface StoredAccountCookie {
+  domain?: string;
+  expires?: number;
+  name?: string;
+  value?: string;
 }
 
-var BAIJIAHAO_PROBE_URL = "https://baijiahao.baidu.com/builder/rc/home";
-var BAIJIAHAO_SUCCESS_HINTS = ["\u767E\u5BB6\u53F7", "\u6536\u76CA", "\u5185\u5BB9\u7BA1\u7406", "\u53D1\u5E03", "\u521B\u4F5C\u4E2D\u5FC3"];
-var BAIJIAHAO_LOGIN_HINTS = ["\u767E\u5EA6\u8D26\u53F7\u767B\u5F55", "\u626B\u7801\u767B\u5F55", "\u624B\u673A\u53F7\u767B\u5F55", "\u767B\u5F55\u767E\u5BB6\u53F7"];
-async function cookieAuth(accountFile) {
-  return probePlatformLogin(
-    {
-      accountFile,
-      platform: "baijiahao",
-      targetUrl: BAIJIAHAO_PROBE_URL,
-      headlessMode: "ping:baijiahao",
-      settleMs: 6e3
-    },
-    async ({ finalUrl, html, title }) => {
-      const pageText = `${title}
-${html}`;
-      const normalizedUrl = finalUrl.toLowerCase();
-      const hasSuccessHint = BAIJIAHAO_SUCCESS_HINTS.some((hint) => pageText.includes(hint));
-      const hasLoginHint = BAIJIAHAO_LOGIN_HINTS.some((hint) => pageText.includes(hint));
-      const inBuilderArea = normalizedUrl.includes("baijiahao.baidu.com/builder/");
-      const onLoginUrl = normalizedUrl.includes("/login") || normalizedUrl.includes("bjh/login");
-      if (inBuilderArea && hasSuccessHint) {
-        return true;
+/** 从百家号账号文件读取有效 Cookie 和当前宿主系统 UA。 */
+async function loadBaijiahaoPingContext(accountFile: string): Promise<{ cookieHeader: string; userAgent: string }> {
+  const state: unknown = JSON.parse(await fs.readFile(accountFile, "utf8"));
+  if (!state || typeof state !== "object" || !("cookies" in state) || !Array.isArray(state.cookies)) {
+    throw new Error("百家号账号文件必须是包含 cookies 数组的 Playwright storage-state JSON");
+  }
+  const nowSeconds = Date.now() / 1_000;
+  const cookies = (state.cookies as StoredAccountCookie[]).filter((cookie) => {
+    const domain = String(cookie.domain || "").replace(/^\.+/u, "").toLowerCase();
+    const belongsToBaidu = domain === "baidu.com" || domain.endsWith(".baidu.com");
+    const isUnexpired = cookie.expires === -1 || (typeof cookie.expires === "number" && cookie.expires > nowSeconds);
+    return belongsToBaidu && isUnexpired && Boolean(cookie.name) && typeof cookie.value === "string";
+  });
+  if (!cookies.length) throw new Error("百家号账号文件中没有可用的 baidu.com Cookie");
+
+  const fileName = process.platform === "win32" ? "browser-identity.windows.json" : "browser-identity.macos.json";
+  const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    path.join(process.cwd(), "assets", "douyin", fileName),
+    path.resolve(moduleDirectory, "../../../assets/douyin", fileName),
+    path.resolve(moduleDirectory, "../assets/douyin", fileName)
+  ];
+  const expectedPlatform = process.platform === "win32" ? "Win32" : "MacIntel";
+  let userAgent = "";
+  for (const candidate of candidates) {
+    try {
+      const identity = JSON.parse(await fs.readFile(candidate, "utf8"));
+      if (
+        identity?.browserPlatform === expectedPlatform &&
+        typeof identity.userAgent === "string" &&
+        identity.userAgent.includes("Chrome/138.0.0.0")
+      ) {
+        userAgent = identity.userAgent;
+        break;
       }
-      if (onLoginUrl) {
-        return false;
-      }
-      return !hasLoginHint && hasSuccessHint;
+    } catch {
+      continue;
     }
-  );
+  }
+  if (!userAgent) throw new Error("百家号账号检测缺少与当前系统匹配的 Chrome 138 User-Agent");
+  return { cookieHeader: cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; "), userAgent };
+}
+
+/** 通过百家号账号信息接口检测账号状态，整体等待最多 20 秒。 */
+async function cookieAuth(accountFile: string): Promise<AccountPingResult> {
+  const request = async (): Promise<AccountPingResult> => {
+    const context = await loadBaijiahaoPingContext(accountFile);
+    for (let attempt = 0; attempt < ACCOUNT_PING_ATTEMPTS; attempt += 1) {
+      try {
+        const response = await axios.get(BAIJIAHAO_ACCOUNT_INFO_URL, {
+          headers: { Cookie: context.cookieHeader, "User-Agent": context.userAgent }
+        });
+        const user = response.data?.data?.user;
+        if (user && typeof user === "object") {
+          return { online: true, nickname: typeof user.name === "string" ? user.name : undefined };
+        }
+      } catch (error) {
+        if (axios.isAxiosError(error) && (error.response?.status === 401 || error.response?.status === 403)) {
+          return { online: false };
+        }
+        throw error;
+      }
+    }
+    return { online: false };
+  };
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<AccountPingResult>((_resolve, reject) => {
+    timeoutHandle = setTimeout(
+      () => reject(new PlatformTimeoutError("baijiahao", "account-ping", ACCOUNT_PING_TIMEOUT_MS)),
+      ACCOUNT_PING_TIMEOUT_MS
+    );
+  });
+  try {
+    return await Promise.race([request(), timeout]);
+  } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
+  }
 }
 
 import electron from "electron";
@@ -1065,7 +1076,7 @@ class BaijiahaoAccount implements Account {
     return runBaijiahaoLogin(options) as Promise<AccountLoginResult>;
   }
   /** 检查百家号 Cookie 是否有效。 */
-  ping(accountFile: string): Promise<boolean> {
+  ping(accountFile: string): Promise<AccountPingResult> {
     return cookieAuth(accountFile);
   }
   /** 读取百家号账号昵称。 */

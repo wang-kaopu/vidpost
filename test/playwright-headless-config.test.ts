@@ -14,10 +14,7 @@ for (const [platform, loadAccountModule] of Object.entries(ACCOUNT_MODULES)) {
 
     assert.equal(resolvePlaywrightHeadlessMode(), PLAYWRIGHT_HEADLESS_CONFIG.default)
     assert.equal(resolvePlaywrightHeadlessMode('probe'), PLAYWRIGHT_HEADLESS_CONFIG.probe)
-    assert.equal(
-      resolvePlaywrightHeadlessMode(`ping:${platform}`),
-      PLAYWRIGHT_HEADLESS_CONFIG[`ping:${platform}`],
-    )
+    assert.equal(resolvePlaywrightHeadlessMode(`ping:${platform}`), undefined)
     assert.equal(
       resolvePlaywrightHeadlessMode(`login-success:${platform}`),
       PLAYWRIGHT_HEADLESS_CONFIG[`login-success:${platform}`],

@@ -14,6 +14,7 @@ import {
 import { removeAccount, updateAccount } from "@/api/accounts";
 import type { PublishAccountItem, PlatformOption, BackendPlatform } from "@/api/publish";
 import { useNotificationCenter } from "@/notifications";
+import { runAccountPingBatch } from "@/utils/account-ping-batch";
 import { useDialogLayer } from "../composables/useDialogLayer";
 
 const loading = ref(false);
@@ -50,6 +51,7 @@ const deletingAccountId = ref("");
 const pingingAccountId = ref("");
 const pingingAll = ref(false);
 const pendingPingAccountIds = ref<string[]>([]);
+const activePingAccountIds = ref<string[]>([]);
 const notificationCenter = useNotificationCenter();
 
 const pushAccountError = (title: string, message: string): void => {
@@ -58,6 +60,18 @@ const pushAccountError = (title: string, message: string): void => {
     message,
     source: "账号管理",
     tone: "error",
+    unread: true,
+  });
+};
+
+const pushAccountBatchSummary = (succeeded: number, failed: number, pending: number): void => {
+  const details = [`成功更新 ${succeeded} 个`, `检测异常 ${failed} 个`];
+  if (pending > 0) details.push(`未完成 ${pending} 个`);
+  notificationCenter.push({
+    title: pending > 0 ? "账号检测超时" : failed > 0 ? "账号检测完成，部分异常" : "账号检测完成",
+    message: details.join("，"),
+    source: "账号管理",
+    tone: pending > 0 || failed > 0 ? "warning" : "success",
     unread: true,
   });
 };
@@ -296,20 +310,39 @@ const handlePingAllAccounts = async () => {
   if (!queue.length) return;
   pingingAll.value = true;
   pendingPingAccountIds.value = queue.map((item) => item.id);
+  activePingAccountIds.value = [];
   errorMessage.value = "";
   try {
-    for (const item of queue) {
-      await pingAccount(item);
-      pendingPingAccountIds.value = pendingPingAccountIds.value.filter((id) => id !== item.id);
-    }
+    const summary = await runAccountPingBatch(
+      queue,
+      async (item) => {
+        if (!window.electronAPI?.ping) throw new Error("账号检测 IPC 未初始化");
+        await window.electronAPI.ping({ id: item.id, platform: item.platformKey });
+      },
+      {
+        batchSize: 3,
+        timeoutMs: 5 * 60_000,
+        onStarted: (item) => {
+          pendingPingAccountIds.value = pendingPingAccountIds.value.filter((id) => id !== item.id);
+          activePingAccountIds.value = [...activePingAccountIds.value, item.id];
+        },
+        onSettled: (item) => {
+          activePingAccountIds.value = activePingAccountIds.value.filter((id) => id !== item.id);
+        },
+      },
+    );
+    await loadAccounts({ preservePage: true });
+    pushAccountBatchSummary(summary.succeeded, summary.failed, summary.pending);
   } finally {
     pingingAll.value = false;
     pendingPingAccountIds.value = [];
+    activePingAccountIds.value = [];
   }
 };
 
 const getPingButtonLabel = (itemId: string) => {
   if (pingingAccountId.value === itemId) return "检测中...";
+  if (activePingAccountIds.value.includes(itemId)) return "检测中...";
   if (pendingPingAccountIds.value.includes(itemId)) return "排队中...";
   return "检测";
 };

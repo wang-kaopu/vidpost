@@ -1,5 +1,7 @@
-import type { Account, AccountLoginOptions, AccountLoginResult } from "./account.ts";
+import type { Account, AccountLoginOptions, AccountLoginResult, AccountPingResult } from "./account.ts";
 import { logger } from "../../utils/logger.ts";
+
+import axios from "axios";
 
 import "playwright";
 
@@ -39,7 +41,6 @@ var PLAYWRIGHT_HEADLESS_CONFIG = {
   probe: false,
   "ping:douyin": true,
   "ping:bilibili": true,
-  "ping:sohu": true,
   "ping:baijiahao": true,
   "login-success:douyin": true,
   "login-success:bilibili": true,
@@ -256,74 +257,133 @@ async function createContextFromAccountFile(accountFile, headlessMode = "default
     throw error;
   }
 }
-async function collectProbeSnapshot(page, settleMs) {
-  await sleep(settleMs);
-  return {
-    finalUrl: page.url(),
-    title: await page.title(),
-    html: await page.content()
-  };
-}
-async function probePlatformLogin(options, judge) {
-  const timeoutMs = options.timeoutMs ?? DEFAULT_BROWSER_TIMEOUT_MS;
-  const settleMs = options.settleMs ?? 1500;
-  const context = await createContextFromAccountFile(options.accountFile, options.headlessMode ?? "probe");
-  const browser = context.browser();
-  try {
-    const page = await context.newPage();
-    page.setDefaultTimeout(timeoutMs);
-    page.setDefaultNavigationTimeout(timeoutMs);
-    await page.goto(options.targetUrl, { waitUntil: "domcontentloaded", timeout: timeoutMs });
-    await page.waitForLoadState("domcontentloaded", { timeout: Math.min(timeoutMs, 1e4) }).catch(() => void 0);
-    await page.waitForLoadState("load", { timeout: Math.min(timeoutMs, 1e4) }).catch(() => void 0);
-    await page.waitForLoadState("networkidle", { timeout: Math.min(timeoutMs, 1e4) }).catch(() => void 0);
-    const startedAt = Date.now();
-    let lastSnapshot = await collectProbeSnapshot(page, Math.min(settleMs, 1500));
-    if (await judge({ page, ...lastSnapshot })) {
-      return true;
+const SOHU_ORIGIN = "https://mp.sohu.com";
+const SOHU_ACCOUNT_AUTH_URL = `${SOHU_ORIGIN}/mpbp/bp/account/check/user`;
+const SOHU_ACCOUNT_REFERER = `${SOHU_ORIGIN}/mpfe/v4/contentManagement/news/addvideo`;
+const ACCOUNT_PING_ATTEMPTS = 3;
+const ACCOUNT_PING_TIMEOUT_MS = 20_000;
+
+/** 通过搜狐账号鉴权接口检测登录状态，整体等待最多 20 秒。 */
+async function cookieAuth(accountFile: string): Promise<AccountPingResult> {
+  const request = (async (): Promise<AccountPingResult> => {
+    type StoredAccountCookie = {
+      domain?: string;
+      expires?: number;
+      name?: string;
+      value?: string;
+    };
+    type StoredOrigin = {
+      localStorage?: Array<{ name?: string; value?: string }>;
+      origin?: string;
+    };
+
+    const state: unknown = JSON.parse(await fs.readFile(accountFile, "utf8"));
+    if (!state || typeof state !== "object" || !("cookies" in state) || !Array.isArray(state.cookies)) {
+      throw new Error("搜狐账号文件必须是包含 cookies 数组的 Playwright storage-state JSON");
     }
-    while (Date.now() - startedAt < settleMs) {
-      await sleep(500);
-      await page.waitForLoadState("networkidle", { timeout: 1500 }).catch(() => void 0);
-      lastSnapshot = await collectProbeSnapshot(page, 300);
-      if (await judge({ page, ...lastSnapshot })) {
-        return true;
+
+    const nowSeconds = Date.now() / 1_000;
+    const cookies = (state.cookies as StoredAccountCookie[]).filter((cookie) => {
+      if (!cookie || typeof cookie !== "object") return false;
+      const domain = String(cookie.domain || "").replace(/^\.+/u, "").toLowerCase();
+      const belongsToSohu = domain === "sohu.com" || domain.endsWith(".sohu.com");
+      const isUnexpired = cookie.expires === -1 || (typeof cookie.expires === "number" && cookie.expires > nowSeconds);
+      return belongsToSohu && isUnexpired && Boolean(cookie.name) && typeof cookie.value === "string";
+    });
+    if (!cookies.length) throw new Error("搜狐账号文件中没有可用的 sohu.com Cookie");
+
+    const origins = "origins" in state && Array.isArray(state.origins) ? state.origins as StoredOrigin[] : [];
+    const origin = origins.find((item) => item?.origin === SOHU_ORIGIN);
+    const localStorageEntries = Array.isArray(origin?.localStorage) ? origin.localStorage : [];
+    const localStorage = new Map(
+      localStorageEntries.flatMap((entry) =>
+        typeof entry?.name === "string" && typeof entry.value === "string" ? [[entry.name, entry.value]] : []
+      )
+    );
+    const vuexValue = localStorage.get("vuex");
+    if (!vuexValue) throw new Error("搜狐账号凭据不完整，请重新登录：缺少 vuex");
+
+    let vuex: { app?: { UandAStatus?: { userCode?: string }; userInfo?: { id?: string | number } } };
+    try {
+      const parsedVuex: unknown = JSON.parse(vuexValue);
+      if (!parsedVuex || typeof parsedVuex !== "object" || Array.isArray(parsedVuex)) {
+        throw new Error("invalid vuex");
+      }
+      vuex = parsedVuex as typeof vuex;
+    } catch {
+      throw new Error("搜狐账号凭据不完整，请重新登录：vuex 格式无效");
+    }
+    const accountId = String(vuex.app?.userInfo?.id ?? "").trim();
+    if (!accountId) throw new Error("搜狐账号凭据不完整，请重新登录：缺少平台 accountId");
+    const userCode = vuex.app?.UandAStatus?.userCode;
+    const mpCv = cookies.find((cookie) => cookie.name === "mp-cv")?.value;
+    const spCm = (userCode ? localStorage.get(`${userCode}-sp-cm`) : undefined)
+      ?? localStorage.get("preview-sp-cm")
+      ?? mpCv;
+    if (!spCm) throw new Error("搜狐账号凭据不完整，请重新登录：缺少 sp-cm");
+    const dvId = localStorage.get("preview-dv-id");
+    if (!dvId) throw new Error("搜狐账号凭据不完整，请重新登录：缺少 dv-id");
+
+    const fileName = process.platform === "win32" ? "browser-identity.windows.json" : "browser-identity.macos.json";
+    const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
+    const candidates = [
+      path.join(process.cwd(), "assets", "douyin", fileName),
+      path.resolve(moduleDirectory, "../../../assets/douyin", fileName),
+      path.resolve(moduleDirectory, "../assets/douyin", fileName)
+    ];
+    const expectedPlatform = process.platform === "win32" ? "Win32" : "MacIntel";
+    let userAgent = "";
+    for (const candidate of candidates) {
+      try {
+        const identity = JSON.parse(await fs.readFile(candidate, "utf8"));
+        if (
+          identity?.browserPlatform === expectedPlatform &&
+          typeof identity.userAgent === "string" &&
+          identity.userAgent.includes("Chrome/138.0.0.0")
+        ) {
+          userAgent = identity.userAgent;
+          break;
+        }
+      } catch {
+        continue;
       }
     }
-    return false;
-  } catch (error) {
-    if (error instanceof Error && /Timeout/i.test(error.message)) {
-      throw new PlatformTimeoutError(options.platform, "probe-login", timeoutMs);
-    }
-    throw error;
-  } finally {
-    await context.close().catch(() => void 0);
-    await browser?.close().catch(() => void 0);
-  }
-}
+    if (!userAgent) throw new Error("搜狐账号检测缺少与当前系统匹配的 Chrome 138 User-Agent");
 
-var SOHU_PROBE_URL = "https://mp.sohu.com/mpfe/v3/main/news/addarticle?spm=smpc.channel_258.block3_307_NDd1gO_1_fd.5.1745543591287MTOQmVv_324";
-var SOHU_SUCCESS_HINTS = ["\u641C\u72D0\u53F7", "\u53D1\u5E03", "\u5185\u5BB9\u7BA1\u7406", "\u521B\u4F5C\u4E2D\u5FC3", "\u6211\u7684\u5185\u5BB9"];
-var SOHU_LOGIN_HINTS = ["\u767B\u5F55\u641C\u72D0", "\u626B\u7801\u767B\u5F55", "\u624B\u673A\u53F7\u767B\u5F55", "\u8D26\u53F7\u767B\u5F55"];
-async function cookieAuth(accountFile) {
-  return probePlatformLogin(
-    {
-      accountFile,
-      platform: "sohu",
-      targetUrl: SOHU_PROBE_URL,
-      headlessMode: "ping:sohu"
-    },
-    async ({ finalUrl, html, title }) => {
-      const pageText = `${title}
-${html}`;
-      const normalizedUrl = finalUrl.toLowerCase();
-      const hasSuccessHint = SOHU_SUCCESS_HINTS.some((hint) => pageText.includes(hint));
-      const hasLoginHint = SOHU_LOGIN_HINTS.some((hint) => pageText.includes(hint));
-      const inSohuArea = normalizedUrl.includes("mp.sohu.com");
-      const onLoginPage = normalizedUrl.includes("/login") || hasLoginHint;
-      return inSohuArea && !onLoginPage && hasSuccessHint;
+    const headers = {
+      Cookie: cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; "),
+      Referer: SOHU_ACCOUNT_REFERER,
+      "User-Agent": userAgent,
+      "dv-id": dvId,
+      "sp-cm": spCm,
+      ...(mpCv ? { "mp-cv": mpCv } : {})
+    };
+    for (let attempt = 0; attempt < ACCOUNT_PING_ATTEMPTS; attempt += 1) {
+      try {
+        const response = await axios.get(SOHU_ACCOUNT_AUTH_URL, { headers, params: { accountId } });
+        if (response.data?.code === 2_000_000) return { online: true };
+      } catch (error) {
+        if (axios.isAxiosError(error) && (error.response?.status === 401 || error.response?.status === 403)) {
+          return { online: false };
+        }
+        throw error;
+      }
     }
-  );
+    return { online: false };
+  })();
+
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<AccountPingResult>((_resolve, reject) => {
+    timeoutHandle = setTimeout(
+      () => reject(new PlatformTimeoutError("sohu", "account-ping", ACCOUNT_PING_TIMEOUT_MS)),
+      ACCOUNT_PING_TIMEOUT_MS
+    );
+  });
+  try {
+    return await Promise.race([request, timeout]);
+  } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
+  }
 }
 
 import electron from "electron";
@@ -1220,7 +1280,7 @@ class SohuAccount implements Account {
     return runSohuLogin(options) as Promise<AccountLoginResult>;
   }
   /** 检查搜狐 Cookie 是否有效。 */
-  ping(accountFile: string): Promise<boolean> {
+  ping(accountFile: string): Promise<AccountPingResult> {
     return cookieAuth(accountFile);
   }
   /** 读取搜狐账号昵称。 */

@@ -104,16 +104,20 @@ export async function updateRemoteAccount(account, accountResource: Account) {
     resolvePartitionForAccount(createPartitionStore(), accountId)
     logger.info('账号文件存在:', accountFile)
 
-    const isValid = await accountResource.ping(accountFile)
-    logger.info(`${platform}检测结果：`, isValid)
+    const pingResult = await accountResource.ping(accountFile)
+    logger.info(`${platform}检测结果：`, pingResult)
 
-    const nextStatus = isValid ? 'online' : 'offline'
-    await updatePublishAccount(accountId, { status: nextStatus })
+    const nextStatus = pingResult.online ? 'online' : 'offline'
+    const latestNickname = pingResult.online ? pingResult.nickname?.trim() : undefined
+    await updatePublishAccount(accountId, {
+        status: nextStatus,
+        ...(latestNickname ? { nickname: latestNickname } : {}),
+    })
 
     return createAccountPageModel({
         id: accountId,
         platform,
-        nickname: account?.nickname ?? null,
+        nickname: latestNickname || account?.nickname || null,
         status: nextStatus,
         phoneNumber: account.phoneNumber ?? null,
         tags: account.tags ?? [],
