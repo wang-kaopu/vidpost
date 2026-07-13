@@ -11,9 +11,17 @@ import {
   createSohuPublication,
   createSohuPublishPayload,
   createSohuVideoChunks,
+  extractSohuPublishedPostId,
   loadSohuAccountContext,
   SohuVideo,
 } from "../src/infra/video/sohu-video.ts";
+
+test("extractSohuPublishedPostId uses the scalar response data as record.id", () => {
+  assert.equal(extractSohuPublishedPostId({ code: 2_000_000, data: 1049530557, success: true }), "1049530557");
+  assert.equal(extractSohuPublishedPostId({ code: 2_000_000, data: " 1049530558 ", success: true }), "1049530558");
+  assert.throws(() => extractSohuPublishedPostId({ code: 2_000_000, data: { id: 1 }, success: true }), /data 不是有效作品 ID/u);
+  assert.throws(() => extractSohuPublishedPostId({ code: 2_000_000, data: "", success: true }), /data 不是有效作品 ID/u);
+});
 
 test("createSohuAuthKey uses the Sohu frontend digest format", () => {
   const timestamp = 1_783_905_385_012;

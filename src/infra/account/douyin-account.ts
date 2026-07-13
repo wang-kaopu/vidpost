@@ -1,6 +1,7 @@
 import axios from "axios";
 
 import type { Account, AccountLoginOptions, AccountLoginResult, AccountPingResult } from "./account.ts";
+import { loadUserAgent } from "../../utils/environment.ts";
 import { logger } from "../../utils/logger.ts";
 
 
@@ -119,31 +120,7 @@ async function loadDouyinPingContext(accountFile: string): Promise<{ cookieHeade
   // 与原包一致：Cookie 快照没有 msToken 时仍请求平台，由用户接口判断登录状态。
   const msToken = [...cookies].reverse().find((cookie) => cookie.name === "msToken")?.value ?? "";
 
-  const fileName = process.platform === "win32" ? "browser-identity.windows.json" : "browser-identity.macos.json";
-  const moduleDirectory = path2.dirname(fileURLToPath(import.meta.url));
-  const candidates = [
-    path2.join(process.cwd(), "assets", "douyin", fileName),
-    path2.resolve(moduleDirectory, "../../../assets/douyin", fileName),
-    path2.resolve(moduleDirectory, "../assets/douyin", fileName)
-  ];
-  const expectedPlatform = process.platform === "win32" ? "Win32" : "MacIntel";
-  let userAgent = "";
-  for (const candidate of candidates) {
-    try {
-      const identity = JSON.parse(await fs.readFile(candidate, "utf8"));
-      if (
-        identity?.browserPlatform === expectedPlatform &&
-        typeof identity.userAgent === "string" &&
-        identity.userAgent.includes("Chrome/138.0.0.0")
-      ) {
-        userAgent = identity.userAgent;
-        break;
-      }
-    } catch {
-      continue;
-    }
-  }
-  if (!userAgent) throw new Error("抖音账号检测缺少与当前系统匹配的 Chrome 138 User-Agent");
+  const userAgent = await loadUserAgent();
   return {
     cookieHeader: cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; "),
     msToken,

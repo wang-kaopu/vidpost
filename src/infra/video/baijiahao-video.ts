@@ -1,15 +1,14 @@
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { open, readFile, stat } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { basename, isAbsolute, resolve } from "node:path";
 
 import axios, { type AxiosInstance } from "axios";
 import { createFile, type Movie } from "mp4box";
 import pLimit from "p-limit";
 import sharp from "sharp";
-import { chromium, type BrowserContext, type Page, type Response } from "playwright";
 
+import { loadUserAgent } from "../../utils/environment.ts";
 import { logger } from "../../utils/logger.ts";
 
 import type {
@@ -35,42 +34,6 @@ const CHUNK_UPLOAD_URL = "https://rsbjh10.baidu.com/materialui/video/uploadvideo
 const COMPLETE_UPLOAD_URL = `${BAIJIAHAO_ORIGIN}/materialui/video/compuploadvideo`;
 const COVER_UPLOAD_URL = `${BAIJIAHAO_ORIGIN}/pcui/picture/processproxy`;
 
-/** 从 assets 中严格读取当前系统对应的百家号 Chrome 138 User-Agent。 */
-async function loadBaijiahaoBrowserUserAgent(): Promise<string> {
-  const fileName = process.platform === "win32"
-    ? "browser-identity.windows.json"
-    : "browser-identity.macos.json";
-  const moduleDirectory = dirname(fileURLToPath(import.meta.url));
-  const candidates = [
-    join(process.cwd(), "assets", "douyin", fileName),
-    resolve(moduleDirectory, "../../../assets/douyin", fileName),
-    resolve(moduleDirectory, "../assets/douyin", fileName),
-  ];
-  let parsed: unknown;
-  let identityPath = candidates[0]!;
-  for (const candidate of candidates) {
-    try {
-      parsed = JSON.parse(await readFile(candidate, "utf8"));
-      identityPath = candidate;
-      break;
-    } catch {
-      continue;
-    }
-  }
-  const identity = parsed && typeof parsed === "object" && !Array.isArray(parsed)
-    ? parsed as Record<string, unknown>
-    : null;
-  const expectedPlatform = process.platform === "win32" ? "Win32" : "MacIntel";
-  if (
-    !identity
-    || identity.browserPlatform !== expectedPlatform
-    || typeof identity.userAgent !== "string"
-    || !identity.userAgent.includes("Chrome/138.0.0.0")
-  ) {
-    throw new Error(`百家号浏览器身份缺失、格式无效或与当前系统不匹配: ${identityPath}`);
-  }
-  return identity.userAgent;
-}
 const TOPIC_SEARCH_URL = `${BAIJIAHAO_ORIGIN}/pcui/pcpublisher/searchtopic`;
 const PUBLISH_URL = `${BAIJIAHAO_ORIGIN}/pcui/article/publish`;
 const CHUNK_SIZE = 2 * 1024 * 1024;
@@ -815,7 +778,7 @@ async function prepare(input: VideoUploadPayload): Promise<BaijiahaoPreparedCont
   const coverPath = isAbsolute(coverFile) ? coverFile : resolve(process.cwd(), coverFile);
   const videoPath = isAbsolute(videoFile) ? videoFile : resolve(process.cwd(), videoFile);
   const responses: SerializedAxiosResponse[] = [];
-  const userAgent = await loadBaijiahaoBrowserUserAgent();
+  const userAgent = await loadUserAgent();
   const http = axios.create({
     headers: { "User-Agent": userAgent },
     maxBodyLength: Number.POSITIVE_INFINITY,
@@ -948,8 +911,7 @@ async function dispose(_prepared?: BaijiahaoPreparedContext): Promise<void> {
   await Promise.resolve();
 }
 
-const BAIJIAHAO_RECORD_STATUS_URL = "https://baijiahao.baidu.com/builder/rc/content?currentPage=1&pageSize=10&search=&type=&collection=&startDate=&endDate=";
-const BAIJIAHAO_ARTICLE_LIST_URL_MARKER = "/pcui/article/lists";
+const BAIJIAHAO_RECORD_STATUS_URL = "https://baijiahao.baidu.com/pcui/article/lists";
 
 /** 将未知值收窄为普通记录。 */
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -963,19 +925,23 @@ function asString(value: unknown): string | null {
   return text || null;
 }
 
-/** 把百家号已确认的状态字段映射为业务状态。 */
+/** 把小豆芽使用的百家号状态字段映射为业务状态。 */
 export function parseBaijiahaoRecordStatus(rawRecord: unknown): PublishedStateResult | null {
   const record = asRecord(rawRecord);
   if (!record || (typeof record.status !== "string" && typeof record.status !== "number")) return null;
   const status = String(record.status).trim();
   if (!status) return null;
   const link = asString(record.share_url) ?? asString(record.url);
-  if (status === "publish" && asString(record.quality_status) === "rejected") {
-    return { status: "non_public", link, raw: rawRecord, matchedBy: "unknown", reason: asString(record.quality_not_pass_reason) ?? "baijiahao.status=publish,quality_status=rejected" };
+  if (status === "publish" || status === "pre_publish") {
+    return { status: "public", link, raw: rawRecord, matchedBy: "platform_work_id", reason: null };
   }
-  if (status === "publish") return { status: "public", link, raw: rawRecord, matchedBy: "unknown", reason: "baijiahao.status=publish" };
-  if (status === "analyze") return { status: "reviewing", link, raw: rawRecord, matchedBy: "unknown", reason: "baijiahao.status=analyze" };
-  return null;
+  if (status === "rejected") {
+    return { status: "non_public", link, raw: rawRecord, matchedBy: "platform_work_id", reason: `${asString(record.audit_msg) ?? "审核未通过"} 状态码${status}` };
+  }
+  if (status === "withdraw") {
+    return { status: "non_public", link, raw: rawRecord, matchedBy: "platform_work_id", reason: "作品已撤回" };
+  }
+  return { status: "reviewing", link, raw: rawRecord, matchedBy: "platform_work_id", reason: null };
 }
 
 /** 从文章列表接口的数组或数字键对象中提取记录。 */
@@ -986,46 +952,15 @@ export function collectBaijiahaoRecordsFromPayload(rawPayload: unknown): Array<R
   return values.map(asRecord).filter((item): item is Record<string, unknown> => item !== null);
 }
 
-/** 按平台 ID、分享链接、标题与发布时间依次匹配记录。 */
-export function findBaijiahaoRecordInList(records: Array<Record<string, unknown>>, payload: PublishedStatePayload): { matchedBy: "platform_work_id" | "share_url" | "title" | "title_and_time_window"; record: Record<string, unknown> } | null {
+/** 只按投稿接口返回的 nid 匹配百家号作品。 */
+export function findBaijiahaoRecordInList(records: Array<Record<string, unknown>>, payload: PublishedStatePayload): { matchedBy: "platform_work_id"; record: Record<string, unknown> } | null {
   const attributes = asRecord(payload.attributes);
   const clues = asRecord(attributes?.review_state_clues);
   const result = asRecord(payload.publishResult);
-  const workId = asString(clues?.platform_work_id) ?? asString(result?.articleId) ?? asString(result?.article_id) ?? asString(result?.id) ?? asString(result?.feed_id);
-  if (workId) {
-    const record = records.find((item) => [item.article_id, item.id, item.feed_id].map(asString).includes(workId));
-    if (record) return { matchedBy: "platform_work_id", record };
-  }
-  const shareUrl = asString(clues?.share_url) ?? asString(payload.link) ?? asString(result?.link) ?? asString(result?.share_url);
-  if (shareUrl) {
-    const record = records.find((item) => asString(item.share_url) === shareUrl);
-    if (record) return { matchedBy: "share_url", record };
-  }
-  const trackedTitle = asString(payload.title)?.replace(/\s+/gu, " ").toLowerCase();
-  if (!trackedTitle) return null;
-  const titleMatches = records.filter((item) => {
-    const title = asString(item.title)?.replace(/\s+/gu, " ").toLowerCase();
-    return title === trackedTitle || title?.startsWith(`${trackedTitle}:`) || title?.startsWith(`${trackedTitle}：`);
-  });
-  if (titleMatches.length === 1) return { matchedBy: "title", record: titleMatches[0] };
-  const publishedAt = Date.parse(asString(clues?.published_at) ?? asString(payload.publishedAt) ?? "");
-  if (titleMatches.length > 1 && Number.isFinite(publishedAt)) {
-    const record = titleMatches.find((item) => {
-      const recordTime = Date.parse((asString(item.publish_at) ?? asString(item.publish_time) ?? "").replace(" ", "T"));
-      return Number.isFinite(recordTime) && Math.abs(recordTime - publishedAt) <= 48 * 60 * 60 * 1_000;
-    });
-    if (record) return { matchedBy: "title_and_time_window", record };
-  }
-  return titleMatches[0] ? { matchedBy: "title", record: titleMatches[0] } : null;
-}
-
-/** 等待百家号文章列表接口响应。 */
-async function waitForArticleList(page: Page, timeout: number, pageNumber: number): Promise<unknown> {
-  const response = await page.waitForResponse((candidate: Response) => {
-    if (candidate.request().method() !== "GET" || !candidate.url().includes(BAIJIAHAO_ARTICLE_LIST_URL_MARKER)) return false;
-    return new URL(candidate.url()).searchParams.get("currentPage") === String(pageNumber);
-  }, { timeout });
-  return response.json();
+  const workId = asString(clues?.platform_work_id) ?? asString(result?.articleId);
+  if (!workId) throw new Error("百家号发布记录缺少 platform_work_id");
+  const record = records.find((item) => asString(item.nid) === workId);
+  return record ? { matchedBy: "platform_work_id", record } : null;
 }
 
 /** 百家号直接通过 HTTP 发布，无需 Electron 运行时。 */
@@ -1062,29 +997,27 @@ export class BaijiahaoVideo implements Video {
     const accountFile = asString(payload.accountFile);
     if (!accountFile) throw new Error("百家号发布状态查询缺少 accountFile");
     const timeout = typeof payload.timeoutMs === "number" && payload.timeoutMs > 0 ? payload.timeoutMs : 30_000;
-    const browser = await chromium.launch({ headless: true });
-    let context: BrowserContext | undefined;
-    try {
-      context = await browser.newContext({ storageState: isAbsolute(accountFile) ? accountFile : resolve(process.cwd(), accountFile) });
-      const page = await context.newPage();
-      for (let pageNumber = 1; pageNumber <= 3; pageNumber += 1) {
-        const url = new URL(BAIJIAHAO_RECORD_STATUS_URL);
-        url.searchParams.set("currentPage", String(pageNumber));
-        const response = waitForArticleList(page, Math.min(timeout, 15_000), pageNumber);
-        await page.goto(url.toString(), { waitUntil: "domcontentloaded", timeout });
-        if (!page.url().includes("baijiahao.baidu.com/builder/") || page.url().includes("/login")) {
-          throw new Error(`百家号账号登录状态失效: ${accountFile}`);
-        }
-        const matched = findBaijiahaoRecordInList(collectBaijiahaoRecordsFromPayload(await response), payload);
-        if (!matched) continue;
-        const parsed = parseBaijiahaoRecordStatus(matched.record);
-        if (!parsed) throw new Error("百家号命中记录但 record.status 缺失或未确认映射");
-        return { ...parsed, matchedBy: matched.matchedBy, link: parsed.link ?? payload.link ?? null };
-      }
-      return { status: "reviewing", link: payload.link ?? null, raw: null, matchedBy: "unknown", reason: "baijiahao article list did not match current publish task" };
-    } finally {
-      await context?.close().catch((error: unknown) => logger.error("关闭百家号状态查询上下文失败：", error));
-      await browser.close().catch((error: unknown) => logger.error("关闭百家号状态查询浏览器失败：", error));
+    const resolvedAccountFile = isAbsolute(accountFile) ? accountFile : resolve(process.cwd(), accountFile);
+    const [cookieHeader, userAgent] = await Promise.all([
+      loadCookieHeader(resolvedAccountFile),
+      loadUserAgent(),
+    ]);
+    const response = await axios.get(BAIJIAHAO_RECORD_STATUS_URL, {
+      headers: { Cookie: cookieHeader, Referer: `${BAIJIAHAO_ORIGIN}/builder/rc/content`, "User-Agent": userAgent },
+      params: { collection: "", currentPage: 1, dynamic: 1, pageSize: 10, search: "", type: "" },
+      signal: payload.abortSignal,
+      timeout,
+    });
+    const root = asRecord(response.data);
+    if (!root || Number(root.errno) !== 0 || !Array.isArray(asRecord(root.data)?.list)) {
+      throw new Error("百家号文章列表响应结构错误");
     }
+    const matched = findBaijiahaoRecordInList(collectBaijiahaoRecordsFromPayload(root), payload);
+    if (!matched) {
+      return { status: "non_public", link: payload.link ?? null, raw: root, matchedBy: "platform_work_id", reason: "未找到该作品，请前往官方后台查看发布情况" };
+    }
+    const parsed = parseBaijiahaoRecordStatus(matched.record);
+    if (!parsed) throw new Error("百家号作品状态响应结构错误");
+    return { ...parsed, link: parsed.link ?? payload.link ?? null };
   }
 }

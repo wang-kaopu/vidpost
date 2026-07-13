@@ -1,15 +1,13 @@
 import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
 import { open, readFile, stat } from "node:fs/promises";
-import { basename, delimiter, dirname, isAbsolute, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { basename, isAbsolute, resolve } from "node:path";
 
 import axios, { AxiosHeaders, type AxiosInstance, type InternalAxiosRequestConfig } from "axios";
 import axiosRetry from "axios-retry";
 import pLimit from "p-limit";
-import { chromium, type BrowserContext, type Page, type Response } from "playwright";
 import sharp from "sharp";
 
+import { loadUserAgent } from "../../utils/environment.ts";
 import { logger } from "../../utils/logger.ts";
 
 import type {
@@ -37,49 +35,10 @@ const SOHU_CHUNK_SIZE = 512 * 1024;
 const SOHU_CHUNK_CONCURRENCY = 3;
 const SOHU_HTTP_TIMEOUT_MS = 120_000;
 export const SOHU_RECORD_STATUS_URL = `${SOHU_ORIGIN}/mpfe/v4/contentManagement/first/page`;
-export const SOHU_NEWS_LIST_URL_MARKER = "/mpbp/bp/news/v4/users/news";
-export const SOHU_STATUS_RESPONSE_TIMEOUT_MS = 15_000;
+export const SOHU_NEWS_LIST_URL = `${SOHU_ORIGIN}/mpbp/bp/news/v4/users/news`;
 export const SOHU_STATUS_PAGINATION_ATTEMPTS = 3;
 
 const DEFAULT_RECORD_STATUS_TIMEOUT_MS = 60_000;
-const SOHU_LOGIN_HINTS = ["登录搜狐", "扫码登录", "手机号登录", "账号登录"];
-
-/** 从 assets 中严格读取当前系统对应的搜狐 Chrome 138 User-Agent。 */
-async function loadSohuBrowserUserAgent(): Promise<string> {
-  const fileName = process.platform === "win32"
-    ? "browser-identity.windows.json"
-    : "browser-identity.macos.json";
-  const moduleDirectory = dirname(fileURLToPath(import.meta.url));
-  const candidates = [
-    join(process.cwd(), "assets", "douyin", fileName),
-    resolve(moduleDirectory, "../../../assets/douyin", fileName),
-    resolve(moduleDirectory, "../assets/douyin", fileName),
-  ];
-  let parsed: unknown;
-  let identityPath = candidates[0]!;
-  for (const candidate of candidates) {
-    try {
-      parsed = JSON.parse(await readFile(candidate, "utf8"));
-      identityPath = candidate;
-      break;
-    } catch {
-      continue;
-    }
-  }
-  const identity = parsed && typeof parsed === "object" && !Array.isArray(parsed)
-    ? parsed as Record<string, unknown>
-    : null;
-  const expectedPlatform = process.platform === "win32" ? "Win32" : "MacIntel";
-  if (
-    !identity
-    || identity.browserPlatform !== expectedPlatform
-    || typeof identity.userAgent !== "string"
-    || !identity.userAgent.includes("Chrome/138.0.0.0")
-  ) {
-    throw new Error(`搜狐浏览器身份缺失、格式无效或与当前系统不匹配: ${identityPath}`);
-  }
-  return identity.userAgent;
-}
 
 export interface StoredCookie {
   domain: string;
@@ -102,6 +61,7 @@ interface SohuResponse<T = unknown> {
   detail?: string;
   message?: string;
   msg?: string;
+  success?: boolean;
 }
 
 interface SohuAccountContext {
@@ -180,14 +140,6 @@ class SohuInfraError extends Error {
   }
 }
 
-/** 搜狐审核状态页面等待超时。 */
-class SohuTimeoutError extends SohuInfraError {
-  constructor(step: string, timeoutMs: number) {
-    super(`搜狐在步骤 ${step} 上等待超时: ${timeoutMs}ms`);
-    this.name = "SohuTimeoutError";
-  }
-}
-
 /** 将未知值收窄为普通记录。 */
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
@@ -233,8 +185,8 @@ function logHttpRequest(config: InternalAxiosRequestConfig): InternalAxiosReques
   return config;
 }
 
-/** 创建搜狐 HTTP 客户端；仅 GET 网络错误、429 和 5xx 可自动重试。 */
-function createHttpClient(account: SohuAccountContext, userAgent: string): AxiosInstance {
+/** 创建搜狐 HTTP 客户端；发布链路可重试安全 GET，状态监控由外层控制重试。 */
+function createHttpClient(account: SohuAccountContext, userAgent: string, enableRetries = true): AxiosInstance {
   const http = axios.create({
     headers: {
       Cookie: account.cookieHeader,
@@ -249,7 +201,7 @@ function createHttpClient(account: SohuAccountContext, userAgent: string): Axios
     timeout: SOHU_HTTP_TIMEOUT_MS,
   });
   axiosRetry(http, {
-    retries: 2,
+    retries: enableRetries ? 2 : 0,
     retryCondition: (error) => {
       if (error.config?.method?.toLowerCase() !== "get") return false;
       const status = error.response?.status;
@@ -463,7 +415,7 @@ export async function getSohuChannels(accountFile: string): Promise<SohuChannel[
   const resolvedAccountFile = isAbsolute(accountFile) ? accountFile : resolve(process.cwd(), accountFile);
   const [account, userAgent] = await Promise.all([
     loadSohuAccountContext(resolvedAccountFile),
-    loadSohuBrowserUserAgent(),
+    loadUserAgent(),
   ]);
   const http = createHttpClient(account, userAgent);
   await assertAuthenticated(http, account.accountId);
@@ -626,7 +578,7 @@ async function prepare(input: VideoUploadPayload): Promise<SohuPreparedContext> 
   const parsed = await parseUploadInput(input);
   const [account, userAgent] = await Promise.all([
     loadSohuAccountContext(parsed.accountFile),
-    loadSohuBrowserUserAgent(),
+    loadUserAgent(),
   ]);
   const http = createHttpClient(account, userAgent);
   await assertAuthenticated(http, account.accountId);
@@ -668,20 +620,26 @@ async function publish(prepared: SohuPreparedContext): Promise<VideoUploadResult
     { headers: { "Content-Type": "application/json" } },
   );
   assertSohuSuccess(response.data, [2_000_000], "发布搜狐视频");
-  const responseBody = asRecord(response.data);
-  const responseData = asRecord(responseBody?.data);
-  const postId = [responseBody?.clientNewsId, responseData?.clientNewsId, responseBody?.id, responseData?.id]
-    .flatMap((candidate) => {
-      if (typeof candidate !== "string" && typeof candidate !== "number") return [];
-      const normalized = String(candidate).trim();
-      return normalized ? [normalized] : [];
-    })[0] ?? "";
+  const postId = extractSohuPublishedPostId(response.data);
   return {
     success: true,
     title: prepared.publication.title,
-    ...(postId ? { clientNewsId: postId, postId } : {}),
+    postId,
     response: response.data,
   };
+}
+
+/** 从搜狐投稿成功响应的标量 data 中提取视频唯一 ID。 */
+export function extractSohuPublishedPostId(rawResponse: unknown): string {
+  const response = asRecord(rawResponse);
+  const candidate = response?.data;
+  const validNumber = typeof candidate === "number" && Number.isFinite(candidate);
+  if (typeof candidate !== "string" && !validNumber) {
+    throw new SohuInfraError("搜狐发布成功响应结构错误：data 不是有效作品 ID");
+  }
+  const postId = String(candidate).trim();
+  if (!postId) throw new SohuInfraError("搜狐发布成功响应结构错误：data 不是有效作品 ID");
+  return postId;
 }
 
 /** 搜狐直接通过 HTTP 发布，不需要 Electron 发布运行时。 */
@@ -689,22 +647,6 @@ export function configureSohuVideoRuntime(_runtime: VideoRuntime): void {}
 
 /** 搜狐 HTTP 发布不持有发布窗口。 */
 export function destroySohuVideoWindows(): void {}
-
-/** 规范化审核查询中的比较文本。 */
-function normalizeComparisonText(value: string | null): string | null {
-  if (!value) return null;
-  const normalized = value.replace(/\s+/gu, " ").trim().toLowerCase();
-  return normalized || null;
-}
-
-/** 从任务或发布结果中解析标题。 */
-function resolvePayloadTitle(payload: PublishedStatePayload): string | null {
-  const directTitle = asString(payload.title);
-  if (directTitle) return directTitle;
-  const publishResultTitle = asString(asRecord(payload.publishResult)?.title);
-  if (publishResultTitle) return publishResultTitle;
-  return asString(asRecord(asRecord(payload.attributes)?.review_state_clues)?.title);
-}
 
 /** 生成统一的审核状态结果。 */
 function createPublishedStateResult(input: {
@@ -723,272 +665,181 @@ function createPublishedStateResult(input: {
   };
 }
 
-/** 解析搜狐记录的 auditStatus。 */
-export function parseSohuRecordStatus(rawRecord: unknown): PublishedStateResult | null {
+const SOHU_STATUS_MAPPING = new Map<number, { label: string; status: PublishedTaskStatus }>([
+  [1, { label: "草稿", status: "non_public" }],
+  [2, { label: "审核中", status: "reviewing" }],
+  [3, { label: "未通过", status: "non_public" }],
+  [4, { label: "已发布", status: "public" }],
+  [5, { label: "定时发布", status: "reviewing" }],
+  [7, { label: "已删除", status: "non_public" }],
+  [9, { label: "二审删除", status: "non_public" }],
+  [16, { label: "二审通过", status: "public" }],
+]);
+
+/** 按搜狐官方 record.status 解析作品状态。 */
+export function parseSohuRecordStatus(rawRecord: unknown): PublishedStateResult {
   const record = asRecord(rawRecord);
-  if (!record) return null;
-  const rawValue = record.auditStatus;
-  const auditStatus = typeof rawValue === "number" && Number.isFinite(rawValue)
-    ? String(rawValue)
-    : asString(rawValue);
-  if (!auditStatus) return null;
+  if (!record) throw new SohuInfraError("搜狐作品记录结构错误：记录不是对象");
+  if (!Number.isInteger(record.status)) {
+    throw new SohuInfraError("搜狐作品记录结构错误：status 不是整数");
+  }
+  const statusValue = record.status as number;
+  const mapping = SOHU_STATUS_MAPPING.get(statusValue);
+  if (!mapping) throw new SohuInfraError(`搜狐出现未知作品状态：${statusValue}`);
+  if (record.rejectReason !== undefined && record.rejectReason !== null && typeof record.rejectReason !== "string") {
+    throw new SohuInfraError("搜狐作品记录结构错误：rejectReason 不是字符串");
+  }
+  const rejectReason = typeof record.rejectReason === "string" ? record.rejectReason.trim() : "";
   return createPublishedStateResult({
-    status: auditStatus === "4" ? "public" : "reviewing",
+    status: mapping.status,
     raw: rawRecord,
-    reason: `sohu.auditStatus=${auditStatus}`,
+    reason: mapping.status === "non_public" && rejectReason
+      ? rejectReason
+      : `${mapping.label}（搜狐状态码 ${statusValue}）`,
   });
+}
+
+/** 从审核查询参数中提取搜狐唯一作品 ID。 */
+function resolveSohuPlatformWorkId(payload: PublishedStatePayload): string | null {
+  const attributes = asRecord(payload.attributes);
+  const clues = asRecord(attributes?.review_state_clues);
+  const result = asRecord(payload.publishResult);
+  return [clues?.platform_work_id, result?.postId]
+    .map(normalizeSohuRecordId)
+    .find(Boolean) ?? null;
+}
+
+/** 将搜狐 record.id 收窄为可用于唯一匹配的字符串。 */
+function normalizeSohuRecordId(value: unknown): string | null {
+  if (typeof value !== "string" && !(typeof value === "number" && Number.isFinite(value))) return null;
+  const normalized = String(value).trim();
+  return normalized || null;
+}
+
+/** 只按投稿接口返回的平台作品 ID 匹配搜狐作品。 */
+export function findSohuRecordInList(
+  records: Record<string, unknown>[],
+  payload: PublishedStatePayload,
+): { matchedBy: "platform_work_id"; record: Record<string, unknown> } | null {
+  const platformWorkId = resolveSohuPlatformWorkId(payload);
+  if (!platformWorkId) return null;
+  const record = records.find((candidate) => normalizeSohuRecordId(candidate.id) === platformWorkId);
+  return record ? { matchedBy: "platform_work_id", record } : null;
+}
+
+interface SohuNewsListPage {
+  records: Record<string, unknown>[];
+  streamId: string;
+}
+
+/** 严格解析搜狐作品列表业务响应和分页游标。 */
+function parseSohuNewsListPage(rawPayload: unknown): SohuNewsListPage {
+  const payload = asRecord(rawPayload);
+  if (!payload) throw new SohuInfraError("搜狐作品列表响应结构错误：响应不是对象");
+  if (payload.code === 1211) throw new SohuInfraError("搜狐登录状态已失效，请重新登录");
+  if (payload.code !== 2_000_000 || payload.success !== true) {
+    const message = asString(payload.msg) ?? asString(payload.message) ?? asString(payload.detail) ?? "未知错误";
+    throw new SohuInfraError(`搜狐作品列表业务错误：code=${String(payload.code)}，msg=${message}`);
+  }
+  const data = asRecord(payload.data);
+  if (!data) throw new SohuInfraError("搜狐作品列表响应结构错误：data 不是对象");
+  const collection = data.news ?? data.videos;
+  let items: unknown[];
+  if (Array.isArray(collection)) {
+    items = collection;
+  } else {
+    const objectCollection = asRecord(collection);
+    if (!objectCollection || Object.keys(objectCollection).some((key) => !/^(?:0|[1-9]\d*)$/u.test(key))) {
+      throw new SohuInfraError("搜狐作品列表响应结构错误：news/videos 不是数组或数字键对象");
+    }
+    items = Object.values(objectCollection);
+  }
+  const records = items.map((item) => {
+    const record = asRecord(item);
+    if (!record) throw new SohuInfraError("搜狐作品列表响应结构错误：列表元素不是对象");
+    if (!normalizeSohuRecordId(record.id)) {
+      throw new SohuInfraError("搜狐作品列表响应结构错误：record.id 不是有效作品 ID");
+    }
+    return record;
+  });
+  const rawStreamId = data.streamId;
+  let streamId = "";
+  if (rawStreamId !== undefined && rawStreamId !== null) {
+    if (typeof rawStreamId !== "string" && !(typeof rawStreamId === "number" && Number.isFinite(rawStreamId))) {
+      throw new SohuInfraError("搜狐作品列表响应结构错误：streamId 类型异常");
+    }
+    streamId = String(rawStreamId).trim();
+  }
+  return { records, streamId };
 }
 
 /** 从搜狐列表响应的数组或数字键对象中收集记录。 */
 export function collectSohuRecordsFromPayload(rawPayload: unknown): Record<string, unknown>[] {
-  const payload = asRecord(rawPayload);
-  if (!payload) return [];
-  for (const candidate of [asRecord(payload.data)?.news, payload.news]) {
-    if (Array.isArray(candidate)) return candidate.flatMap((item) => asRecord(item) ? [asRecord(item)!] : []);
-    const record = asRecord(candidate);
-    if (record) return Object.values(record).flatMap((item) => asRecord(item) ? [asRecord(item)!] : []);
-  }
-  return [];
-}
-
-/** 判断搜狐响应仍包含预期的 news 集合。 */
-function hasSohuNewsCollection(rawPayload: unknown): boolean {
-  const payload = asRecord(rawPayload);
-  if (!payload) return false;
-  const candidates = [asRecord(payload.data)?.news, payload.news];
-  return candidates.some((candidate) => Array.isArray(candidate) || Boolean(asRecord(candidate)));
-}
-
-/** 解析记录的发布时间毫秒值。 */
-function resolveSohuRecordPublishedAtMs(record: Record<string, unknown>): number | null {
-  for (const candidate of [record.postTime, record.createdTime, record.modifiedTime]) {
-    const numeric = Number(candidate);
-    if (Number.isFinite(numeric) && numeric > 0) return numeric;
-    const parsed = typeof candidate === "string" ? Date.parse(candidate) : Number.NaN;
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return null;
-}
-
-/** 从审核查询参数中提取平台作品 ID、标题和发布时间线索。 */
-function resolvePayloadClues(payload: PublishedStatePayload): {
-  platformWorkId: string | null;
-  publishedAtMs: number | null;
-  title: string | null;
-} {
-  const attributes = asRecord(payload.attributes);
-  const clues = asRecord(attributes?.review_state_clues);
-  const result = asRecord(payload.publishResult);
-  const platformWorkId = [clues?.platform_work_id, result?.clientNewsId, result?.id, result?.postId, result?.articleId]
-    .map((value) => value == null ? null : asString(String(value)))
-    .find(Boolean) ?? null;
-  const publishedAtRaw = asString(clues?.published_at) ?? asString(payload.publishedAt);
-  const parsed = publishedAtRaw ? Date.parse(publishedAtRaw) : Number.NaN;
-  return {
-    platformWorkId,
-    publishedAtMs: Number.isFinite(parsed) ? parsed : null,
-    title: resolvePayloadTitle(payload),
-  };
-}
-
-/** 按作品 ID、标题和发布时间顺序在搜狐列表中匹配记录。 */
-export function findSohuRecordInList(
-  records: Record<string, unknown>[],
-  payload: PublishedStatePayload,
-): { matchedBy: "platform_work_id" | "title" | "title_and_time_window"; record: Record<string, unknown> } | null {
-  const clues = resolvePayloadClues(payload);
-  if (clues.platformWorkId) {
-    const record = records.find((candidate) => [candidate.id, candidate.clientNewsId]
-      .map((value) => value == null ? null : asString(String(value)))
-      .includes(clues.platformWorkId));
-    if (record) return { matchedBy: "platform_work_id", record };
-  }
-  const title = normalizeComparisonText(clues.title);
-  if (!title) return null;
-  const titleMatches = records.filter((record) => [record.title, record.mobileTitle]
-    .map((value) => asString(value))
-    .map(normalizeComparisonText)
-    .includes(title));
-  if (titleMatches.length === 1) return { matchedBy: "title", record: titleMatches[0]! };
-  if (titleMatches.length > 1 && clues.publishedAtMs != null) {
-    const record = titleMatches
-      .map((candidate) => ({ candidate, publishedAtMs: resolveSohuRecordPublishedAtMs(candidate) }))
-      .filter(({ publishedAtMs }) => publishedAtMs != null && Math.abs(publishedAtMs - clues.publishedAtMs!) <= 48 * 60 * 60 * 1_000)
-      .sort((left, right) => Math.abs(left.publishedAtMs! - clues.publishedAtMs!) - Math.abs(right.publishedAtMs! - clues.publishedAtMs!))[0]?.candidate;
-    if (record) return { matchedBy: "title_and_time_window", record };
-  }
-  return titleMatches[0] ? { matchedBy: "title", record: titleMatches[0] } : null;
-}
-
-/** 尝试定位本机 Chrome/Chromium，供打包环境中的审核查询使用。 */
-function resolveBrowserExecutablePath(): string | undefined {
-  const environmentKeys = ["PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH", "GOOGLE_CHROME_BIN", "CHROME_BIN", "CHROME_PATH"];
-  for (const key of environmentKeys) {
-    const candidate = process.env[key];
-    if (candidate && existsSync(candidate)) return candidate;
-  }
-  for (const command of ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "msedge"]) {
-    const executable = process.platform === "win32" ? `${command}.exe` : command;
-    for (const segment of (process.env.PATH ?? "").split(delimiter)) {
-      const candidate = join(segment, executable);
-      if (existsSync(candidate)) return candidate;
-    }
-  }
-  const home = process.env.HOME ?? process.env.USERPROFILE ?? "";
-  const candidates = [
-    join(home, "Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-    "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
-  ];
-  return candidates.find(existsSync);
-}
-
-/** 使用 storage-state 创建搜狐审核查询浏览器上下文。 */
-async function createStatusBrowserContext(accountFile: string): Promise<BrowserContext> {
-  const executablePath = resolveBrowserExecutablePath();
-  const browser = await chromium.launch({ headless: true, ...(executablePath ? { executablePath } : {}) });
-  try {
-    return await browser.newContext({ storageState: accountFile });
-  } catch (error) {
-    await browser.close().catch(() => undefined);
-    throw error;
-  }
-}
-
-/** 判断审核页 URL 是否为搜狐内容管理首页。 */
-function isSohuLoginSuccessUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    return parsed.origin === SOHU_ORIGIN && parsed.pathname === "/mpfe/v4/contentManagement/first/page";
-  } catch {
-    return url.startsWith(SOHU_RECORD_STATUS_URL);
-  }
-}
-
-/** 通过 URL 与页面文案断言搜狐审核查询仍处于登录态。 */
-async function assertSohuLoggedIn(page: Page, accountFile: string): Promise<void> {
-  const currentUrl = page.url();
-  if (!currentUrl.includes("mp.sohu.com") || currentUrl.includes("/login")) {
-    throw new SohuInfraError(`搜狐账号文件登录状态无效: ${accountFile}`);
-  }
-  const bodyText = await page.locator("body").innerText().catch(() => "");
-  if (SOHU_LOGIN_HINTS.some((hint) => bodyText.includes(hint))) {
-    throw new SohuInfraError(`搜狐账号文件登录状态无效: ${accountFile}`);
-  }
-  if (!isSohuLoginSuccessUrl(currentUrl) && /passport|verify|captcha/iu.test(currentUrl)) {
-    throw new SohuInfraError(`搜狐账号文件登录状态无效: ${accountFile}`);
-  }
-}
-
-/** 判断网络响应是否为指定页码的搜狐作品列表。 */
-function isSohuNewsListResponse(response: Response, expectedPage: number | null = null): boolean {
-  if (response.request().method() !== "GET" || !response.url().includes(SOHU_NEWS_LIST_URL_MARKER)) return false;
-  if (expectedPage == null) return true;
-  try {
-    return new URL(response.url()).searchParams.get("pno") === String(expectedPage);
-  } catch {
-    return response.url().includes(`pno=${expectedPage}`);
-  }
-}
-
-/** 等待搜狐作品列表响应。 */
-function waitForSohuNewsListResponse(page: Page, timeoutMs: number, expectedPage: number | null = null): Promise<Response> {
-  return page.waitForResponse((candidate) => isSohuNewsListResponse(candidate, expectedPage), { timeout: timeoutMs });
-}
-
-/** 构造下一页搜狐作品列表 URL。 */
-function buildSohuNewsListUrl(baseUrl: string, pageNumber: number): string {
-  const url = new URL(baseUrl);
-  url.searchParams.set("pno", String(pageNumber));
-  return url.toString();
-}
-
-/** 在页面登录上下文中触发下一页请求并读取 JSON。 */
-async function fetchTriggeredSohuNewsList(
-  page: Page,
-  timeoutMs: number,
-  requestUrl: string,
-  expectedPage: number,
-): Promise<{ payload: unknown; responseUrl: string } | null> {
-  const responsePromise = waitForSohuNewsListResponse(page, timeoutMs, expectedPage).catch(() => null);
-  await page.evaluate(async (url) => {
-    await fetch(url, { credentials: "include", method: "GET" });
-  }, requestUrl);
-  const response = await responsePromise;
-  return response ? { payload: await response.json(), responseUrl: response.url() } : null;
+  return parseSohuNewsListPage(rawPayload).records;
 }
 
 /** 查询搜狐视频当前审核状态。 */
 export async function fetchPublishedState(payload: PublishedStatePayload): Promise<PublishedStateResult | null> {
   const accountFile = asString(payload.accountFile);
   if (!accountFile) throw new SohuInfraError("搜狐发布状态查询缺少 accountFile");
+  const platformWorkId = resolveSohuPlatformWorkId(payload);
+  if (!platformWorkId) throw new SohuInfraError("搜狐发布状态查询缺少平台作品 ID");
   const timeoutMs = typeof payload.timeoutMs === "number" && Number.isFinite(payload.timeoutMs) && payload.timeoutMs > 0
     ? payload.timeoutMs
     : DEFAULT_RECORD_STATUS_TIMEOUT_MS;
-  const context = await createStatusBrowserContext(accountFile);
-  const browser = context.browser();
-  try {
-    const page = await context.newPage();
-    page.setDefaultTimeout(timeoutMs);
-    page.setDefaultNavigationTimeout(timeoutMs);
-    const responseTimeoutMs = Math.min(timeoutMs, SOHU_STATUS_RESPONSE_TIMEOUT_MS);
-    const firstResponsePromise = waitForSohuNewsListResponse(page, responseTimeoutMs, 1);
-    await page.goto(SOHU_RECORD_STATUS_URL, { waitUntil: "domcontentloaded", timeout: timeoutMs });
-    await page.waitForLoadState("networkidle", { timeout: Math.min(timeoutMs, 10_000) }).catch(() => undefined);
-    await assertSohuLoggedIn(page, accountFile);
-    const firstResponse = await firstResponsePromise.catch(() => null);
-    if (!firstResponse) throw new SohuTimeoutError("wait-news-list", responseTimeoutMs);
-    let currentPayload: unknown = await firstResponse.json();
-    let currentResponseUrl = firstResponse.url();
-    const pageRecordCache = new Map<number, Record<string, unknown>[]>();
-    for (let attempt = 0; attempt < SOHU_STATUS_PAGINATION_ATTEMPTS; attempt += 1) {
-      const pageNumber = attempt + 1;
-      const records = collectSohuRecordsFromPayload(currentPayload);
-      pageRecordCache.set(pageNumber, records);
-      if (!hasSohuNewsCollection(currentPayload)) throw new SohuInfraError("搜狐接口返回结构变化，未找到 data.news");
-      const matched = findSohuRecordInList(records, payload);
-      if (matched) {
-        const parsed = parseSohuRecordStatus(matched.record);
-        if (!parsed) throw new SohuInfraError("搜狐命中记录但 auditStatus 缺失或类型异常");
-        return createPublishedStateResult({
-          status: parsed.status,
-          link: payload.link,
-          matchedBy: matched.matchedBy,
-          raw: matched.record,
-          reason: parsed.reason,
-        });
-      }
-      if (attempt === SOHU_STATUS_PAGINATION_ATTEMPTS - 1) break;
-      const nextPage = pageNumber + 1;
-      const next = await fetchTriggeredSohuNewsList(
-        page,
-        responseTimeoutMs,
-        buildSohuNewsListUrl(currentResponseUrl, nextPage),
-        nextPage,
-      );
-      if (!next) break;
-      currentPayload = next.payload;
-      currentResponseUrl = next.responseUrl;
-    }
-    return createPublishedStateResult({
-      status: "reviewing",
-      link: payload.link,
-      raw: {
-        scannedPages: [...pageRecordCache.entries()].map(([pageNumber, records]) => ({
-          pageNumber,
-          recordCount: records.length,
-        })),
+  const [account, userAgent] = await Promise.all([
+    loadSohuAccountContext(accountFile),
+    loadUserAgent(),
+  ]);
+  const http = createHttpClient(account, userAgent, false);
+  const scannedPages: Array<{ pageNumber: number; recordCount: number }> = [];
+  let streamId = "";
+  let stoppedOnEmptyPage = false;
+  for (let pageNumber = 1; pageNumber <= SOHU_STATUS_PAGINATION_ATTEMPTS; pageNumber += 1) {
+    const response = await http.get(SOHU_NEWS_LIST_URL, {
+      headers: { Referer: SOHU_RECORD_STATUS_URL },
+      params: {
+        psize: 10,
+        newsType: 4,
+        statusType: 1,
+        columnId: "",
+        pno: pageNumber,
+        streamId,
+        accountId: account.accountId,
+        _: Date.now(),
       },
-      reason: "sohu news list did not match current publish task",
+      signal: payload.abortSignal,
+      timeout: timeoutMs,
     });
-  } finally {
-    await context.close().catch(() => undefined);
-    await browser?.close().catch(() => undefined);
+    const page = parseSohuNewsListPage(response.data);
+    scannedPages.push({ pageNumber, recordCount: page.records.length });
+    const matched = findSohuRecordInList(page.records, payload);
+    if (matched) {
+      const parsed = parseSohuRecordStatus(matched.record);
+      return createPublishedStateResult({
+        status: parsed.status,
+        link: payload.link,
+        matchedBy: matched.matchedBy,
+        raw: matched.record,
+        reason: parsed.reason,
+      });
+    }
+    if (page.records.length === 0) {
+      stoppedOnEmptyPage = true;
+      break;
+    }
+    streamId = page.streamId;
   }
+  return createPublishedStateResult({
+    status: "non_public",
+    link: payload.link,
+    matchedBy: "platform_work_id",
+    raw: { platformWorkId, scannedPages, stoppedOnEmptyPage },
+    reason: "未在搜狐最近 30 条视频中找到该作品，请前往官方后台查看发布情况",
+  });
 }
 
-/** 搜狐视频资源：HTTP 发布，浏览器查询审核状态。 */
+/** 搜狐视频资源：通过 HTTP 发布并查询审核状态。 */
 export class SohuVideo implements Video {
   /** 执行完整素材上传和 Payload 构造，但不提交最终作品。 */
   async dryRun(payload: VideoUploadPayload): Promise<void> {

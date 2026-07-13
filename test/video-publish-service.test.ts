@@ -14,6 +14,7 @@ import {
   createMachineProfile,
 } from "../src/infra/video/douyin-video.ts";
 import { SohuVideo } from "../src/infra/video/sohu-video.ts";
+import { loadUserAgent } from "../src/utils/environment.ts";
 
 const projectRoot = process.cwd();
 const windowsIdentity = JSON.parse(fs.readFileSync(
@@ -103,22 +104,27 @@ test("fixed identity assets contain complete Chrome 138 fields", () => {
   }
 });
 
-test("platform modules independently load the fixed identity without a shared implementation", () => {
-  for (const [fileName, loaderName] of [
-    ["bilibili-video.ts", "loadBilibiliBrowserUserAgent"],
-    ["baijiahao-video.ts", "loadBaijiahaoBrowserUserAgent"],
-    ["sohu-video.ts", "loadSohuBrowserUserAgent"],
-    ["douyin-video.ts", "loadDouyinBrowserIdentity"],
+test("platform modules share the operating-system User-Agent loader", async () => {
+  const expectedIdentity = process.platform === "win32" ? windowsIdentity : macosIdentity;
+  assert.equal(await loadUserAgent(), expectedIdentity.userAgent);
+
+  const environmentSource = fs.readFileSync(path.join(projectRoot, "src", "utils", "environment.ts"), "utf8");
+  assert.match(environmentSource, /browser-identity\.windows\.json/u);
+  assert.match(environmentSource, /browser-identity\.macos\.json/u);
+  assert.match(environmentSource, /Chrome\/138\.0\.0\.0/u);
+
+  for (const [directory, fileName] of [
+    ["video", "bilibili-video.ts"],
+    ["video", "baijiahao-video.ts"],
+    ["video", "sohu-video.ts"],
+    ["account", "bilibili-account.ts"],
+    ["account", "baijiahao-account.ts"],
+    ["account", "sohu-account.ts"],
+    ["account", "douyin-account.ts"],
   ]) {
-    const source = fs.readFileSync(path.join(projectRoot, "src", "infra", "video", fileName), "utf8");
-    assert.match(source, new RegExp(`(?:async )?function ${loaderName}\\(`, "u"));
-    assert.match(source, /browser-identity\.windows\.json/u);
-    assert.match(source, /browser-identity\.macos\.json/u);
-    assert.match(source, /Chrome\/138\.0\.0\.0/u);
-  }
-  for (const fileName of ["bilibili-video.ts", "baijiahao-video.ts", "sohu-video.ts"]) {
-    const source = fs.readFileSync(path.join(projectRoot, "src", "infra", "video", fileName), "utf8");
-    assert.match(source, /"User-Agent": userAgent/u);
+    const source = fs.readFileSync(path.join(projectRoot, "src", "infra", directory, fileName), "utf8");
+    assert.match(source, /import \{ loadUserAgent \} from "\.\.\/\.\.\/utils\/environment\.ts";/u);
+    assert.doesNotMatch(source, /async function load(?:Baijiahao|Bilibili|Sohu)BrowserUserAgent/u);
   }
 });
 

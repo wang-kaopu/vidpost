@@ -9,7 +9,6 @@ import axios, { AxiosHeaders, type AxiosInstance } from "axios";
 import CRC32 from "crc-32";
 import pLimit from "p-limit";
 import type { BrowserWindow, Event as ElectronEvent, IpcMainEvent, IpcRenderer, Session } from "electron";
-import { chromium, type BrowserContext, type Response } from "playwright";
 
 import { logger, type Logger } from "../../utils/logger.ts";
 
@@ -2630,9 +2629,23 @@ async function dispose(prepared?: DouyinPreparedContext): Promise<void> {
   }
 }
 
-export const DOUYIN_RECORD_STATUS_URL = "https://creator.douyin.com/creator-micro/content/manage";
-export const DOUYIN_WORK_LIST_URL_MARKER = "/janus/douyin/creator/pc/work_list";
-export const DOUYIN_STATUS_RESPONSE_TIMEOUT_MS = 15_000;
+export const DOUYIN_RECORD_STATUS_URL = "https://creator.douyin.com/web/api/media/aweme/post/";
+const DOUYIN_REJECT_REASON_MAP: Record<string, string> = {
+  "Network Error": "网络错误，请稍后重试",
+  "Request failed with status code 403": "该账号状态可能异常，请尝试清除账号缓存重新登录并切换网络后重新发布，或直接前往【多开面板】中发布",
+  "Request failed with status code 502": "网络错误，请稍后重试",
+  "Unexpected end of JSON input": "账号信息缺失，请前往【多开面板-添加账号】重新扫码登录该账号后重试",
+  sms: "出现验证码了，请前往多开面板，在官方后台发布一次内容完成验证",
+  无响应: "出现验证码了，请先前往【多开面板】使用该抖音账号发布一条内容完成验证，发布成功后即可继续在【一键发布】中操作",
+  需优化: "审核未通过，作品需优化",
+};
+
+interface DouyinStoredCookie {
+  domain: string;
+  expires: number;
+  name: string;
+  value: string;
+}
 
 /** 将未知值收窄为普通记录。 */
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -2646,58 +2659,53 @@ function asString(value: unknown): string | null {
   return text || null;
 }
 
-/** 把抖音作品状态字段映射为业务状态。 */
+/** 把小豆芽使用的抖音作品状态码映射为业务状态。 */
 export function parseDouyinRecordStatus(rawRecord: unknown): PublishedStateResult | null {
   const record = asRecord(rawRecord);
-  const status = asRecord(record?.status);
-  if (!record || !status) return null;
+  if (!record || !Number.isFinite(Number(record.status_value))) return null;
+  const statusValue = Number(record.status_value);
   const link = asString(record.share_url) ?? (asString(record.aweme_id) ? `https://www.iesdouyin.com/share/video/${asString(record.aweme_id)}/` : null);
-  if (status.in_reviewing === true) return { status: "reviewing", link, raw: rawRecord, matchedBy: "unknown", reason: null };
-  if (status.is_delete === true) return { status: "non_public", link, raw: rawRecord, matchedBy: "unknown", reason: "douyin.status.is_delete=true" };
-  if (status.is_prohibited === true) return { status: "non_public", link, raw: rawRecord, matchedBy: "unknown", reason: "douyin.status.is_prohibited=true" };
-  if (status.is_private === true || status.self_see === true || Number(status.private_status) > 0) {
-    return { status: "non_public", link, raw: rawRecord, matchedBy: "unknown", reason: "douyin.status indicates private visibility" };
+  if (statusValue === 141) return { status: "reviewing", link, raw: rawRecord, matchedBy: "platform_work_id", reason: null };
+  if ([102, 140, 143].includes(statusValue)) {
+    return { status: "public", link, raw: rawRecord, matchedBy: "platform_work_id", reason: null };
   }
-  if (status.in_reviewing === false) return { status: "public", link, raw: rawRecord, matchedBy: "unknown", reason: null };
-  return null;
+  const statusDescription = asString(asRecord(record.review_struct)?.status_desc);
+  const reason = (statusDescription ? DOUYIN_REJECT_REASON_MAP[statusDescription] ?? statusDescription : null)
+    ?? `审核未通过 状态码${statusValue}`;
+  return { status: "non_public", link, raw: rawRecord, matchedBy: "platform_work_id", reason };
 }
 
 /** 从作品列表响应中提取记录。 */
 function collectDouyinRecords(rawPayload: unknown): Array<Record<string, unknown>> {
   const root = asRecord(rawPayload);
-  const data = asRecord(root?.data);
-  const nested = asRecord(data?.data);
-  const candidate = root?.aweme_list ?? data?.aweme_list ?? nested?.aweme_list;
+  const candidate = root?.aweme_list;
   return Array.isArray(candidate) ? candidate.map(asRecord).filter((item): item is Record<string, unknown> => item !== null) : [];
 }
 
-/** 按平台 ID、分享链接或标题匹配作品。 */
-function findDouyinRecord(records: Array<Record<string, unknown>>, payload: PublishedStatePayload): { matchedBy: "platform_work_id" | "share_url" | "title"; record: Record<string, unknown> } | null {
+/** 读取抖音 storage-state 并生成 creator.douyin.com Cookie Header。 */
+async function loadDouyinCookieHeader(accountFile: string): Promise<string> {
+  const parsed = JSON.parse(await readFile(accountFile, "utf8")) as unknown;
+  const root = asRecord(parsed);
+  if (!Array.isArray(root?.cookies)) throw new Error("抖音 Cookie 文件必须是包含 cookies 数组的 Playwright storage-state JSON");
+  const nowSeconds = Date.now() / 1_000;
+  const cookies = (root.cookies as DouyinStoredCookie[]).flatMap((cookie) => {
+    const domain = String(cookie.domain || "").replace(/^\.+/u, "").toLowerCase();
+    const validDomain = domain === "douyin.com" || domain.endsWith(".douyin.com");
+    const unexpired = cookie.expires === -1 || cookie.expires > nowSeconds;
+    return validDomain && unexpired && cookie.name && cookie.value ? [`${cookie.name}=${cookie.value}`] : [];
+  });
+  if (cookies.length === 0) throw new Error("抖音 Cookie 文件中没有可用的 douyin.com Cookie");
+  return cookies.join("; ");
+}
+
+/** 只按投稿接口返回的平台作品 ID 匹配抖音作品。 */
+function findDouyinRecord(records: Array<Record<string, unknown>>, payload: PublishedStatePayload): Record<string, unknown> | null {
   const attributes = asRecord(payload.attributes);
   const clues = asRecord(attributes?.review_state_clues);
   const result = asRecord(payload.publishResult);
-  const workId = asString(clues?.platform_work_id) ?? asString(result?.postId) ?? asString(result?.aweme_id) ?? asString(payload.remoteTaskId);
-  if (workId) {
-    const record = records.find((item) => asString(item.aweme_id) === workId);
-    if (record) return { matchedBy: "platform_work_id", record };
-  }
-  const shareUrl = asString(clues?.share_url) ?? asString(payload.link) ?? asString(result?.link) ?? asString(result?.share_url);
-  if (shareUrl) {
-    const record = records.find((item) => asString(item.share_url) === shareUrl);
-    if (record) return { matchedBy: "share_url", record };
-  }
-  const title = asString(payload.title)?.replace(/\s+/gu, " ").toLowerCase();
-  if (title) {
-    const record = records.find((item) => [item.item_title, item.caption, item.desc].map(asString).some((value) => value?.replace(/\s+/gu, " ").toLowerCase() === title));
-    if (record) return { matchedBy: "title", record };
-  }
-  return null;
-}
-
-/** 用 storage-state 创建独立的状态查询上下文。 */
-export async function createContextFromAccountFile(accountFile: string, _headlessMode = "default"): Promise<BrowserContext> {
-  const browser = await chromium.launch({ headless: true });
-  return browser.newContext({ storageState: isAbsolute(accountFile) ? accountFile : resolve(process.cwd(), accountFile) });
+  const workId = asString(clues?.platform_work_id) ?? asString(result?.postId) ?? asString(result?.aweme_id);
+  if (!workId) throw new Error("抖音发布记录缺少 platform_work_id");
+  return records.find((item) => asString(item.aweme_id) === workId) ?? null;
 }
 
 /** 注入当前 Electron 主进程运行时。 */
@@ -2740,35 +2748,44 @@ export class DouyinVideo implements Video {
     const accountFile = asString(payload.accountFile);
     if (!accountFile) throw new Error("抖音发布状态查询缺少 accountFile");
     const timeout = typeof payload.timeoutMs === "number" && payload.timeoutMs > 0 ? payload.timeoutMs : 30_000;
-    const context = await createContextFromAccountFile(accountFile, "record-status:douyin");
-    const browser = context.browser();
-    try {
-      const page = await context.newPage();
-      const responsePromise = page.waitForResponse((response: Response) => response.request().method() === "GET" && response.url().includes(DOUYIN_WORK_LIST_URL_MARKER), { timeout: Math.min(timeout, DOUYIN_STATUS_RESPONSE_TIMEOUT_MS) });
-      await page.goto(DOUYIN_RECORD_STATUS_URL, { waitUntil: "domcontentloaded", timeout });
-      if (/passport|login|verify|captcha/iu.test(page.url())) throw new Error(`抖音账号登录状态失效: ${accountFile}`);
-      let responsePayload = await (await responsePromise).json();
-      for (let attempt = 0; attempt < 3; attempt += 1) {
-        const matched = findDouyinRecord(collectDouyinRecords(responsePayload), payload);
-        if (matched) {
-          const parsed = parseDouyinRecordStatus(matched.record);
-          return parsed
-            ? { ...parsed, matchedBy: matched.matchedBy, link: parsed.link ?? payload.link ?? null }
-            : { status: "reviewing", link: payload.link ?? null, raw: matched.record, matchedBy: matched.matchedBy, reason: "douyin matched record but could not map status" };
-        }
-        if (attempt === 2) break;
-        const nextResponse = page.waitForResponse((response: Response) => response.request().method() === "GET" && response.url().includes(DOUYIN_WORK_LIST_URL_MARKER), { timeout: 5_000 }).catch(() => null);
-        await page.mouse.wheel(0, 4_000).catch(() => undefined);
-        await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight)).catch(() => undefined);
-        const response = await nextResponse;
-        if (!response) break;
-        responsePayload = await response.json();
-      }
-      return { status: "reviewing", link: payload.link ?? null, raw: null, matchedBy: "unknown", reason: "douyin work list did not match current publish task" };
-    } finally {
-      await context.close().catch((error: unknown) => logger.error("关闭抖音状态查询上下文失败：", error));
-      await browser?.close().catch((error: unknown) => logger.error("关闭抖音状态查询浏览器失败：", error));
+    const resolvedAccountFile = isAbsolute(accountFile) ? accountFile : resolve(process.cwd(), accountFile);
+    const [cookieHeader, browserIdentity] = await Promise.all([
+      loadDouyinCookieHeader(resolvedAccountFile),
+      loadDouyinBrowserIdentity(publishElectron?.app.getAppPath() ?? process.cwd()),
+    ]);
+    const response = await axios.get(DOUYIN_RECORD_STATUS_URL, {
+      headers: {
+        "Accept-Language": browserIdentity.acceptLanguage,
+        Cookie: cookieHeader,
+        Referer: `${CREATOR_ORIGIN}/creator-micro/content/manage`,
+        "sec-ch-ua": browserIdentity.secChUa,
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": browserIdentity.secChUaPlatform,
+        "User-Agent": browserIdentity.userAgent,
+      },
+      params: {
+        ...buildCommonParams(createMachineProfile(browserIdentity)),
+        count: 12,
+        max_cursor: 0,
+        scene: "star_atlas",
+        status: "0",
+      },
+      signal: payload.abortSignal,
+      timeout,
+    });
+    const raw = asRecord(response.data);
+    if (!raw || (raw.status_code !== undefined && Number(raw.status_code) !== 0) || !Array.isArray(raw.aweme_list)) {
+      throw new Error("抖音作品列表响应结构错误");
     }
+    const records = collectDouyinRecords(raw);
+    if (records.length === 0) throw new Error("抖音作品列表为空，无法确认发布状态");
+    const matched = findDouyinRecord(records, payload);
+    if (!matched) {
+      return { status: "public", link: payload.link ?? null, raw, matchedBy: "platform_work_id", reason: null };
+    }
+    const parsed = parseDouyinRecordStatus(matched);
+    if (!parsed) throw new Error("抖音作品状态响应结构错误");
+    return { ...parsed, link: parsed.link ?? payload.link ?? null };
   }
 }
 

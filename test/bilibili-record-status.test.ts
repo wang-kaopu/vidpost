@@ -1,135 +1,102 @@
-import test from 'node:test'
 import assert from 'node:assert/strict'
+import { mkdtemp, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import test from 'node:test'
 
-async function loadBilibiliRecordStatusModule() {
-  return import('../src/infra/video/bilibili-video.ts')
-}
+import axios from 'axios'
 
-test('bilibili record status parser returns public when Archive.state is 0', async () => {
-  const { parseBilibiliRecordStatus } = await loadBilibiliRecordStatusModule()
+import { BilibiliVideo, parseBilibiliRecordStatus } from '../src/infra/video/bilibili-video.ts'
 
-  const result = parseBilibiliRecordStatus({
-    Archive: {
-      aid: 114583721217240,
-      bvid: 'BV1FWjizhE62',
-      state: 0,
-      state_desc: '开放浏览',
-      had_passed: false,
-      is_only_self: 0,
-      no_public: 0,
-    },
-  })
-
-  assert.equal(result?.status, 'public')
-  assert.equal(result?.link, 'https://www.bilibili.com/video/BV1FWjizhE62')
-  assert.equal(result?.reason, 'bilibili.Archive.state=0,state_desc=开放浏览,is_only_self=0')
+test('bilibili maps XiaoDouYa reviewing and public state sets exactly', () => {
+  for (const state of [-30, -1, -6, -7, -8, -10, -13, -60]) {
+    assert.equal(parseBilibiliRecordStatus({ Archive: { bvid: 'BV1test', state } })?.status, 'reviewing')
+  }
+  for (const state of [0, -40]) {
+    assert.equal(parseBilibiliRecordStatus({ Archive: { bvid: 'BV1test', state } })?.status, 'public')
+  }
 })
 
-test('bilibili record status parser returns non_public when Archive.state is -50', async () => {
-  const { parseBilibiliRecordStatus } = await loadBilibiliRecordStatusModule()
-
+test('bilibili maps every other numeric state to non_public with platform reason', () => {
   const result = parseBilibiliRecordStatus({
-    Archive: {
-      aid: 116492465078286,
-      bvid: 'BV1Cg9YBAEJT',
-      state: -50,
-      state_desc: '-50',
-      had_passed: false,
-      is_only_self: 1,
-      no_public: 0,
-    },
+    Archive: { bvid: 'BV1test', state: -50, state_desc: '退回', reject_reason: '封面不合规' },
   })
-
   assert.equal(result?.status, 'non_public')
-  assert.equal(result?.link, 'https://www.bilibili.com/video/BV1Cg9YBAEJT')
-  assert.equal(result?.reason, 'bilibili.Archive.state=-50,is_only_self=1')
+  assert.equal(result?.reason, '退回 封面不合规 -50')
+  assert.equal(parseBilibiliRecordStatus({ Archive: { state: 7, state_desc: '已锁定' } })?.reason, '审核未通过 7')
 })
 
-test('bilibili record status parser returns reviewing when archive.state is -1 and state_desc is 复核中', async () => {
-  const { parseBilibiliRecordStatus } = await loadBilibiliRecordStatusModule()
-
-  const result = parseBilibiliRecordStatus({
-    archive: {
-      aid: 116526925482919,
-      bvid: 'BV13XR4BPEFY',
-      state: -1,
-      state_desc: '复核中',
-      had_passed: false,
-      is_only_self: 0,
-      no_public: 0,
-    },
-  })
-
-  assert.equal(result?.status, 'reviewing')
-  assert.equal(result?.link, 'https://www.bilibili.com/video/BV13XR4BPEFY')
-  assert.equal(result?.reason, 'bilibili.archive.state=-1,state_desc=复核中,is_only_self=0')
+test('bilibili queries at most three pages and treats a missing bvid as non_public', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'bilibili-state-'))
+  const accountFile = join(directory, 'account.json')
+  await writeFile(accountFile, JSON.stringify({ cookies: [
+    { domain: '.bilibili.com', expires: -1, name: 'SESSDATA', value: 'test' },
+    { domain: '.bilibili.com', expires: -1, name: 'bili_jct', value: 'csrf' },
+  ] }))
+  const previousAdapter = axios.defaults.adapter
+  const pages: number[] = []
+  axios.defaults.adapter = async (config) => {
+    pages.push(config.params.pn)
+    return { config, data: { code: 0, data: { arc_audits: [{ Archive: { bvid: `BV-other-${config.params.pn}`, state: 0 } }] } }, headers: {}, status: 200, statusText: 'OK' }
+  }
+  try {
+    const result = await new BilibiliVideo().fetchPublishedState({
+      accountFile,
+      attributes: { review_state_clues: { platform_work_id: 'BV-target' } },
+    })
+    assert.deepEqual(pages, [1, 2, 3])
+    assert.equal(result?.status, 'non_public')
+  } finally {
+    axios.defaults.adapter = previousAdapter
+  }
 })
 
-test('bilibili record status parser returns null when Archive.state is -50 but is_only_self is not 1', async () => {
-  const { parseBilibiliRecordStatus } = await loadBilibiliRecordStatusModule()
-
-  const result = parseBilibiliRecordStatus({
-    Archive: {
-      aid: 100,
-      state: -50,
-      state_desc: '开放浏览',
-      had_passed: false,
-      is_only_self: 0,
-      no_public: 0,
-    },
-  })
-
-  assert.equal(result, null)
+test('bilibili stops paging when it finds the target bvid', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'bilibili-state-'))
+  const accountFile = join(directory, 'account.json')
+  await writeFile(accountFile, JSON.stringify({ cookies: [
+    { domain: '.bilibili.com', expires: -1, name: 'SESSDATA', value: 'test' },
+    { domain: '.bilibili.com', expires: -1, name: 'bili_jct', value: 'csrf' },
+  ] }))
+  const previousAdapter = axios.defaults.adapter
+  let calls = 0
+  axios.defaults.adapter = async (config) => {
+    calls += 1
+    return { config, data: { code: 0, data: { arc_audits: [{ Archive: { bvid: 'BV-target', state: -1 } }] } }, headers: {}, status: 200, statusText: 'OK' }
+  }
+  try {
+    const result = await new BilibiliVideo().fetchPublishedState({
+      accountFile,
+      attributes: { review_state_clues: { platform_work_id: 'BV-target' } },
+    })
+    assert.equal(calls, 1)
+    assert.equal(result?.status, 'reviewing')
+  } finally {
+    axios.defaults.adapter = previousAdapter
+  }
 })
 
-test('bilibili record status parser returns null when archive.state is -1 but state_desc does not match reviewing sample', async () => {
-  const { parseBilibiliRecordStatus } = await loadBilibiliRecordStatusModule()
-
-  const result = parseBilibiliRecordStatus({
-    archive: {
-      aid: 100,
-      state: -1,
-      state_desc: '开放浏览',
-      had_passed: false,
-      is_only_self: 0,
-      no_public: 0,
-    },
-  })
-
-  assert.equal(result, null)
-})
-
-test('bilibili record status parser returns null when Archive.state is 0 but visibility markers do not match public sample', async () => {
-  const { parseBilibiliRecordStatus } = await loadBilibiliRecordStatusModule()
-
-  const result = parseBilibiliRecordStatus({
-    Archive: {
-      aid: 100,
-      state: 0,
-      state_desc: '-50',
-      had_passed: false,
-      is_only_self: 1,
-      no_public: 0,
-    },
-  })
-
-  assert.equal(result, null)
-})
-
-test('bilibili record status parser returns null for unconfirmed Archive.state values', async () => {
-  const { parseBilibiliRecordStatus } = await loadBilibiliRecordStatusModule()
-
-  const result = parseBilibiliRecordStatus({
-    Archive: {
-      aid: 123,
-      bvid: 'BV1test',
-      state: 7,
-      state_desc: '审核中',
-      had_passed: false,
-      is_only_self: 0,
-      no_public: 0,
-    },
-  })
-
-  assert.equal(result, null)
+test('bilibili stops paging on an empty valid page', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'bilibili-state-'))
+  const accountFile = join(directory, 'account.json')
+  await writeFile(accountFile, JSON.stringify({ cookies: [
+    { domain: '.bilibili.com', expires: -1, name: 'SESSDATA', value: 'test' },
+    { domain: '.bilibili.com', expires: -1, name: 'bili_jct', value: 'csrf' },
+  ] }))
+  const previousAdapter = axios.defaults.adapter
+  let calls = 0
+  axios.defaults.adapter = async (config) => {
+    calls += 1
+    return { config, data: { code: 0, data: { arc_audits: [] } }, headers: {}, status: 200, statusText: 'OK' }
+  }
+  try {
+    const result = await new BilibiliVideo().fetchPublishedState({
+      accountFile,
+      attributes: { review_state_clues: { platform_work_id: 'BV-target' } },
+    })
+    assert.equal(calls, 1)
+    assert.equal(result?.status, 'non_public')
+  } finally {
+    axios.defaults.adapter = previousAdapter
+  }
 })

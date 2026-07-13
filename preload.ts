@@ -7,7 +7,7 @@ export interface ElectronApi {
   getLaunchIntent(): Promise<unknown>
   onLaunchIntent(handler: (payload: unknown) => void): () => void
   openExternal(url: string): Promise<void>
-  syncTaskStateBg(): void
+  onPublishTaskStateChanged(handler: (payload: unknown) => void): () => void
   getBilibiliHumanTypes(payload: { accountId: string }): Promise<Array<{ id: number; name: string }>>
   getSohuChannels(payload: { accountId: string }): Promise<Array<{
     id: number
@@ -30,7 +30,13 @@ const electronApi: ElectronApi = {
     }
   },
   openExternal: (url) => ipcRenderer.invoke('agenthunt:open-external', url),
-  syncTaskStateBg: () => ipcRenderer.send('sync-task-state-bg'),
+  onPublishTaskStateChanged: (handler) => {
+    const listener = (_event: IpcRendererEvent, payload: unknown) => handler(payload)
+    ipcRenderer.on('publish-task-state-changed', listener)
+    return () => {
+      ipcRenderer.removeListener('publish-task-state-changed', listener)
+    }
+  },
   getBilibiliHumanTypes: (payload) => ipcRenderer.invoke('video:get-bilibili-human-types', payload),
   getSohuChannels: (payload) => ipcRenderer.invoke('video:get-sohu-channels', payload),
 }

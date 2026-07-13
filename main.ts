@@ -16,7 +16,11 @@ import {
 } from './src/deep-link.ts'
 import { getSingletonLock } from './src/utils/lock.ts'
 import { setApiClientWindow } from './src/api/api-client.ts'
-import { syncTaskStateBg } from './src/service/task-state-service.ts'
+import {
+  configureTaskStateServiceRuntime,
+  recoverTaskStateMonitors,
+  stopTaskStateMonitors,
+} from './src/service/task-state-service.ts'
 import { configureVideoRuntime, destroyVideoWindows } from './src/infra/video/video.ts'
 import { logger } from './src/utils/logger.ts'
 
@@ -156,6 +160,12 @@ const createWindow = (): BrowserWindow => {
     }
   })
 
+  mainWindow.webContents.once('did-finish-load', () => {
+    recoverTaskStateMonitors().catch((error) => {
+      logger.error('[task-state-monitor] failed to recover tasks:', error)
+    })
+  })
+
   // 加载页面URL
   loadRenderer(mainWindow, builtAppPath).catch((error) => {
     logger.error('[renderer] failed to load renderer:', error)
@@ -178,6 +188,12 @@ async function startApplication(): Promise<void> {
     getCdpEndpoint: () => `http://127.0.0.1:${electronCdpPort}`,
     isQuitting: () => willQuitApp,
   })
+  configureTaskStateServiceRuntime({
+    onTaskChanged: (payload) => {
+      if (!mainWindow || mainWindow.isDestroyed()) return
+      mainWindow.webContents.send('publish-task-state-changed', payload)
+    },
+  })
 
   // 应用准备就绪后注册 IPC 监听器并创建窗口
   app.whenReady().then(() => {
@@ -187,9 +203,6 @@ async function startApplication(): Promise<void> {
     registerIpcHandler('ping', ping)
     registerIpcHandler('video:get-bilibili-human-types', getBilibiliHumanTypes)
     registerIpcHandler('video:get-sohu-channels', getSohuChannels)
-    registerIpcListener('sync-task-state-bg', (_event, options) => {
-      syncTaskStateBg((options as { limit?: number } | undefined) ?? {})
-    })
     registerIpcHandler('agenthunt:get-launch-intent', () => pendingLaunchIntent)
     registerIpcHandler('agenthunt:open-external', (_event, url) => shell.openExternal(String(url || '')))
 
@@ -223,6 +236,7 @@ if (hasSingletonLock) {
 
   app.on('before-quit', () => {
     willQuitApp = true
+    stopTaskStateMonitors()
     destroyVideoWindows()
   })
 

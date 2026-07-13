@@ -6,6 +6,7 @@ import { resolveAccountFilePath } from './account-service.ts'
 import { PublishAssetCache } from './publish-asset-cache.ts'
 import type { Video } from '../infra/video/video.ts'
 import { logger } from '../utils/logger.ts'
+import { startTaskStateMonitor } from './task-state-service.ts'
 const publishAssetCache = new PublishAssetCache()
 
 type AccountTask<T> = () => Promise<T>
@@ -207,23 +208,41 @@ export async function publishAndUpdateRemoteTask(
         // 扩展点：写回链接(deprecated)
         const link = publishResult.link
 
+        const reviewStateClues = {
+            title: payload.title ?? null,
+            published_at: new Date().toISOString(),
+            platform_work_id: publishResult?.postId ?? publishResult?.articleId ?? null,
+            share_url: publishResult?.link ?? null,
+        }
+        const taskAttributes = {
+            account_id: normalizedPayload.accountId ?? null,
+            account_name: normalizedPayload.accountName ?? null,
+            publish_options: publishOptions,
+            publish_result: publishResult ?? null,
+            review_state_clues: reviewStateClues,
+        }
+
         // 更新远程发布记录
         await updatePublishTask(remoteTaskId, {
             status: 'reviewing',
             link: link || null,
-            attributes: {
-                account_id: normalizedPayload.accountId ?? null,
-                account_name: normalizedPayload.accountName ?? null,
-                publish_options: publishOptions,
-                publish_result: publishResult ?? null,
-                review_state_clues: {
-                    title: payload.title ?? null,
-                    published_at: new Date().toISOString(),
-                    platform_work_id: publishResult?.postId ?? publishResult?.articleId ?? null,
-                    share_url: publishResult?.link ?? null,
-                }
-            },
+            attributes: taskAttributes,
         })
+
+        if (platform === 'douyin' || platform === 'baijiahao' || platform === 'bilibili' || platform === 'sohu') {
+            const monitorStarted = startTaskStateMonitor({
+                id: remoteTaskId,
+                accountId: normalizedPayload.accountId,
+                attributes: taskAttributes,
+                link: link || null,
+                platform,
+                scheduledAt: normalizedPayload.scheduledAt ?? null,
+                status: 'reviewing',
+                title: normalizedPayload.title ?? null,
+                updatedAt: reviewStateClues.published_at,
+            })
+            if (!monitorStarted) throw new Error(`${platform} 发布成功但缺少平台作品 ID，无法启动审核状态监控`)
+        }
 
         return createTaskPageModel({
             id: remoteTaskId,

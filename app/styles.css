@@ -1078,6 +1078,27 @@ body.rm-dialog-open .workspace {
   text-align: center;
 }
 
+.records-status-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.records-status-reason {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: help;
+  color: #64748b;
+  background: #eef2f7;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: serif;
+}
+
 .records-table .records-title-cell {
   max-width: none;
 }

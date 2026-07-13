@@ -1,13 +1,12 @@
 import { open, readFile, stat } from "node:fs/promises";
-import { dirname, isAbsolute, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { isAbsolute, resolve } from "node:path";
 
 import axios, { type AxiosInstance } from "axios";
 import axiosRetry from "axios-retry";
 import { fileTypeFromBuffer } from "file-type";
 import pLimit from "p-limit";
-import { chromium, type BrowserContext, type Page, type Response } from "playwright";
 
+import { loadUserAgent } from "../../utils/environment.ts";
 import { logger } from "../../utils/logger.ts";
 
 import type {
@@ -51,43 +50,6 @@ export function parseBilibiliScheduledAt(value: unknown): number | null {
     || check.getUTCDate() !== day || check.getUTCHours() !== hour || check.getUTCMinutes() !== minute
   ) throw new Error("Bilibili scheduledAt 包含无效日期");
   return Math.floor(timestampMs / 1_000);
-}
-
-/** 从 assets 中严格读取当前系统对应的 Bilibili Chrome 138 User-Agent。 */
-async function loadBilibiliBrowserUserAgent(): Promise<string> {
-  const fileName = process.platform === "win32"
-    ? "browser-identity.windows.json"
-    : "browser-identity.macos.json";
-  const moduleDirectory = dirname(fileURLToPath(import.meta.url));
-  const candidates = [
-    join(process.cwd(), "assets", "douyin", fileName),
-    resolve(moduleDirectory, "../../../assets/douyin", fileName),
-    resolve(moduleDirectory, "../assets/douyin", fileName),
-  ];
-  let parsed: unknown;
-  let identityPath = candidates[0]!;
-  for (const candidate of candidates) {
-    try {
-      parsed = JSON.parse(await readFile(candidate, "utf8"));
-      identityPath = candidate;
-      break;
-    } catch {
-      continue;
-    }
-  }
-  const identity = parsed && typeof parsed === "object" && !Array.isArray(parsed)
-    ? parsed as Record<string, unknown>
-    : null;
-  const expectedPlatform = process.platform === "win32" ? "Win32" : "MacIntel";
-  if (
-    !identity
-    || identity.browserPlatform !== expectedPlatform
-    || typeof identity.userAgent !== "string"
-    || !identity.userAgent.includes("Chrome/138.0.0.0")
-  ) {
-    throw new Error(`Bilibili 浏览器身份缺失、格式无效或与当前系统不匹配: ${identityPath}`);
-  }
-  return identity.userAgent;
 }
 
 export interface StoredCookie {
@@ -303,7 +265,7 @@ async function fetchHumanTypes(cookie: CookieContext, http: AxiosInstance): Prom
 export async function getBilibiliHumanTypes(
   cookiesPath: string,
 ): Promise<HumanType[]> {
-  const http = createHttpClient(true, [], await loadBilibiliBrowserUserAgent());
+  const http = createHttpClient(true, [], await loadUserAgent());
   const cookie = await loadCookieContext(isAbsolute(cookiesPath) ? cookiesPath : resolve(process.cwd(), cookiesPath));
   return fetchHumanTypes(cookie, http);
 }
@@ -553,7 +515,7 @@ async function prepare(input: VideoUploadPayload): Promise<BilibiliPreparedConte
   const videoPath = isAbsolute(videoFile) ? videoFile : resolve(process.cwd(), videoFile);
 
   const responses: SerializedAxiosResponse[] = [];
-  const userAgent = await loadBilibiliBrowserUserAgent();
+  const userAgent = await loadUserAgent();
   const retryableHttp = createHttpClient(true, responses, userAgent);
   const nonRetryableHttp = createHttpClient(false, responses, userAgent);
   const cookie = await loadCookieContext(cookiesPath);
@@ -621,8 +583,16 @@ async function dispose(_prepared?: BilibiliPreparedContext): Promise<void> {
   await Promise.resolve();
 }
 
-const BILIBILI_RECORD_STATUS_URL = "https://member.bilibili.com/platform/upload-manager/article";
-const BILIBILI_ARCHIVES_URL_MARKER = "/x/web/archives";
+const BILIBILI_RECORD_STATUS_URL = "https://member.bilibili.com/x/web/archives";
+const BILIBILI_REVIEWING_STATES = new Set([-30, -1, -6, -7, -8, -10, -13, -60]);
+const BILIBILI_PUBLIC_STATES = new Set([0, -40]);
+const BILIBILI_STATE_DESCRIPTION_MAP: Record<string, string> = {
+  "Network Error": "网络错误，请稍后重试",
+  "Request failed with status code 502": "请前往多开面板进行发布或重新发布",
+  "timeout exceeded": "网络超时，请稍后重试",
+  已锁定: "审核未通过",
+  请输入验证码信息: "出现图形验证码了，请前往多开面板，在官方后台发布一次内容完成验证",
+};
 
 /** 将未知值收窄为普通记录。 */
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -636,28 +606,27 @@ function asString(value: unknown): string | null {
   return text || null;
 }
 
-/** 把已确认的平台状态字段映射为业务状态。 */
+/** 把小豆芽使用的 Bilibili 投稿状态码映射为业务状态。 */
 export function parseBilibiliRecordStatus(rawRecord: unknown): PublishedStateResult | null {
   const record = asRecord(rawRecord);
   if (!record) return null;
   const archive = asRecord(record.Archive) ?? asRecord(record.archive) ?? record;
   const state = Number(archive.state);
   const stateDescription = asString(archive.state_desc);
-  const onlySelf = archive.is_only_self === true || Number(archive.is_only_self) === 1;
+  if (!Number.isFinite(state)) return null;
   const bvid = asString(archive.bvid);
   const aid = asString(archive.aid);
   const publicLink = bvid ? `https://www.bilibili.com/video/${bvid}` : aid ? `https://www.bilibili.com/video/av${aid}` : null;
-
-  if (state === 0 && stateDescription === "开放浏览" && !onlySelf) {
-    return { status: "public", link: publicLink, raw: rawRecord, matchedBy: "unknown", reason: "bilibili.Archive.state=0,state_desc=开放浏览,is_only_self=0" };
+  if (BILIBILI_REVIEWING_STATES.has(state)) {
+    return { status: "reviewing", link: publicLink, raw: rawRecord, matchedBy: "platform_work_id", reason: stateDescription };
   }
-  if (state === -50 && onlySelf) {
-    return { status: "non_public", link: publicLink, raw: rawRecord, matchedBy: "unknown", reason: "bilibili.Archive.state=-50,is_only_self=1" };
+  if (BILIBILI_PUBLIC_STATES.has(state)) {
+    return { status: "public", link: publicLink, raw: rawRecord, matchedBy: "platform_work_id", reason: null };
   }
-  if (state === -1 && stateDescription === "复核中" && !onlySelf) {
-    return { status: "reviewing", link: publicLink, raw: rawRecord, matchedBy: "unknown", reason: "bilibili.archive.state=-1,state_desc=复核中,is_only_self=0" };
-  }
-  return null;
+  const rejectReason = asString(archive.reject_reason);
+  const mappedDescription = stateDescription ? BILIBILI_STATE_DESCRIPTION_MAP[stateDescription] ?? stateDescription : null;
+  const reasonParts = [mappedDescription, rejectReason, String(state)].filter((value): value is string => Boolean(value));
+  return { status: "non_public", link: publicLink, raw: rawRecord, matchedBy: "platform_work_id", reason: reasonParts.join(" ") };
 }
 
 /** 从投稿管理响应中提取视频记录。 */
@@ -668,34 +637,18 @@ function collectRecords(payload: unknown): Array<Record<string, unknown>> {
   return Array.isArray(records) ? records.map(asRecord).filter((item): item is Record<string, unknown> => item !== null) : [];
 }
 
-/** 按远端 ID 或标题匹配当前任务对应的投稿记录。 */
-function findRecord(records: Array<Record<string, unknown>>, payload: PublishedStatePayload): { matchedBy: "platform_work_id" | "title"; record: Record<string, unknown> } | null {
+/** 只按投稿接口返回的 bvid 匹配当前任务。 */
+function findRecord(records: Array<Record<string, unknown>>, payload: PublishedStatePayload): { matchedBy: "platform_work_id"; record: Record<string, unknown> } | null {
   const attributes = asRecord(payload.attributes);
   const clues = asRecord(attributes?.review_state_clues);
   const publishResult = asRecord(payload.publishResult);
-  const workId = asString(clues?.platform_work_id) ?? asString(publishResult?.bvid) ?? asString(publishResult?.aid) ?? asString(publishResult?.postId) ?? asString(payload.remoteTaskId);
-  if (workId) {
-    const record = records.find((item) => {
-      const archive = asRecord(item.Archive) ?? asRecord(item.archive) ?? item;
-      return asString(archive.bvid) === workId || asString(archive.aid) === workId;
-    });
-    if (record) return { matchedBy: "platform_work_id", record };
-  }
-  const title = asString(payload.title)?.replace(/\s+/gu, " ").toLowerCase();
-  if (title) {
-    const record = records.find((item) => {
-      const archive = asRecord(item.Archive) ?? asRecord(item.archive) ?? item;
-      return asString(archive.title)?.replace(/\s+/gu, " ").toLowerCase() === title;
-    });
-    if (record) return { matchedBy: "title", record };
-  }
-  return null;
-}
-
-/** 等待投稿管理页返回视频列表接口。 */
-async function waitForArchives(page: Page, timeout: number): Promise<unknown> {
-  const response = await page.waitForResponse((candidate: Response) => candidate.request().method() === "GET" && candidate.url().includes(BILIBILI_ARCHIVES_URL_MARKER), { timeout });
-  return response.json();
+  const workId = asString(clues?.platform_work_id) ?? asString(publishResult?.bvid) ?? asString(publishResult?.postId);
+  if (!workId) throw new Error("Bilibili 发布记录缺少 platform_work_id");
+  const record = records.find((item) => {
+    const archive = asRecord(item.Archive) ?? asRecord(item.archive) ?? item;
+    return asString(archive.bvid) === workId;
+  });
+  return record ? { matchedBy: "platform_work_id", record } : null;
 }
 
 /** Bilibili 直接通过 HTTP 发布，无需 Electron 运行时。 */
@@ -732,25 +685,35 @@ export class BilibiliVideo implements Video {
     const accountFile = asString(payload.accountFile);
     if (!accountFile) throw new Error("Bilibili 发布状态查询缺少 accountFile");
     const timeout = typeof payload.timeoutMs === "number" && payload.timeoutMs > 0 ? payload.timeoutMs : 30_000;
-    const browser = await chromium.launch({ headless: true });
-    let context: BrowserContext | undefined;
-    try {
-      context = await browser.newContext({ storageState: isAbsolute(accountFile) ? accountFile : resolve(process.cwd(), accountFile) });
-      const page = await context.newPage();
-      const response = waitForArchives(page, Math.min(timeout, 15_000));
-      await page.goto(BILIBILI_RECORD_STATUS_URL, { waitUntil: "domcontentloaded", timeout });
-      if (page.url().includes("passport.bilibili.com")) throw new Error(`Bilibili 账号登录状态失效: ${accountFile}`);
-      const matched = findRecord(collectRecords(await response), payload);
-      if (!matched) return { status: "reviewing", link: payload.link ?? null, raw: null, matchedBy: "unknown", reason: "bilibili archives did not match current publish task" };
-      const parsed = parseBilibiliRecordStatus(matched.record);
-      if (!parsed) {
-        const archive = asRecord(matched.record.Archive) ?? asRecord(matched.record.archive) ?? matched.record;
-        throw new Error(`Bilibili 命中记录但 Archive.state 未确认映射: ${String(archive.state ?? "missing")}`);
+    const resolvedAccountFile = isAbsolute(accountFile) ? accountFile : resolve(process.cwd(), accountFile);
+    const [cookie, userAgent] = await Promise.all([
+      loadCookieContext(resolvedAccountFile),
+      loadUserAgent(),
+    ]);
+    let lastPayload: unknown = null;
+    for (let pageNumber = 1; pageNumber <= 3; pageNumber += 1) {
+      const response = await axios.get(BILIBILI_RECORD_STATUS_URL, {
+        headers: { Cookie: cookie.header, Referer: BILIBILI_REFERER, "User-Agent": userAgent },
+        params: { coop: 1, interactive: 1, pn: pageNumber, ps: 20, status: "is_pubing,pubed,not_pubed" },
+        signal: payload.abortSignal,
+        timeout,
+      });
+      const root = asRecord(response.data);
+      const data = asRecord(root?.data);
+      if (!root || Number(root.code) !== 0 || !data || !Array.isArray(data.arc_audits)) {
+        throw new Error("Bilibili 投稿列表响应结构错误");
       }
-      return { ...parsed, matchedBy: matched.matchedBy, link: parsed.link ?? payload.link ?? null };
-    } finally {
-      await context?.close().catch((error: unknown) => logger.error("关闭 Bilibili 状态查询上下文失败：", error));
-      await browser.close().catch((error: unknown) => logger.error("关闭 Bilibili 状态查询浏览器失败：", error));
+      lastPayload = root;
+      const records = collectRecords(root);
+      const matched = findRecord(records, payload);
+      if (!matched) {
+        if (records.length === 0) break;
+        continue;
+      }
+      const parsed = parseBilibiliRecordStatus(matched.record);
+      if (!parsed) throw new Error("Bilibili 作品状态响应结构错误");
+      return { ...parsed, link: parsed.link ?? payload.link ?? null };
     }
+    return { status: "non_public", link: payload.link ?? null, raw: lastPayload, matchedBy: "platform_work_id", reason: "未找到该作品，请前往官方后台查看发布情况" };
   }
 }

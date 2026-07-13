@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import AppIcon from "./AppIcon.vue";
 import PlatformLogo from "./PlatformLogo.vue";
 import { getPublishPlatforms, getPublishTasks, deletePublishTask, exportPublishTasks } from "@/api/publish";
@@ -20,6 +20,8 @@ const errorMessage = ref("");
 const records = ref<PublishTask[]>([]);
 const selectedIds = ref<Set<number>>(new Set());
 const notificationCenter = useNotificationCenter();
+let cancelTaskStateListener: (() => void) | null = null;
+let taskStateRefreshTimer: number | null = null;
 
 const pushRecordsError = (title: string, message: string): void => {
   notificationCenter.push({
@@ -70,6 +72,18 @@ const recordStatusClassMap: Record<string, string> = {
   public: "success",
   non_public: "danger",
   failed: "danger",
+};
+
+/** 提取状态原因，优先展示平台终态，再展示最近同步错误和发布过程错误。 */
+const getRecordStatusReason = (item: PublishTask): string => {
+  const attributes = item.attributes;
+  return String(
+    attributes?.review_state?.reason
+      || attributes?.review_state?.sync_error
+      || attributes?.failure_detail?.reason
+      || attributes?.error_message
+      || "",
+  ).trim();
 };
 
 const loadPlatforms = async () => {
@@ -240,24 +254,28 @@ const handleExport = async () => {
   }
 };
 
-const syncTaskStateInBackground = (): void => {
-  const syncTaskState = window.electronAPI?.syncTaskStateBg;
-  if (!syncTaskState) {
-    return;
-  }
-  try {
-    Promise.resolve(syncTaskState()).catch(() => {
-      pushRecordsError("发布状态同步失败", "后台发布状态没有同步成功，请稍后重试");
-    });
-  } catch {
-    pushRecordsError("发布状态同步失败", "后台发布状态没有同步成功，请稍后重试");
-  }
+/** 合并短时间内的主进程事件，避免多条任务同时变化时重复请求列表。 */
+const scheduleRecordsRefresh = (): void => {
+  if (taskStateRefreshTimer !== null) window.clearTimeout(taskStateRefreshTimer);
+  taskStateRefreshTimer = window.setTimeout(() => {
+    taskStateRefreshTimer = null;
+    void loadRecords();
+  }, 150);
 };
 
 onMounted(() => {
   void loadPlatforms();
   void loadRecords();
-  syncTaskStateInBackground();
+  cancelTaskStateListener = window.electronAPI?.onPublishTaskStateChanged(() => {
+    scheduleRecordsRefresh();
+  }) ?? null;
+});
+
+onUnmounted(() => {
+  cancelTaskStateListener?.();
+  cancelTaskStateListener = null;
+  if (taskStateRefreshTimer !== null) window.clearTimeout(taskStateRefreshTimer);
+  taskStateRefreshTimer = null;
 });
 </script>
 
@@ -386,9 +404,17 @@ onMounted(() => {
           <td class="records-account-cell">--</td>
           <td>{{ item.account_id || "--" }}</td>
           <td class="records-title-cell" :title="item.title || '--'">{{ item.title || "--" }}</td>
-          <td>
-            <span class="status-pill" :class="recordStatusClassMap[item.status] || 'danger'">
-              {{ recordStatusLabelMap[item.status] || item.status || "未知状态" }}
+          <td class="records-status-cell">
+            <span class="records-status-wrap">
+              <span class="status-pill" :class="recordStatusClassMap[item.status] || 'danger'">
+                {{ recordStatusLabelMap[item.status] || item.status || "未知状态" }}
+              </span>
+              <span
+                v-if="getRecordStatusReason(item)"
+                class="records-status-reason"
+                :title="getRecordStatusReason(item)"
+                :aria-label="getRecordStatusReason(item)"
+              >i</span>
             </span>
           </td>
           <td class="records-scheduled-cell">{{ item.scheduled_at || "--" }}</td>

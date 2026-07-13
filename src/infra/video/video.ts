@@ -49,6 +49,7 @@ export type PublishedStateMatchedBy =
 /** 发布记录状态查询参数。 */
 export interface PublishedStatePayload {
   accountFile: string;
+  abortSignal?: AbortSignal;
   title?: string | null;
   remoteTaskId?: string | number | null;
   publishedAt?: string | null;

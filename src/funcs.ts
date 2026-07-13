@@ -10,7 +10,6 @@ import {
 import { publishAndUpdateRemoteTask } from './service/task-service.ts'
 import { getBilibiliHumanTypes as queryBilibiliHumanTypes } from './infra/video/bilibili-video.ts'
 import { getSohuChannels as querySohuChannels } from './infra/video/sohu-video.ts'
-import { syncTaskStateBg } from './service/task-state-service.ts'
 import { broadcast } from './sse/sse-server.ts'
 
 // 1. 登录入口
@@ -56,5 +55,3 @@ export async function getSohuChannels(_event, payload) {
   }
   return querySohuChannels(resolveAccountFilePath(accountId, 'sohu'))
 }
-
-export { syncTaskStateBg }

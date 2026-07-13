@@ -14,6 +14,13 @@ type LaunchIntent = {
   page: "accounts" | "works";
 };
 
+type PublishTaskStateChangedEvent = {
+  taskId: number;
+  status: string;
+  reason?: string | null;
+  syncError?: string | null;
+};
+
 interface ElectronAPI {
   login: (platform: string) => Promise<unknown>;
   publish: (payload: unknown) => void;
@@ -21,7 +28,7 @@ interface ElectronAPI {
   getLaunchIntent: () => Promise<LaunchIntent | null>;
   onLaunchIntent: (handler: (payload: LaunchIntent) => void) => () => void;
   openExternal: (url: string) => Promise<void>;
-  syncTaskStateBg: () => void;
+  onPublishTaskStateChanged: (handler: (payload: PublishTaskStateChangedEvent) => void) => () => void;
   getBilibiliHumanTypes: (payload: { accountId: string }) => Promise<Array<{ id: number; name: string }>>;
   getSohuChannels: (payload: { accountId: string }) => Promise<Array<{
     id: number;

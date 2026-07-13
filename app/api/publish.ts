@@ -16,6 +16,26 @@ export interface PlatformOption {
   label: string;
 }
 
+export interface PublishTaskReviewState {
+  link?: string | null;
+  matched_by?: string | null;
+  raw?: unknown;
+  reason?: string | null;
+  status?: string | null;
+  sync_error?: string | null;
+  synced_at?: string | null;
+}
+
+export interface PublishTaskAttributes {
+  error_message?: string | null;
+  failure_detail?: {
+    detail?: string | null;
+    reason?: string | null;
+  } | null;
+  review_state?: PublishTaskReviewState | null;
+  [key: string]: unknown;
+}
+
 // Publish Task
 export interface PublishTask {
   id: number;
@@ -33,7 +53,7 @@ export interface PublishTask {
   user_id?: string;
   created_at?: string;
   updated_at?: string;
-  attributes?: unknown;
+  attributes?: PublishTaskAttributes | null;
 }
 
 // Account
