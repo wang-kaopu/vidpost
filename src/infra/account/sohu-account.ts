@@ -677,6 +677,24 @@ var exportStorageState = async (loginWindow, accountFile, logPrefix = "login") =
     const detail = error instanceof Error ? error.message : String(error);
     logger.info(`[${logPrefix}] localStorage export skipped, fallback to cookies only: ${detail}`);
   }
+  // Axios 发布依赖搜狐网页生成的账号上下文和设备校验字段，残缺快照不能标记为登录成功。
+  if (currentOrigin === "https://mp.sohu.com") {
+    const localStorage = new Map(localStorageEntries.map((entry) => [entry.name, entry.value]));
+    const vuexValue = localStorage.get("vuex");
+    if (!vuexValue) {
+      throw new Error("搜狐账号凭据不完整，请重新登录：缺少 vuex");
+    }
+    const vuex = JSON.parse(vuexValue);
+    const userCode = vuex?.app?.UandAStatus?.userCode;
+    const mpCv = cookies.find((cookie) => cookie.name === "mp-cv")?.value;
+    const spCm = (userCode ? localStorage.get(`${userCode}-sp-cm`) : void 0) ?? localStorage.get("preview-sp-cm") ?? mpCv;
+    if (!spCm) {
+      throw new Error("搜狐账号凭据不完整，请重新登录：缺少 sp-cm");
+    }
+    if (!localStorage.get("preview-dv-id")) {
+      throw new Error("搜狐账号凭据不完整，请重新登录：缺少 dv-id");
+    }
+  }
   logger.info(
     `[${logPrefix}] storage snapshot before clone ${formatStoragePreview(
       accountFile,

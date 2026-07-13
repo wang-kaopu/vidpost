@@ -6,7 +6,7 @@ import { app, ipcMain, BrowserWindow, session, shell, type IpcMainEvent, type Ip
 import * as electron from 'electron'
 import squirrelStartup from 'electron-squirrel-startup'
 
-import { getBilibiliHumanTypes, getVideoPublishCapabilities, login, publish, ping } from './src/funcs.ts'
+import { getBilibiliHumanTypes, getSohuChannels, login, publish, ping } from './src/funcs.ts'
 import {
   AGENTHUNT_PROTOCOL,
   extractProtocolUrlFromCommandLine,
@@ -186,7 +186,7 @@ async function startApplication(): Promise<void> {
     registerIpcListener('publish', publish)
     registerIpcHandler('ping', ping)
     registerIpcHandler('video:get-bilibili-human-types', getBilibiliHumanTypes)
-    registerIpcHandler('video:get-publish-capabilities', getVideoPublishCapabilities)
+    registerIpcHandler('video:get-sohu-channels', getSohuChannels)
     registerIpcListener('sync-task-state-bg', (_event, options) => {
       syncTaskStateBg((options as { limit?: number } | undefined) ?? {})
     })

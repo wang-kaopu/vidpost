@@ -23,7 +23,11 @@ interface ElectronAPI {
   openExternal: (url: string) => Promise<void>;
   syncTaskStateBg: () => void;
   getBilibiliHumanTypes: (payload: { accountId: string }) => Promise<Array<{ id: number; name: string }>>;
-  getVideoPublishCapabilities: () => Promise<{ douyin: { enabled: boolean; reason: string | null } }>;
+  getSohuChannels: (payload: { accountId: string }) => Promise<Array<{
+    id: number;
+    name: string;
+    videoChannels: Array<{ id: number; name: string }>;
+  }>>;
 }
 
 interface Window {

@@ -83,7 +83,7 @@ export function normalizeScheduledAt(value) {
     throw new Error('当前仅支持立即发布，scheduledAt 必须为字符串 "0"')
 }
 
-/** 校验并提取三平台发布所需的非敏感专属选项。 */
+/** 校验并提取各平台发布所需的非敏感专属选项。 */
 export function resolvePublishOptions(payload: Record<string, any>, platform: string) {
     if (platform === 'bilibili') {
         const humanTypeId = Number(payload.humanTypeId ?? payload.human_type_id)
@@ -100,6 +100,19 @@ export function resolvePublishOptions(payload: Record<string, any>, platform: st
         }
         payload.visibility = visibility
         return { visibility }
+    }
+    if (platform === 'sohu') {
+        const channelId = Number(payload.channelId ?? payload.channel_id)
+        const videoChannelId = Number(payload.videoChannelId ?? payload.video_channel_id)
+        if (!Number.isSafeInteger(channelId) || channelId <= 0) {
+            throw new Error('搜狐发布缺少有效的 channelId')
+        }
+        if (!Number.isSafeInteger(videoChannelId) || videoChannelId <= 0) {
+            throw new Error('搜狐发布缺少有效的 videoChannelId')
+        }
+        payload.channelId = channelId
+        payload.videoChannelId = videoChannelId
+        return { channel_id: channelId, video_channel_id: videoChannelId }
     }
     return {}
 }
@@ -135,7 +148,7 @@ export async function publishAndUpdateRemoteTask(
     }
     normalizedPayload.accountId = accountId
     normalizedPayload.platform = platform
-    if (platform === 'bilibili' || platform === 'baijiahao' || platform === 'douyin') {
+    if (platform === 'bilibili' || platform === 'baijiahao' || platform === 'douyin' || platform === 'sohu') {
         const cover = String(normalizedPayload.coverPath || normalizedPayload.thumbnailPath || normalizedPayload.coverUrl || '').trim()
         if (!cover) {
             throw new Error(`${platform} 发布必须提供封面`)
@@ -176,7 +189,7 @@ export async function publishAndUpdateRemoteTask(
             ...normalizedPayload,
             remoteTaskId,
         })
-        if (platform === 'bilibili' || platform === 'baijiahao' || platform === 'douyin') {
+        if (platform === 'bilibili' || platform === 'baijiahao' || platform === 'douyin' || platform === 'sohu') {
             assertMaterializedPublishAssets(materializedPayload, platform)
         }
 

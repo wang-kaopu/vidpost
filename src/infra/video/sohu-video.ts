@@ -1,2005 +1,1013 @@
-import type { PublishedStatePayload, PublishedStateResult, Video, VideoUploadPayload, VideoUploadResult } from "./video.ts";
+import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
+import { open, readFile, stat } from "node:fs/promises";
+import { basename, delimiter, dirname, isAbsolute, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import axios, { AxiosHeaders, type AxiosInstance, type InternalAxiosRequestConfig } from "axios";
+import axiosRetry from "axios-retry";
+import pLimit from "p-limit";
+import { chromium, type BrowserContext, type Page, type Response } from "playwright";
+import sharp from "sharp";
+
 import { logger } from "../../utils/logger.ts";
 
-import fs5 from "node:fs/promises";
+import type {
+  PublishedStatePayload,
+  PublishedStateResult,
+  PublishedTaskStatus,
+  Video,
+  VideoRuntime,
+  VideoUploadPayload,
+  VideoUploadResult,
+} from "./video.ts";
 
-import "playwright";
+const SOHU_ORIGIN = "https://mp.sohu.com";
+const SOHU_REFERER = `${SOHU_ORIGIN}/mpfe/v4/contentManagement/news/addvideo`;
+const SOHU_AUTH_URL = `${SOHU_ORIGIN}/mpbp/bp/account/check/user`;
+const SOHU_CREATE_VIDEO_URL = `${SOHU_ORIGIN}/commons/mp/createVideo`;
+const SOHU_COMPLETE_VIDEO_URL = `${SOHU_ORIGIN}/commons/mp/chunkUploadDone`;
+const SOHU_COVER_UPLOAD_URL = `${SOHU_ORIGIN}/commons/front/outerUpload/image/file`;
+const SOHU_COVER_COMPRESS_URL = `${SOHU_ORIGIN}/commons/front/outerUpload/image/thumbnail/url`;
+const SOHU_CHANNELS_URL = `${SOHU_ORIGIN}/mpbp/bp/account/common/channels-data-api`;
+const SOHU_VIDEO_CHANNELS_URL = `${SOHU_ORIGIN}/mpbp/bp/news/v4/videoChannels`;
+const SOHU_PUBLISH_LIMIT_URL = `${SOHU_ORIGIN}/mpbp/bp/news/v4/news/publishLimit`;
+const SOHU_PUBLISH_URL = `${SOHU_ORIGIN}/mpbp/bp/news/v4/news/publishVideo/v2`;
+const SOHU_CHUNK_SIZE = 512 * 1024;
+const SOHU_CHUNK_CONCURRENCY = 3;
+const SOHU_HTTP_TIMEOUT_MS = 120_000;
+export const SOHU_RECORD_STATUS_URL = `${SOHU_ORIGIN}/mpfe/v4/contentManagement/first/page`;
+export const SOHU_NEWS_LIST_URL_MARKER = "/mpbp/bp/news/v4/users/news";
+export const SOHU_STATUS_RESPONSE_TIMEOUT_MS = 15_000;
+export const SOHU_STATUS_PAGINATION_ATTEMPTS = 3;
 
-import fs from "node:fs/promises";
-import path from "node:path";
-async function readStorageState(accountFile) {
-  try {
-    const content = await fs.readFile(accountFile, "utf8");
-    return JSON.parse(content);
-  } catch {
-    return null;
-  }
-}
-async function writeStorageState(accountFile, storageState) {
-  await fs.mkdir(path.dirname(accountFile), { recursive: true });
-  await fs.writeFile(accountFile, JSON.stringify(storageState, null, 2), "utf8");
-}
-async function loadContextStorageState(accountFile) {
-  const storageState = await readStorageState(accountFile);
-  return storageState ? { storageState } : {};
-}
+const DEFAULT_RECORD_STATUS_TIMEOUT_MS = 60_000;
+const SOHU_LOGIN_HINTS = ["登录搜狐", "扫码登录", "手机号登录", "账号登录"];
 
-var PlatformInfraError = class extends Error {
-  constructor(message) {
-    super(message);
-    this.name = "PlatformInfraError";
-  }
-};
-var PlatformCookieInvalidError = class extends PlatformInfraError {
-  constructor(platform, accountFile) {
-    super(`${platform} \u8D26\u53F7\u6587\u4EF6\u767B\u5F55\u6001\u65E0\u6548: ${accountFile}`);
-    this.name = "PlatformCookieInvalidError";
-  }
-};
-var PlatformTimeoutError = class extends PlatformInfraError {
-  constructor(platform, step, timeoutMs) {
-    super(`${platform} \u5728\u6B65\u9AA4 ${step} \u4E0A\u7B49\u5F85\u8D85\u65F6: ${timeoutMs}ms`);
-    this.name = "PlatformTimeoutError";
-  }
-};
-var PlatformUserAbortedError = class extends PlatformInfraError {
-  constructor(message) {
-    super(message);
-    this.name = "PlatformUserAbortedError";
-  }
-};
-
-import fs2 from "node:fs/promises";
-import path2 from "node:path";
-import { chromium } from "playwright";
-
-var PLAYWRIGHT_HEADLESS_CONFIG = {
-  default: false,
-  probe: false,
-  "ping:douyin": true,
-  "ping:bilibili": true,
-  "ping:sohu": true,
-  "ping:baijiahao": true,
-  "login-success:douyin": true,
-  "login-success:bilibili": true,
-  "login-success:sohu": true,
-  "login-success:baijiahao": true,
-  "publish:douyin": false,
-  "publish:sohu": false,
-  "publish:baijiahao": false,
-  "record-status:douyin": true,
-  "record-status:bilibili": true,
-  "record-status:sohu": true,
-  "record-status:baijiahao": true,
-  "script:douyin-record-status": false,
-  "script:baijiahao-video-state-success": false,
-  "script:bilibili-video-state-success": false
-};
-function resolvePlaywrightHeadlessMode(scenario = "default") {
-  return PLAYWRIGHT_HEADLESS_CONFIG[scenario];
-}
-
-var ENV_BROWSER_PATH_KEYS = [
-  "PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH",
-  "GOOGLE_CHROME_BIN",
-  "CHROME_BIN",
-  "CHROME_PATH",
-  "CHROMIUM_BIN",
-  "CHROMIUM_PATH"
-];
-var PATH_BROWSER_COMMANDS = [
-  "google-chrome",
-  "google-chrome-stable",
-  "chrome",
-  "chromium",
-  "chromium-browser",
-  "msedge"
-];
-var LOCAL_BROWSER_PATH_CANDIDATES = [
-  "~/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-  "~/Applications/Chromium.app/Contents/MacOS/Chromium",
-  "/Applications/Chromium.app/Contents/MacOS/Chromium",
-  "~/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-  "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-  "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
-  "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
-  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
-  "/usr/bin/google-chrome",
-  "/usr/bin/google-chrome-stable",
-  "/usr/bin/chromium",
-  "/usr/bin/chromium-browser",
-  "/usr/bin/microsoft-edge"
-];
-function normalizeBrowserPath(candidate) {
-  const token = String(candidate ?? "").trim();
-  if (!token) {
-    return null;
-  }
-  const resolved = path2.resolve(token.replace(/^~(?=$|[\\/])/, process.env.HOME || "~"));
-  return resolved;
-}
-async function fileExists(targetPath) {
-  try {
-    await fs2.access(targetPath);
-    return true;
-  } catch {
-    return false;
-  }
-}
-async function resolveEnvBrowserPath() {
-  for (const envKey of ENV_BROWSER_PATH_KEYS) {
-    const normalized = normalizeBrowserPath(process.env[envKey]);
-    if (normalized && await fileExists(normalized)) {
-      return normalized;
-    }
-  }
-  for (const command of PATH_BROWSER_COMMANDS) {
-    const commandPath = process.platform === "win32" ? `${command}.exe` : command;
-    const envPath = process.env.PATH || "";
-    for (const segment of envPath.split(path2.delimiter)) {
-      const normalized = normalizeBrowserPath(path2.join(segment, commandPath));
-      if (normalized && await fileExists(normalized)) {
-        return normalized;
-      }
-    }
-  }
-  return null;
-}
-async function resolveLocalBrowserPath(configuredPath) {
-  const envBrowserPath = await resolveEnvBrowserPath();
-  if (envBrowserPath) {
-    return envBrowserPath;
-  }
-  const configured = normalizeBrowserPath(configuredPath);
-  if (configured && await fileExists(configured)) {
-    return configured;
-  }
-  for (const candidate of LOCAL_BROWSER_PATH_CANDIDATES) {
-    const normalized = normalizeBrowserPath(candidate);
-    if (normalized && await fileExists(normalized)) {
-      return normalized;
-    }
-  }
-  return null;
-}
-async function launchChromiumBrowser(browserType: any, options: any = {}) {
-  const { configuredExecutablePath, ...launchOptions } = options;
-  const explicitExecutablePath = normalizeBrowserPath(launchOptions.executablePath);
-  if (explicitExecutablePath) {
-    try {
-      return await browserType.launch({ ...launchOptions, executablePath: explicitExecutablePath });
-    } catch {
-    }
-  }
-  const localBrowserPath = await resolveLocalBrowserPath(configuredExecutablePath);
-  if (localBrowserPath) {
-    try {
-      return await browserType.launch({ ...launchOptions, executablePath: localBrowserPath });
-    } catch {
-    }
-  }
-  return browserType.launch(launchOptions);
-}
-async function createBrowserSession(options: any = {}) {
-  const browser = await launchChromiumBrowser(chromium, {
-    headless: resolvePlaywrightHeadlessMode(options.headlessMode),
-    configuredExecutablePath: options.configuredExecutablePath,
-    ...options.launchOptions
-  });
-  try {
-    const context = await browser.newContext(options.contextOptions);
-    const page = await context.newPage();
-    return { browser, context, page };
-  } catch (error) {
-    await browser.close().catch(() => void 0);
-    throw error;
-  }
-}
-
-var DEFAULT_POLL_INTERVAL_MS = 200;
-var sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-function runOnAbort(signal, callback) {
-  if (!signal) {
-    return () => void 0;
-  }
-  let handled = false;
-  const onAbort = () => {
-    if (handled) {
-      return;
-    }
-    handled = true;
-    void Promise.resolve(callback()).catch(() => void 0);
-  };
-  if (signal.aborted) {
-    onAbort();
-    return () => void 0;
-  }
-  signal.addEventListener("abort", onAbort, { once: true });
-  return () => signal.removeEventListener("abort", onAbort);
-}
-async function waitForCondition(platform, step, timeoutMs, predicate, intervalMs = DEFAULT_POLL_INTERVAL_MS) {
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < timeoutMs) {
-    if (await predicate()) {
-      return;
-    }
-    await sleep(intervalMs);
-  }
-  throw new PlatformTimeoutError(platform, step, timeoutMs);
-}
-async function pickFileWithChooser(page, trigger, filePath, timeoutMs = 1e4) {
-  try {
-    const chooserPromise = page.waitForEvent("filechooser", { timeout: timeoutMs });
-    await trigger();
-    const chooser = await chooserPromise;
-    await chooser.setFiles(filePath);
-    return true;
-  } catch {
-    return false;
-  }
-}
-async function firstVisibleLocator(page, selectors, timeoutMs = 1e3) {
-  for (const selector of selectors) {
-    const locator = page.locator(selector).first();
-    try {
-      if (await locator.isVisible({ timeout: timeoutMs })) {
-        return locator;
-      }
-    } catch {
-      continue;
-    }
-  }
-  return null;
-}
-async function clickWithDomFallback(target, options) {
-  const timeoutMs = options?.timeoutMs ?? 5e3;
-  const force = options?.force ?? true;
-  const attempts = Math.max(1, options?.attempts ?? 1);
-  const intervalMs = options?.intervalMs ?? 300;
-  const onInterference = options?.onInterference;
-  let lastError;
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    try {
-      await target.click({ timeout: timeoutMs, force });
-      return true;
-    } catch (error) {
-      lastError = error;
-      if (!onInterference || attempt >= attempts) {
-        continue;
-      }
-      const recovered = await onInterference({ kind: "click", attempt, error });
-      if (recovered) {
-        await sleep(intervalMs);
-      }
-    }
-  }
-  if (onInterference) {
-    const recovered = await onInterference({ kind: "click", attempt: attempts + 1, error: lastError });
-    if (recovered) {
-      await sleep(intervalMs);
-    }
-  }
-  const handle = await target.elementHandle().catch(() => null);
-  if (!handle) {
-    return false;
-  }
-  return domClickHandle(handle);
-}
-async function domClickHandle(handle) {
-  return handle.evaluate((node) => {
-    try {
-      node.click();
-      return true;
-    } catch {
-      return false;
-    }
-  }).catch(() => false);
-}
-function acceptMatchesKind(accept, kind = "any") {
-  const normalizedAccept = String(accept || "").trim().toLowerCase();
-  if (!normalizedAccept || kind === "any") {
-    return true;
-  }
-  if (kind === "image") {
-    return /image|png|jpg|jpeg|gif|webp|bmp|heic|heif/i.test(normalizedAccept);
-  }
-  if (kind === "video") {
-    return /video|mp4|mov|mkv|avi|wmv|webm|m4v|mpeg|mpg|flv/i.test(normalizedAccept);
-  }
-  return true;
-}
-async function findFileInput(page, selectors, log, kind = "any") {
-  for (const selector of selectors) {
-    const locator = page.locator(selector);
-    const count = await locator.count().catch(() => 0);
-    log?.(`probe selector=${selector} count=${count}`);
-    for (let index = 0; index < count; index += 1) {
-      const candidate = locator.nth(index);
-      const accept = await candidate.getAttribute("accept").catch(() => "");
-      const className = await candidate.getAttribute("class").catch(() => "");
-      const type = await candidate.getAttribute("type").catch(() => "");
-      log?.(`input candidate index=${index} type=${type} class=${className} accept=${accept}`);
-      if (String(type || "").toLowerCase() !== "file") {
-        continue;
-      }
-      if (acceptMatchesKind(accept, kind)) {
-        return candidate;
-      }
-    }
-  }
-  return null;
-}
-async function retryTriggerUntil(page, selectors, predicate, options) {
-  const attempts = options?.attempts ?? 3;
-  const intervalMs = options?.intervalMs ?? 1e3;
-  const logPrefix = options?.logPrefix ?? "trigger";
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    const target = await firstVisibleLocator(page, selectors);
-    if (!target) {
-      logger.info(`[${logPrefix}] attempt=${attempt} no trigger found`);
-      if (attempt < attempts) {
-        await page.waitForTimeout(intervalMs);
-      }
-      continue;
-    }
-    const tag = await target.evaluate((node) => node.tagName).catch(() => "");
-    const className = await target.getAttribute("class").catch(() => "");
-    const text = await target.innerText().catch(() => "");
-    logger.info(`[${logPrefix}] attempt=${attempt} tag=${tag} class=${className} text=${String(text || "").replace(/\s+/g, " ").slice(0, 120)}`);
-    const clicked = await clickWithDomFallback(target, { timeoutMs: 5e3, force: true });
-    logger.info(`[${logPrefix}] attempt=${attempt} clicked=${clicked}`);
-    await page.waitForTimeout(intervalMs);
-    const ok = await predicate();
-    logger.info(`[${logPrefix}] attempt=${attempt} predicate=${ok}`);
-    if (ok) {
-      return true;
-    }
-  }
-  return false;
-}
-
-import { chromium as chromium2 } from "playwright";
-
-import fs3 from "node:fs";
-import path3 from "node:path";
-var PARTITION_MAP_TABLE_KEY = "partition_map_table";
-var DEFAULT_STORE_FILE = "partition-map.json";
-function resolveDefaultPartitionStorePath() {
-  const homeDir = process.env.HOME || process.env.USERPROFILE || ".";
-  return path3.join(homeDir, ".agenthunt", DEFAULT_STORE_FILE);
-}
-function encodePartitionAccountId(accountId) {
-  return Buffer.from(String(accountId), "utf8").toString("base64url");
-}
-function createPartitionStore(storePath = resolveDefaultPartitionStorePath()) {
-  const readAll = () => {
-    try {
-      const content = fs3.readFileSync(storePath, "utf8");
-      const parsed = JSON.parse(content);
-      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
-    } catch {
-      return {};
-    }
-  };
-  const writeAll = (data) => {
-    fs3.mkdirSync(path3.dirname(storePath), { recursive: true });
-    fs3.writeFileSync(storePath, JSON.stringify(data, null, 2), "utf8");
-  };
-  return {
-    storePath,
-    get(key) {
-      return readAll()[key];
-    },
-    set(key, value) {
-      const data = readAll();
-      data[key] = value;
-      writeAll(data);
-    }
-  };
-}
-function readPartitionMapTable(store) {
-  const table = store.get(PARTITION_MAP_TABLE_KEY);
-  if (!table || typeof table !== "object" || Array.isArray(table)) {
-    return {};
-  }
-  return { ...table };
-}
-function resolvePartitionForAccount(store, accountId) {
-  const normalizedAccountId = String(accountId || "").trim();
-  if (!normalizedAccountId) {
-    throw new Error("resolvePartitionForAccount requires a non-empty accountId");
-  }
-  const table = readPartitionMapTable(store);
-  let partition = table[normalizedAccountId];
-  if (!partition) {
-    partition = `persist:rpa-${encodePartitionAccountId(normalizedAccountId)}`;
-    table[normalizedAccountId] = partition;
-    store.set(PARTITION_MAP_TABLE_KEY, table);
-  }
-  if (typeof partition !== "string" || !partition.startsWith("persist:")) {
-    throw new Error(`\u8D26\u53F7 ${normalizedAccountId} \u7684 partition \u975E\u6CD5: ${String(partition)}`);
-  }
-  return partition;
-}
-
-import fs4 from "node:fs/promises";
-import path4 from "node:path";
-function cookieUrl(cookie) {
-  const domain = String(cookie.domain || "").replace(/^\./, "");
-  const protocol = cookie.secure ? "https" : "http";
-  return `${protocol}://${domain}${cookie.path || "/"}`;
-}
-function normalizeSameSite(value) {
-  switch ((value || "").toLowerCase()) {
-    case "strict":
-      return "strict";
-    case "lax":
-      return "lax";
-    case "none":
-    case "no_restriction":
-      return "no_restriction";
-    default:
-      return void 0;
-  }
-}
-async function importAccountCookies(cookies, accountFile) {
-  const normalizedAccountFile = String(accountFile || "").trim();
-  if (!normalizedAccountFile) {
-    return false;
-  }
-  const storageState = await readStorageState(normalizedAccountFile);
-  if (!storageState?.cookies?.length) {
-    return false;
-  }
-  for (const cookie of storageState.cookies) {
-    if (!cookie.name || !cookie.domain) {
-      continue;
-    }
-    const details: any = {
-      url: cookieUrl(cookie),
-      name: cookie.name,
-      value: cookie.value,
-      domain: cookie.domain,
-      path: cookie.path || "/",
-      secure: Boolean(cookie.secure),
-      httpOnly: Boolean(cookie.httpOnly)
-    };
-    if (typeof cookie.expires === "number" && cookie.expires > 0) {
-      details.expirationDate = cookie.expires;
-    }
-    const sameSite = normalizeSameSite(cookie.sameSite);
-    if (sameSite) {
-      details.sameSite = sameSite;
-    }
-    await cookies.set(details);
-  }
-  return true;
-}
-async function exportAccountCookies(cookies, accountFile) {
-  const normalizedAccountFile = String(accountFile || "").trim();
-  if (!normalizedAccountFile) {
-    return;
-  }
-  const electronCookies = await cookies.get({});
-  const storageState = {
-    cookies: electronCookies.map((cookie) => ({
-      name: cookie.name,
-      value: cookie.value,
-      domain: cookie.domain || "",
-      path: cookie.path || "/",
-      expires: typeof cookie.expirationDate === "number" ? cookie.expirationDate : -1,
-      httpOnly: Boolean(cookie.httpOnly),
-      secure: Boolean(cookie.secure),
-      sameSite: cookie.sameSite === "strict" ? "Strict" : cookie.sameSite === "lax" ? "Lax" : cookie.sameSite === "no_restriction" ? "None" : void 0
-    })),
-    origins: []
-  };
-  await fs4.mkdir(path4.dirname(normalizedAccountFile), { recursive: true });
-  await writeStorageState(normalizedAccountFile, storageState);
-}
-
-var runtime = null;
-function configureElectronPublishRuntime(nextRuntime) {
-  runtime = nextRuntime;
-}
-function getElectronPublishRuntime() {
-  if (!runtime) {
-    throw new Error("Electron \u53D1\u5E03\u7A97\u53E3\u8FD0\u884C\u65F6\u5C1A\u672A\u521D\u59CB\u5316");
-  }
-  return runtime;
-}
-
-var managedWindows = /* @__PURE__ */ new Map();
-function buildElectronPublishMarkerUrl(accountId) {
-  return `about:blank#agenthunt_publish_window=${encodeURIComponent(accountId)}`;
-}
-function resolveAccountId(accountId) {
-  const normalizedAccountId = String(accountId || "").trim();
-  if (!normalizedAccountId) {
-    throw new Error("\u53D1\u5E03\u4EFB\u52A1\u7F3A\u5C11 accountId\uFF0C\u65E0\u6CD5\u521B\u5EFA Electron \u53D1\u5E03\u7A97\u53E3");
-  }
-  return normalizedAccountId;
-}
-async function ensureManagedWindow(accountId) {
-  const existing = managedWindows.get(accountId);
-  if (existing?.win && !existing.win.isDestroyed()) {
-    return existing;
-  }
-  const runtime2 = getElectronPublishRuntime();
-  const partition = resolvePartitionForAccount(createPartitionStore(), accountId);
-  const markerUrl = buildElectronPublishMarkerUrl(accountId);
-  const win = new runtime2.BrowserWindow({
-    width: 1280,
-    height: 850,
-    minWidth: 1080,
-    minHeight: 570,
-    show: false,
-    autoHideMenuBar: true,
-    webPreferences: {
-      partition,
-      webSecurity: false,
-      contextIsolation: true,
-      nodeIntegration: false,
-      backgroundThrottling: false
-    }
-  });
-  win.on("close", (event) => {
-    if (runtime2.isQuitting()) {
-      return;
-    }
-    event.preventDefault();
-    win.hide();
-  });
-  win.on("closed", () => {
-    managedWindows.delete(accountId);
-  });
-  await win.loadURL(markerUrl);
-  const managed = { accountId, partition, markerUrl, win };
-  managedWindows.set(accountId, managed);
-  return managed;
-}
-async function findMarkedPage(browser, markerUrl) {
-  for (const context of browser.contexts()) {
-    for (const page of context.pages()) {
-      if (page.url() === markerUrl) {
-        return page;
-      }
-    }
-  }
-  return null;
-}
-async function resolveElectronCdpWebSocketEndpoint(endpoint) {
-  const versionUrl = new URL("/json/version", endpoint.endsWith("/") ? endpoint : `${endpoint}/`);
-  const response = await fetch(versionUrl);
-  if (!response.ok) {
-    throw new Error(`Electron CDP /json/version \u8FD4\u56DE ${response.status}`);
-  }
-  const version = await response.json();
-  if (!version.webSocketDebuggerUrl) {
-    throw new Error("Electron CDP /json/version \u7F3A\u5C11 webSocketDebuggerUrl");
-  }
-  return version.webSocketDebuggerUrl;
-}
-async function connectMarkedPage(markerUrl, timeoutMs) {
-  const runtime2 = getElectronPublishRuntime();
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < timeoutMs) {
-    const webSocketEndpoint = await resolveElectronCdpWebSocketEndpoint(runtime2.getCdpEndpoint());
-    const browser = await chromium2.connectOverCDP(webSocketEndpoint);
-    const page = await findMarkedPage(browser, markerUrl);
-    if (page) {
-      return { browser, page };
-    }
-    await browser.close();
-    await new Promise((resolve) => setTimeout(resolve, 200));
-  }
-  throw new Error(`\u672A\u627E\u5230 Electron \u53D1\u5E03\u7A97\u53E3 CDP target: ${markerUrl}`);
-}
-async function acquireElectronPublishSession(options) {
-  const accountId = resolveAccountId(options.accountId);
-  const timeoutMs = options.timeoutMs ?? 3e4;
-  const managed = await ensureManagedWindow(accountId);
-  const runtime2 = getElectronPublishRuntime();
-  const electronSession = runtime2.session.fromPartition(managed.partition);
-  await importAccountCookies(electronSession.cookies, options.accountFile);
-  await managed.win.loadURL(managed.markerUrl);
-  managed.win.show();
-  managed.win.focus();
-  const { browser, page } = await connectMarkedPage(managed.markerUrl, timeoutMs);
-  if (options.viewport) {
-    await page.setViewportSize(options.viewport);
-  }
-  let settled = false;
-  const cleanupConnection = async () => {
-    await browser.close();
-  };
-  return {
-    accountId,
-    page,
-    async complete() {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      await exportAccountCookies(electronSession.cookies, options.accountFile);
-      await page.goto(managed.markerUrl).catch(() => void 0);
-      managed.win.hide();
-      await cleanupConnection();
-    },
-    async release() {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      await page.goto(managed.markerUrl).catch(() => void 0);
-      managed.win.hide();
-      await cleanupConnection();
-    },
-    async fail(error) {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      managed.win.show();
-      managed.win.focus();
-      await cleanupConnection();
-      if (error instanceof Error) {
-        logger.error(`[publish-window:${accountId}] ${error.message}`);
-      }
-    }
-  };
-}
-function destroyElectronPublishWindows() {
-  for (const managed of managedWindows.values()) {
-    if (managed.win.isDestroyed()) {
-      continue;
-    }
-    managed.win.destroy();
-  }
-  managedWindows.clear();
-}
-
-async function createContextFromAccountFile(accountFile, headlessMode = "default") {
-  const contextOptions = await loadContextStorageState(accountFile);
-  const session = await createBrowserSession({ accountFile, contextOptions, headlessMode });
-  try {
-    return session.context;
-  } catch (error) {
-    await session.browser.close().catch(() => void 0);
-    throw error;
-  }
-}
-
-var MAX_UPLOAD_ATTEMPTS = 3;
-var UPLOAD_ATTEMPT_TIMEOUT_MS = 9e4;
-var CONTEXT_CLOSED_ERROR_MARKERS = [
-  "target page, context or browser has been closed",
-  "target closed",
-  "browser has been closed",
-  "context has been closed",
-  "context closed",
-  "page has been closed",
-  "page closed",
-  "\u9875\u9762\u5DF2\u5173\u95ED",
-  "\u4E0A\u4F20\u9875\u9762\u5DF2\u5173\u95ED",
-  "\u53D1\u5E03\u9875\u9762\u5DF2\u5173\u95ED",
-  "\u4E0A\u4F20\u4E0A\u4E0B\u6587\u5DF2\u5173\u95ED"
-];
-function isContextClosedError(error) {
-  const message = String(error ?? "").trim().toLowerCase();
-  if (!message) {
-    return false;
-  }
-  return CONTEXT_CLOSED_ERROR_MARKERS.some((marker) => message.includes(marker));
-}
-function normalizeUploadAttemptError(platformLabel, error) {
-  if (error instanceof PlatformUserAbortedError) {
-    return error;
-  }
-  if (error instanceof Error && /上传单轮超时/i.test(error.message)) {
-    return error;
-  }
-  if (error instanceof Error && (error.name === "TimeoutError" || /attempt timeout/i.test(error.message))) {
-    return new Error(`${platformLabel} \u4E0A\u4F20\u5355\u8F6E\u8D85\u65F6\uFF08>${UPLOAD_ATTEMPT_TIMEOUT_MS / 1e3} \u79D2\uFF09`);
-  }
-  if (isContextClosedError(error)) {
-    return new PlatformUserAbortedError(`${platformLabel} \u4E0A\u4F20\u7A97\u53E3\u6216\u9875\u9762\u5DF2\u5173\u95ED\uFF0C\u5DF2\u7EC8\u6B62\u53D1\u5E03`);
-  }
-  return error instanceof Error ? error : new Error(String(error));
-}
-async function runUploadAttemptWithTimeout(platformLabel, runner, timeoutMs = UPLOAD_ATTEMPT_TIMEOUT_MS) {
-  let timer;
-  const abortController = new AbortController();
-  try {
-    return await Promise.race([
-      runner(abortController.signal),
-      new Promise((_, reject) => {
-        timer = setTimeout(() => {
-          const error = new Error(`${platformLabel} \u4E0A\u4F20\u5355\u8F6E\u8D85\u65F6\uFF08>${timeoutMs / 1e3} \u79D2\uFF09`);
-          abortController.abort(error);
-          reject(error);
-        }, timeoutMs);
-      })
-    ]);
-  } finally {
-    if (timer) {
-      clearTimeout(timer);
-    }
-  }
-}
-async function withUploadRetry(attemptsOrRunner: any, maybeRunner: any, options: any = {}) {
-  const attempts = typeof attemptsOrRunner === "number" ? attemptsOrRunner : MAX_UPLOAD_ATTEMPTS;
-  const runner = typeof attemptsOrRunner === "function" ? attemptsOrRunner : maybeRunner;
-  if (!runner) {
-    throw new Error("\u7F3A\u5C11\u4E0A\u4F20\u91CD\u8BD5\u6267\u884C\u51FD\u6570");
-  }
-  let lastError;
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    try {
-      return await runner(attempt);
-    } catch (error) {
-      lastError = options.normalizeError ? options.normalizeError(error) : error;
-    }
-  }
-  throw lastError ?? new Error("\u4E0A\u4F20\u91CD\u8BD5\u5931\u8D25");
-}
-
-function buildSuccessOutcome(options: any = {}) {
-  return {
-    success: true,
-    message: options.detail ?? "\u53D1\u5E03\u6210\u529F",
-    postId: options.platformPostId ?? void 0,
-    articleId: options.platformArticleId ?? void 0
-  };
-}
-function buildFailureOutcome(message) {
-  return {
-    success: false,
-    message
-  };
-}
-
-import electron from "electron";
-import syncFs from "node:fs";
-import path5 from "node:path";
-import { fileURLToPath } from "node:url";
-var { BrowserWindow: ElectronBrowserWindow, shell } = electron;
-var LOGIN_BROWSER_FINGERPRINT = {
-  webdriver: false,
-  userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
-  platform: "Win32",
-  webglVendor: "Google Inc. (Intel)",
-  webglRenderer: "ANGLE (Intel, Intel(R) UHD Graphics 730 (0x00004682) Direct3D11 vs_5_0 ps_5_0, D3D11)",
-  hardwareConcurrency: 16,
-  deviceMemory: 32,
-  screen: "1920x1080",
-  pixelRatio: 1,
-  timezone: "Asia/Shanghai",
-  language: "zh-CN",
-  languages: "zh-CN, zh",
-  cookieEnabled: true,
-  online: true,
-  plugins: "PDF Viewer | Chrome PDF Viewer | Chromium PDF Viewer | Microsoft Edge PDF Viewer | WebKit built-in PDF",
-  mimeTypes: "application/pdf | text/pdf",
-  fonts: "Douyin Sans Zh | Douyin Sans | DOUYINSANSBOLD-GB | Douyin Sans"
-};
-var LOGIN_FINGERPRINT_SCRIPT = `
-(() => {
-  const fingerprint = ${JSON.stringify(LOGIN_BROWSER_FINGERPRINT)};
-  const languages = fingerprint.languages.split(",").map((item) => item.trim()).filter(Boolean);
-  const pluginNames = fingerprint.plugins.split("|").map((item) => item.trim()).filter(Boolean);
-  const mimeTypeNames = fingerprint.mimeTypes.split("|").map((item) => item.trim()).filter(Boolean);
-  const fontNames = fingerprint.fonts.split("|").map((item) => item.trim()).filter(Boolean);
-  const [screenWidth, screenHeight] = fingerprint.screen.split("x").map((item) => Number.parseInt(item, 10));
-
-  const defineGetter = (target, property, value) => {
-    try {
-      Object.defineProperty(target, property, {
-        get: () => value,
-        configurable: true,
-      });
-    } catch {}
-  };
-
-  defineGetter(Navigator.prototype, "webdriver", fingerprint.webdriver);
-  defineGetter(Navigator.prototype, "userAgent", fingerprint.userAgent);
-  defineGetter(Navigator.prototype, "platform", fingerprint.platform);
-  defineGetter(Navigator.prototype, "hardwareConcurrency", fingerprint.hardwareConcurrency);
-  defineGetter(Navigator.prototype, "deviceMemory", fingerprint.deviceMemory);
-  defineGetter(Navigator.prototype, "language", fingerprint.language);
-  defineGetter(Navigator.prototype, "languages", languages);
-  defineGetter(Navigator.prototype, "cookieEnabled", fingerprint.cookieEnabled);
-  defineGetter(Navigator.prototype, "onLine", fingerprint.online);
-  defineGetter(window, "devicePixelRatio", fingerprint.pixelRatio);
-
-  const screenValues = {
-    width: screenWidth,
-    height: screenHeight,
-    availWidth: screenWidth,
-    availHeight: screenHeight,
-    colorDepth: 24,
-    pixelDepth: 24,
-  };
-  for (const [property, value] of Object.entries(screenValues)) {
-    defineGetter(window.screen, property, value);
-    if (typeof Screen !== "undefined") {
-      defineGetter(Screen.prototype, property, value);
-    }
-  }
-
-  const createMimeType = (type, plugin) => {
-    const mimeType = {
-      type,
-      suffixes: type === "application/pdf" ? "pdf" : "",
-      description: type === "application/pdf" ? "Portable Document Format" : type,
-      enabledPlugin: plugin,
-    };
-    Object.defineProperty(mimeType, Symbol.toStringTag, { value: "MimeType" });
-    return mimeType;
-  };
-
-  const createPlugin = (name) => {
-    const plugin = {
-      name,
-      filename: "internal-pdf-viewer",
-      description: "Portable Document Format",
-      length: mimeTypeNames.length,
-      item(index) {
-        return this[index] ?? null;
-      },
-      namedItem(type) {
-        return this[type] ?? null;
-      },
-    };
-    mimeTypeNames.forEach((type, index) => {
-      const mimeType = createMimeType(type, plugin);
-      plugin[index] = mimeType;
-      plugin[type] = mimeType;
-    });
-    Object.defineProperty(plugin, Symbol.toStringTag, { value: "Plugin" });
-    return plugin;
-  };
-
-  const createNamedArray = (items, nameKey, tag) => {
-    const array = [];
-    items.forEach((item, index) => {
-      array[index] = item;
-      array[item[nameKey]] = item;
-    });
-    Object.defineProperty(array, "item", {
-      value(index) {
-        return array[index] ?? null;
-      },
-      configurable: true,
-    });
-    Object.defineProperty(array, "namedItem", {
-      value(name) {
-        return array[name] ?? null;
-      },
-      configurable: true,
-    });
-    Object.defineProperty(array, Symbol.toStringTag, { value: tag });
-    return array;
-  };
-
-  const plugins = createNamedArray(pluginNames.map(createPlugin), "name", "PluginArray");
-  const mimeTypes = createNamedArray(
-    mimeTypeNames.map((type) => createMimeType(type, plugins[0] ?? null)),
-    "type",
-    "MimeTypeArray",
-  );
-  Object.defineProperty(plugins, "refresh", { value() {}, configurable: true });
-  defineGetter(Navigator.prototype, "plugins", plugins);
-  defineGetter(Navigator.prototype, "mimeTypes", mimeTypes);
-
-  const originalResolvedOptions = Intl.DateTimeFormat.prototype.resolvedOptions;
-  Object.defineProperty(Intl.DateTimeFormat.prototype, "resolvedOptions", {
-    value() {
-      return { ...originalResolvedOptions.call(this), timeZone: fingerprint.timezone, locale: fingerprint.language };
-    },
-    configurable: true,
-  });
-
-  const overrideWebgl = (context) => {
-    if (!context?.prototype?.getParameter) {
-      return;
-    }
-    const originalGetParameter = context.prototype.getParameter;
-    Object.defineProperty(context.prototype, "getParameter", {
-      value(parameter) {
-        if (parameter === 37445) {
-          return fingerprint.webglVendor;
-        }
-        if (parameter === 37446) {
-          return fingerprint.webglRenderer;
-        }
-        return originalGetParameter.call(this, parameter);
-      },
-      configurable: true,
-    });
-  };
-  overrideWebgl(window.WebGLRenderingContext);
-  overrideWebgl(window.WebGL2RenderingContext);
-
-  const originalFontCheck = document.fonts?.check?.bind(document.fonts);
-  if (originalFontCheck) {
-    Object.defineProperty(document.fonts, "check", {
-      value(font, text) {
-        if (fontNames.some((fontName) => String(font).includes(fontName))) {
-          return true;
-        }
-        return originalFontCheck(font, text);
-      },
-      configurable: true,
-    });
-  }
-})();
-`;
-function resolveRuntimeAssetPath(candidates, description) {
-  for (const candidate of candidates) {
-    if (syncFs.existsSync(candidate)) {
-      return candidate;
-    }
-  }
-  throw new Error(`\u672A\u627E\u5230${description}: ${candidates.join(", ")}`);
-}
-var SHARED_DIRNAME = path5.dirname(fileURLToPath(import.meta.url));
-var PLATFORM_LOGIN_PRELOAD_PATH = resolveRuntimeAssetPath(
-  [
-    path5.join(SHARED_DIRNAME, "preload.cjs"),
-    path5.join(process.cwd(), ".build", "preload.cjs"),
-    path5.join(process.cwd(), "preload.ts")
-  ],
-  "\u5E73\u53F0\u767B\u5F55 preload"
-);
-var buildCloseButtonScript = (buttonId, messageSource) => `
-(() => {
-  const existing = document.getElementById(${JSON.stringify(buttonId)});
-  if (!window.__matrixLoginCloseHandlerBound) {
-    window.__matrixLoginCloseHandlerBound = true;
-    window.addEventListener("message", (event) => {
-      if (event?.data?.source === ${JSON.stringify(messageSource)} && event?.data?.action === "close") {
-        logger.info("__matrix_login_close__");
-      }
-    });
-  }
-
-  if (existing) {
-    return "exists";
-  }
-
-  const button = document.createElement("button");
-  button.id = ${JSON.stringify(buttonId)};
-  button.type = "button";
-  button.textContent = "\u5173\u95ED";
-  button.className = "matrix-login-close-button";
-  button.addEventListener("click", () => {
-    window.postMessage({ source: ${JSON.stringify(messageSource)}, action: "close" }, "*");
-  });
-
-  document.body.appendChild(button);
-  return "created";
-})();
-`;
-
-var SOHU_PLATFORM_LABEL = "\u641C\u72D0";
-var SOHU_LOGIN_SUCCESS_URL = "https://mp.sohu.com/mpfe/v4/contentManagement/first/page";
-var SOHU_CLOSE_BUTTON_SCRIPT = buildCloseButtonScript("matrix-sohu-login-close", "matrix-sohu-login");
-var SOHU_PUBLISH_URL = "https://mp.sohu.com/mpfe/v4/contentManagement/news/addvideo";
-var SOHU_VIDEO_FILE_INPUT_SELECTORS = [
-  "input.chunkUploader-input[type='file']",
-  "input[type='file'][accept*='video']",
-  "input[type='file']"
-];
-var SOHU_VIDEO_UPLOAD_TRIGGER_SELECTORS = [
-  "div.upload-area",
-  "div.upload-area-text",
-  "button:has-text('\u4E0A\u4F20\u89C6\u9891')",
-  "button:has-text('\u9009\u62E9\u89C6\u9891')",
-  "button:has-text('\u672C\u5730\u4E0A\u4F20')",
-  "text=\u4E0A\u4F20\u89C6\u9891",
-  "text=\u70B9\u51FB\u4E0A\u4F20\u89C6\u9891\u6216\u62D6\u62FD\u5230\u6B64\u533A\u57DF\u4E0A\u4F20",
-  "text=\u9009\u62E9\u89C6\u9891",
-  "text=\u672C\u5730\u4E0A\u4F20",
-  "text=\u4E0A\u4F20"
-];
-var SOHU_UPLOAD_SUCCESS_TEXTS = ["\u4E0A\u4F20\u6210\u529F", "\u4E0A\u4F20\u5B8C\u6210", "\u5904\u7406\u5B8C\u6210"];
-var SOHU_PUBLISH_READY_BUTTON_SELECTORS = [
-  "button:has-text('\u53D1\u5E03')",
-  "button:has-text('\u53D1\u8868')",
-  "button:has-text('\u63D0\u4EA4')"
-];
-var SOHU_TITLE_SELECTORS = [
-  "input[placeholder*='\u6807\u9898']",
-  "input[placeholder='\u8BF7\u8F93\u5165\u6807\u9898\uFF085-72\u5B57\uFF09']",
-  "textarea[placeholder*='\u6807\u9898']",
-  "input[aria-label*='\u6807\u9898']",
-  "textarea[aria-label*='\u6807\u9898']",
-  "input[type='text']"
-];
-var SOHU_DESCRIPTION_SELECTORS = [
-  "textarea[placeholder*='\u7B80\u4ECB']",
-  "textarea[placeholder='\u8BF7\u8F93\u51655~200\u5B57\u7684\u89C6\u9891\u63CF\u8FF0\uFF0C\u6709\u5229\u4E8E\u83B7\u5F97\u66F4\u591A\u63A8\u8350']",
-  "textarea[placeholder*='\u63CF\u8FF0']",
-  "textarea[placeholder*='\u6B63\u6587']",
-  "[contenteditable='true']",
-  "textarea"
-];
-var SOHU_TAG_SELECTORS = [
-  "input[placeholder*='\u8BDD\u9898']",
-  "input[placeholder*='\u6807\u7B7E']",
-  "textarea[placeholder*='\u8BDD\u9898']",
-  "textarea[placeholder*='\u6807\u7B7E']",
-  "[contenteditable='true']"
-];
-var SOHU_COVER_TRIGGER_SELECTORS = [
-  "div.el-dialog__wrapper.select-dialog div.upload-area.no-file",
-  "div.el-dialog__wrapper.select-dialog div.upload-area.no-file div.upload-button",
-  "div.el-dialog__wrapper.select-dialog div.upload-area.no-file div.upload-button > label",
-  "#container-section-1 > div:nth-child(3) > div.el-dialog__wrapper.select-dialog > div > div.el-dialog__body > div > div:nth-child(4) > div.upload-area.no-file",
-  "#container-section-1 > div:nth-child(3) > div.el-dialog__wrapper.select-dialog > div > div.el-dialog__body > div > div:nth-child(4) > div.upload-area.no-file > div.upload-button > label",
-  "div.cover-button",
-  "div.upload-file.mp-upload",
-  "span.upload-tip",
-  "button:has-text('\u4E0A\u4F20\u5C01\u9762')",
-  "button:has-text('\u66F4\u6362\u5C01\u9762')",
-  "text=\u4E0A\u4F20\u5C01\u9762",
-  "text=\u4E0A\u4F20\u56FE\u7247",
-  "text=\u66F4\u6362\u5C01\u9762",
-  "text=\u5C01\u9762"
-];
-var SOHU_COVER_IMAGE_INPUT_SELECTORS = [
-  "div.el-dialog__wrapper.select-dialog input[type='file']",
-  "div.el-dialog input[type='file']",
-  "input[type='file'][accept*='image']",
-  "input[type='file'][accept*='png']",
-  "input[type='file']"
-];
-var SOHU_COVER_SELECTED_COUNT_SELECTORS = ["div.pagination-wrapper", "p.success-number"];
-var SOHU_COVER_CONFIRM_SELECTORS = [
-  "div.el-dialog__wrapper.select-dialog div.bottom-buttons p.button.positive-button",
-  "div.el-dialog__wrapper.select-dialog p.button.positive-button",
-  "div.bottom-buttons p.button.positive-button",
-  "p.button.positive-button",
-  "div.el-dialog__wrapper.select-dialog .change-cover",
-  "div.change-cover"
-];
-var SOHU_PUBLISH_CLICK_SELECTORS = [
-  "li.publish-report-btn.positive-button.active",
-  "ul.button-list li.publish-report-btn.positive-button",
-  "button:has-text('\u53D1\u5E03')",
-  "button:has-text('\u53D1\u8868')",
-  "button:has-text('\u63D0\u4EA4')",
-  "div:has-text('\u53D1\u5E03')",
-  "span:has-text('\u53D1\u5E03')",
-  "text=\u53D1\u5E03",
-  "text=\u53D1\u8868",
-  "text=\u63D0\u4EA4"
-];
-var SOHU_PUBLISH_SUCCESS_TEXTS = ["\u53D1\u5E03\u6210\u529F", "\u63D0\u4EA4\u6210\u529F", "\u53D1\u8868\u6210\u529F"];
-var SOHU_PUBLISH_SUCCESS_URL_MARKERS = ["/contentManagement", "/main", "/content/list"];
-
-var PAGE_READY_WAIT_MS = 3e3;
-var DIAGNOSTIC_HTML_PREVIEW_LENGTH = 500;
-var COVER_TRIGGER_RETRY_COUNT = 3;
-var COVER_TRIGGER_RETRY_INTERVAL_MS = 1e3;
-var COVER_APPLY_TIMEOUT_MS = 15e3;
-var UPLOAD_COMPLETE_TIMEOUT_MS = 30 * 60 * 1e3;
-var PUBLISH_SUCCESS_TIMEOUT_MS = 18e4;
-var SOHU_CHANNEL_DROPDOWN_SELECTOR = "#container-section-1 > div:nth-child(5) > div:nth-child(2)";
-var SOHU_CATEGORY_DROPDOWN_SELECTOR = "#container-section-1 > div:nth-child(5) > div:nth-child(3)";
-var SOHU_PREFERRED_CHANNEL = "\u8D22\u7ECF";
-var SOHU_PREFERRED_CATEGORY = "\u8D22\u7ECF";
-var SOHU_CATEGORY_SELECT_ATTEMPTS = 2;
-var SOHU_OPTION_SCROLL_ATTEMPTS = 12;
-function parsePayload(payload) {
-  const accountFile = String(payload.accountFile || "").trim();
-  const accountId = String(payload.accountId || "").trim();
-  const title = String(payload.title || "").trim();
-  const videoPath = String(payload.videoPath || payload.filePath || "").trim();
-  const introduction = String(payload.introduction || payload.description || title).trim();
-  const coverPath = String(payload.coverPath || payload.thumbnailPath || "").trim();
-  const scheduledAt = String(payload.scheduledAt || payload.publishDate || "").trim();
-  const timeoutMs = typeof payload.timeoutMs === "number" && Number.isFinite(payload.timeoutMs) ? payload.timeoutMs : UPLOAD_ATTEMPT_TIMEOUT_MS;
-  const tags = Array.isArray(payload.tags) ? payload.tags.map((item) => String(item).trim()).filter(Boolean) : [];
-  if (!accountId) {
-    throw new Error("\u641C\u72D0 upload \u7F3A\u5C11 accountId");
-  }
-  if (!title) {
-    throw new Error("\u641C\u72D0 upload \u7F3A\u5C11 title");
-  }
-  if (!videoPath) {
-    throw new Error("\u641C\u72D0 upload \u7F3A\u5C11 videoPath");
-  }
-  return {
-    ...payload,
-    accountFile,
-    accountId,
-    title,
-    videoPath,
-    introduction,
-    description: introduction,
-    coverPath,
-    scheduledAt,
-    timeoutMs,
-    tags
-  };
-}
-async function fillFirstVisible(page, selectors, value) {
-  const locator = await firstVisibleLocator(page, selectors);
-  if (!locator) {
-    return false;
-  }
-  await locator.click({ timeout: 5e3, force: true }).catch(() => void 0);
-  try {
-    await locator.fill(value, { timeout: 5e3 });
-  } catch {
-    await locator.press(process.platform === "darwin" ? "Meta+A" : "Control+A").catch(() => void 0);
-    await page.keyboard.type(value);
-  }
-  return true;
-}
-async function clickFirstVisible(page, selectors, timeoutMs = 1e3) {
-  const locator = await firstVisibleLocator(page, selectors, timeoutMs);
-  if (!locator) {
-    return false;
-  }
-  await locator.click({ timeout: 5e3, force: true });
-  return true;
-}
-async function setVideoFile(page, videoPath) {
-  for (const selector of SOHU_VIDEO_FILE_INPUT_SELECTORS) {
-    const locator = page.locator(selector);
-    const count = await locator.count();
-    if (count > 0) {
-      await locator.nth(0).setInputFiles(videoPath);
-      return;
-    }
-  }
-  const clicked = await clickFirstVisible(page, SOHU_VIDEO_UPLOAD_TRIGGER_SELECTORS);
-  if (!clicked) {
-    throw new Error("\u672A\u627E\u5230\u641C\u72D0\u89C6\u9891\u4E0A\u4F20\u5165\u53E3");
-  }
-  await page.waitForTimeout(1e3);
-  for (const selector of SOHU_VIDEO_FILE_INPUT_SELECTORS) {
-    const locator = page.locator(selector);
-    const count = await locator.count();
-    if (count > 0) {
-      await locator.nth(0).setInputFiles(videoPath);
-      return;
-    }
-  }
-  throw new Error("\u641C\u72D0\u9875\u9762\u672A\u51FA\u73B0\u89C6\u9891 file input");
-}
-async function waitForUploadComplete(page) {
-  await waitForCondition(SOHU_PLATFORM_LABEL, "upload-complete", UPLOAD_COMPLETE_TIMEOUT_MS, async () => {
-    if (page.isClosed()) {
-      throw new Error("\u641C\u72D0\u4E0A\u4F20\u9875\u9762\u5DF2\u5173\u95ED");
-    }
-    for (const marker of SOHU_UPLOAD_SUCCESS_TEXTS) {
-      if (await page.getByText(marker, { exact: false }).count() > 0) {
-        return true;
-      }
-    }
-    for (const selector of SOHU_PUBLISH_READY_BUTTON_SELECTORS) {
-      const locator = page.locator(selector).first();
-      try {
-        if (await locator.count() > 0 && await locator.isVisible() && !await locator.isDisabled()) {
-          return true;
-        }
-      } catch {
-        continue;
-      }
-    }
-    return false;
-  }, 1e3);
-}
-async function setTitle(page, title) {
-  if (await fillFirstVisible(page, SOHU_TITLE_SELECTORS, title.slice(0, 60))) {
-    return;
-  }
-  throw new Error("\u672A\u627E\u5230\u641C\u72D0\u6807\u9898\u8F93\u5165\u6846");
-}
-async function setDescription(page, description) {
-  if (!description.trim()) {
-    return;
-  }
-  await fillFirstVisible(page, SOHU_DESCRIPTION_SELECTORS, description);
-}
-async function setTags(page, tags) {
-  if (!tags.length) {
-    return;
-  }
-  const locator = await firstVisibleLocator(page, SOHU_TAG_SELECTORS);
-  if (!locator) {
-    return;
-  }
-  await locator.click({ timeout: 5e3, force: true });
-  for (const tag of tags) {
-    await page.keyboard.type(`#${tag}`);
-    await page.keyboard.press("Enter");
-    await page.waitForTimeout(200);
-  }
-}
-function normalizeVisibleText(value) {
-  return String(value || "").replace(/\s+/g, " ").trim();
-}
-function isSohuDropdownSelected(text) {
-  const normalized = normalizeVisibleText(text);
-  return Boolean(normalized && normalized !== "\u8BF7\u9009\u62E9");
-}
-async function readSohuDropdownText(dropdown) {
-  const selectText = await dropdown.locator("span.select-text").first().innerText().catch(() => "");
-  if (isSohuDropdownSelected(selectText)) {
-    return normalizeVisibleText(selectText);
-  }
-  return "";
-}
-async function clickByMouse(page, locator, label) {
-  await locator.scrollIntoViewIfNeeded({ timeout: 2e3 }).catch(() => void 0);
-  const box = await locator.boundingBox({ timeout: 2e3 }).catch(() => null);
-  if (!box) {
-    logger.info(`[sohu:category] ${label} no bounding box`);
-    return false;
-  }
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  await page.mouse.down();
-  await page.mouse.up();
-  return true;
-}
-async function waitForSohuDropdownCommit(dropdown, pickedText) {
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < 3e3) {
-    const selectedText = await readSohuDropdownText(dropdown);
-    if (selectedText === pickedText || isSohuDropdownSelected(selectedText)) {
-      logger.info(`[sohu:category] selection committed selected=${selectedText}`);
-      return true;
-    }
-    await dropdown.page().waitForTimeout(200);
-  }
-  return false;
-}
-async function moveMouseToSohuOptionList(page) {
-  const lists = page.locator("div.select-list:visible");
-  const listCount = await lists.count().catch(() => 0);
-  for (let index = 0; index < listCount; index += 1) {
-    const list = lists.nth(index);
-    const visible = await list.isVisible({ timeout: 100 }).catch(() => false);
-    if (!visible) {
-      continue;
-    }
-    const box = await list.boundingBox().catch(() => null);
-    if (!box) {
-      continue;
-    }
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    return true;
-  }
-  return false;
-}
-async function findVisibleSohuOption(page, preferredText) {
-  const optionSelectors = ["div.select-list:visible li", "div.select-list li"];
-  let fallback = null;
-  for (const selector of optionSelectors) {
-    const options = page.locator(selector);
-    const optionCount = await options.count().catch(() => 0);
-    for (let index = 0; index < optionCount; index += 1) {
-      const option = options.nth(index);
-      const visible = await option.isVisible({ timeout: 100 }).catch(() => false);
-      if (!visible) {
-        continue;
-      }
-      const text = normalizeVisibleText(await option.innerText().catch(() => ""));
-      if (!text) {
-        continue;
-      }
-      if (text === preferredText) {
-        return { locator: option, text, exact: true };
-      }
-      fallback ||= { locator: option, text, exact: false };
-    }
-  }
-  return fallback;
-}
-async function selectSohuDropdownByMouse(page, selector, preferredText, label) {
-  for (let attempt = 1; attempt <= SOHU_CATEGORY_SELECT_ATTEMPTS; attempt += 1) {
-    const dropdown = page.locator(selector).first();
-    const visible = await dropdown.isVisible({ timeout: 2e3 }).catch(() => false);
-    if (!visible) {
-      throw new Error(`\u641C\u72D0${label}\u4E0B\u62C9\u6846\u4E0D\u53EF\u89C1`);
-    }
-    const currentText = await readSohuDropdownText(dropdown);
-    logger.info(`[sohu:category] ${label} attempt=${attempt} current=${currentText}`);
-    if (isSohuDropdownSelected(currentText)) {
-      return;
-    }
-    const opened = await clickByMouse(page, dropdown, `${label} dropdown`);
-    logger.info(`[sohu:category] ${label} attempt=${attempt} opened=${opened}`);
-    if (!opened) {
-      await page.waitForTimeout(300);
-      continue;
-    }
-    await page.waitForTimeout(300);
-    await moveMouseToSohuOptionList(page);
-    for (let scrollAttempt = 0; scrollAttempt < SOHU_OPTION_SCROLL_ATTEMPTS; scrollAttempt += 1) {
-      const option = await findVisibleSohuOption(page, preferredText);
-      if (option?.exact) {
-        const picked = await clickByMouse(page, option.locator, `${label} option ${option.text}`);
-        logger.info(`[sohu:category] ${label} picked preferred=${option.text} result=${picked}`);
-        if (picked && await waitForSohuDropdownCommit(dropdown, option.text)) {
-          return;
-        }
-      }
-      await moveMouseToSohuOptionList(page);
-      await page.mouse.wheel(0, 420);
-      await page.waitForTimeout(120);
-    }
-    const fallback = await findVisibleSohuOption(page, preferredText);
-    if (fallback) {
-      const picked = await clickByMouse(page, fallback.locator, `${label} fallback ${fallback.text}`);
-      logger.info(`[sohu:category] ${label} picked fallback=${fallback.text} result=${picked}`);
-      if (picked && await waitForSohuDropdownCommit(dropdown, fallback.text)) {
-        return;
-      }
-    }
-    await page.keyboard.press("Escape").catch(() => void 0);
-    await page.waitForTimeout(300);
-  }
-  throw new Error(`\u641C\u72D0${label}\u9009\u62E9\u5931\u8D25\uFF1A\u672A\u80FD\u901A\u8FC7\u9F20\u6807\u6EDA\u52A8\u9009\u4E2D\u76EE\u6807\u9879`);
-}
-async function ensureSecondaryCategory(page) {
-  await selectSohuDropdownByMouse(page, SOHU_CHANNEL_DROPDOWN_SELECTOR, SOHU_PREFERRED_CHANNEL, "\u9891\u9053");
-  await selectSohuDropdownByMouse(page, SOHU_CATEGORY_DROPDOWN_SELECTOR, SOHU_PREFERRED_CATEGORY, "\u5206\u7C7B");
-}
-async function findCoverFileInput(page) {
-  return findFileInput(page, SOHU_COVER_IMAGE_INPUT_SELECTORS, (message) => logger.info(`[sohu:cover] ${message}`), "image");
-}
-async function triggerCoverUpload(page) {
-  return retryTriggerUntil(
-    page,
-    SOHU_COVER_TRIGGER_SELECTORS,
-    async () => {
-      const imageInput = await findCoverFileInput(page);
-      const dialogVisible = await page.locator("div.el-dialog__wrapper.select-dialog").first().isVisible().catch(() => false);
-      logger.info(`[sohu:cover] post-click dialogVisible=${dialogVisible} imageInputFound=${Boolean(imageInput)}`);
-      return Boolean(imageInput);
-    },
-    {
-      attempts: COVER_TRIGGER_RETRY_COUNT,
-      intervalMs: COVER_TRIGGER_RETRY_INTERVAL_MS,
-      logPrefix: "sohu:cover"
-    }
-  );
-}
-async function setThumbnail(page, coverPath) {
-  logger.info(`[sohu:cover] start coverPath=${coverPath || "<empty>"}`);
-  if (!coverPath) {
-    logger.info("[sohu:cover] skip because coverPath is empty");
-    return;
-  }
-  try {
-    const stat = await fs5.stat(coverPath);
-    logger.info(`[sohu:cover] file exists size=${stat.size}`);
-  } catch (error) {
-    logger.info(`[sohu:cover] file access failed error=${error instanceof Error ? error.message : String(error)}`);
-    return;
-  }
-  const triggerReady = await triggerCoverUpload(page);
-  if (!triggerReady) {
-    logger.info("[sohu:cover] trigger retries exhausted");
-    return;
-  }
-  const dialogVisible = await page.locator("div.el-dialog__wrapper.select-dialog").first().isVisible().catch(() => false);
-  const dialogText = await page.locator("div.el-dialog__wrapper.select-dialog").first().innerText().catch(() => "");
-  logger.info(`[sohu:cover] dialog visible=${dialogVisible} text=${String(dialogText || "").replace(/\s+/g, " ").slice(0, 200)}`);
-  const imageInput = await findCoverFileInput(page);
-  logger.info(`[sohu:cover] image input found=${Boolean(imageInput)}`);
-  if (imageInput) {
-    const inputTag = await imageInput.evaluate((node) => node.tagName).catch(() => "");
-    const inputClass = await imageInput.getAttribute("class").catch(() => "");
-    const inputAccept = await imageInput.getAttribute("accept").catch(() => "");
-    logger.info(`[sohu:cover] image input tag=${inputTag} class=${inputClass} accept=${inputAccept}`);
-    await imageInput.setInputFiles(coverPath);
-    logger.info("[sohu:cover] setInputFiles completed");
-  } else {
-    const chooserPicked = await pickFileWithChooser(
-      page,
-      async () => {
-        const triggerAgain = await firstVisibleLocator(page, SOHU_COVER_TRIGGER_SELECTORS, 500);
-        if (!triggerAgain) {
-          throw new Error("cover trigger missing for chooser fallback");
-        }
-        const handle = await triggerAgain.elementHandle();
-        if (handle) {
-          await page.evaluate("(node) => node.click()", handle);
-          return;
-        }
-        await triggerAgain.click({ timeout: 2e3, force: true });
-      },
-      coverPath,
-      5e3
-    );
-    logger.info(`[sohu:cover] chooser fallback used=${chooserPicked}`);
-    if (!chooserPicked) {
-      logger.info("[sohu:cover] chooser fallback failed, stop thumbnail flow");
-      return;
-    }
-  }
-  await waitForCondition(SOHU_PLATFORM_LABEL, "cover-selected", COVER_APPLY_TIMEOUT_MS, async () => {
-    const selected = await firstVisibleLocator(page, SOHU_COVER_SELECTED_COUNT_SELECTORS, 500);
-    if (!selected) {
-      logger.info("[sohu:cover] selected counter not found yet");
-      return false;
-    }
-    const text = String(await selected.innerText().catch(() => "") || "").trim();
-    logger.info(`[sohu:cover] selected text=${text}`);
-    return text.includes("\u5DF2\u9009\u62E91\u5F20");
-  }, 500);
-  const confirm = await firstVisibleLocator(page, SOHU_COVER_CONFIRM_SELECTORS);
-  logger.info(`[sohu:cover] confirm found=${Boolean(confirm)}`);
-  if (!confirm) {
-    throw new Error("\u672A\u627E\u5230\u641C\u72D0\u5C01\u9762\u5F39\u7A97\u786E\u8BA4\u6309\u94AE");
-  }
-  const confirmText = await confirm.innerText().catch(() => "");
-  const confirmClass = await confirm.getAttribute("class").catch(() => "");
-  logger.info(`[sohu:cover] confirm text=${confirmText} class=${confirmClass}`);
-  let confirmClicked = false;
-  try {
-    const clicked = await clickWithDomFallback(confirm, { timeoutMs: 3e3, force: true });
-    confirmClicked = clicked;
-    logger.info(`[sohu:cover] confirm clicked by helper=${clicked}`);
-  } catch (error) {
-    logger.info(`[sohu:cover] confirm playwright click failed error=${error instanceof Error ? error.message : String(error)}`);
-    const handle = await confirm.elementHandle();
-    if (!handle) {
-      throw new Error("\u641C\u72D0\u5C01\u9762\u5F39\u7A97\u786E\u8BA4\u6309\u94AE\u65E0\u6CD5\u83B7\u53D6 element handle");
-    }
-    const domClicked = await page.evaluate("(node) => { try { node.click(); return true; } catch { return false; } }", handle).catch(() => false);
-    confirmClicked = Boolean(domClicked);
-    logger.info(`[sohu:cover] confirm dom click result=${confirmClicked}`);
-  }
-  if (!confirmClicked) {
-    throw new Error("\u641C\u72D0\u5C01\u9762\u5F39\u7A97\u786E\u8BA4\u6309\u94AE\u70B9\u51FB\u5931\u8D25");
-  }
-  await waitForCondition(SOHU_PLATFORM_LABEL, "cover-applied", COVER_APPLY_TIMEOUT_MS, async () => {
-    const dialogVisibleNow = await page.locator("div.el-dialog__wrapper.select-dialog").first().isVisible().catch(() => false);
-    const changeCover = page.locator("div.change-cover").first();
-    const coverButton = page.locator("div.cover-button").first();
-    const picCover = page.locator("div.pic-cover").first();
-    const changeCoverVisible = await changeCover.isVisible().catch(() => false);
-    const changeCoverText = await changeCover.innerText().catch(() => "");
-    const coverButtonText = await coverButton.innerText().catch(() => "");
-    const picCoverText = await picCover.innerText().catch(() => "");
-    const picCoverStyle = await picCover.getAttribute("style").catch(() => "");
-    logger.info(`[sohu:cover] applied dialogVisible=${dialogVisibleNow} changeCoverVisible=${changeCoverVisible} changeCoverText=${changeCoverText} coverButtonText=${coverButtonText} picCoverText=${picCoverText} picCoverStyle=${picCoverStyle}`);
-    if (!dialogVisibleNow && changeCoverVisible) {
-      return true;
-    }
-    if (String(picCoverStyle || "").includes("background-image") && !String(picCoverStyle || "").includes('url("")')) {
-      return true;
-    }
-    if (String(changeCoverText || "").includes("\u7F16\u8F91\u5C01\u9762")) {
-      return true;
-    }
-    if (String(picCoverText || "").includes("\u7F16\u8F91\u5C01\u9762") && !String(picCoverStyle || "").includes("display: none")) {
-      return true;
-    }
-    return false;
-  }, 500);
-  logger.info("[sohu:cover] thumbnail applied successfully");
-}
-async function clickPublish(page) {
-  logger.info(`[sohu:publish] start at=${Date.now()}`);
-  const domClickSelectors = [
-    "li.publish-report-btn.positive-button.active",
-    "ul.button-list li.publish-report-btn.positive-button"
+/** 从 assets 中严格读取当前系统对应的搜狐 Chrome 138 User-Agent。 */
+async function loadSohuBrowserUserAgent(): Promise<string> {
+  const fileName = process.platform === "win32"
+    ? "browser-identity.windows.json"
+    : "browser-identity.macos.json";
+  const moduleDirectory = dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    join(process.cwd(), "assets", "douyin", fileName),
+    resolve(moduleDirectory, "../../../assets/douyin", fileName),
+    resolve(moduleDirectory, "../assets/douyin", fileName),
   ];
-  for (const selector of domClickSelectors) {
-    const locator = page.locator(selector).first();
-    const count = await locator.count().catch(() => 0);
-    logger.info(`[sohu:publish] dom selector=${selector} count=${count}`);
-    if (!count) {
+  let parsed: unknown;
+  let identityPath = candidates[0]!;
+  for (const candidate of candidates) {
+    try {
+      parsed = JSON.parse(await readFile(candidate, "utf8"));
+      identityPath = candidate;
+      break;
+    } catch {
       continue;
     }
-    const handle = await locator.elementHandle();
-    if (!handle) {
-      logger.info(`[sohu:publish] dom selector=${selector} no handle`);
-      continue;
-    }
-    const domClicked = await page.evaluate("(node) => { try { node.click(); return true; } catch { return false; } }", handle).catch(() => false);
-    logger.info(`[sohu:publish] dom selector=${selector} clicked=${domClicked}`);
-    if (domClicked) {
-      return;
-    }
   }
-  for (const selector of SOHU_PUBLISH_CLICK_SELECTORS) {
-    const locator = page.locator(selector).first();
-    const count = await locator.count().catch(() => 0);
-    logger.info(`[sohu:publish] selector=${selector} count=${count}`);
-    if (!count) {
-      continue;
-    }
-    const clicked = await clickWithDomFallback(locator, { timeoutMs: 5e3, force: true });
-    logger.info(`[sohu:publish] selector=${selector} clicked by helper=${clicked}`);
-    if (clicked) {
-      return;
-    }
+  const identity = parsed && typeof parsed === "object" && !Array.isArray(parsed)
+    ? parsed as Record<string, unknown>
+    : null;
+  const expectedPlatform = process.platform === "win32" ? "Win32" : "MacIntel";
+  if (
+    !identity
+    || identity.browserPlatform !== expectedPlatform
+    || typeof identity.userAgent !== "string"
+    || !identity.userAgent.includes("Chrome/138.0.0.0")
+  ) {
+    throw new Error(`搜狐浏览器身份缺失、格式无效或与当前系统不匹配: ${identityPath}`);
   }
-  throw new Error("\u672A\u627E\u5230\u641C\u72D0\u53D1\u5E03\u6309\u94AE");
+  return identity.userAgent;
 }
-async function waitForPublishSuccess(page) {
-  await waitForCondition(SOHU_PLATFORM_LABEL, "publish-success", PUBLISH_SUCCESS_TIMEOUT_MS, async () => {
-    if (page.isClosed()) {
-      throw new Error("\u641C\u72D0\u53D1\u5E03\u9875\u9762\u5DF2\u5173\u95ED");
-    }
-    const currentUrl = page.url();
-    if (SOHU_PUBLISH_SUCCESS_URL_MARKERS.some((marker) => currentUrl.includes(marker)) && !currentUrl.includes("addvideo")) {
-      return true;
-    }
-    for (const marker of SOHU_PUBLISH_SUCCESS_TEXTS) {
-      if (await page.getByText(marker, { exact: false }).count() > 0) {
-        return true;
-      }
-    }
-    return false;
-  }, 1e3);
+
+export interface StoredCookie {
+  domain: string;
+  expires: number;
+  name: string;
+  value: string;
 }
-async function captureInitialPageDiagnostics(page) {
-  const currentUrl = page.url();
-  const title = await page.title().catch(() => "");
-  const html = await page.content().catch(() => "");
-  const bodyText = await page.locator("body").innerText().catch(() => "");
-  const htmlPreview = html.replace(/\s+/g, " ").slice(0, DIAGNOSTIC_HTML_PREVIEW_LENGTH);
-  const textPreview = String(bodyText || "").replace(/\s+/g, " ").slice(0, DIAGNOSTIC_HTML_PREVIEW_LENGTH);
-  logger.info(`[sohu:diagnostic] url=${currentUrl}`);
-  logger.info(`[sohu:diagnostic] title=${title}`);
-  logger.info(`[sohu:diagnostic] text=${textPreview}`);
-  logger.info(`[sohu:diagnostic] html=${htmlPreview}`);
+
+interface StorageState {
+  cookies: StoredCookie[];
+  origins?: Array<{
+    localStorage: Array<{ name: string; value: string }>;
+    origin: string;
+  }>;
 }
-async function uploadOnce(payload, attempt, maxAttempts, signal) {
-  const finalAttempt = attempt >= maxAttempts;
-  const session = await acquireElectronPublishSession({
-    accountId: payload.accountId,
-    accountFile: payload.accountFile,
-    platform: "sohu",
-    timeoutMs: payload.timeoutMs,
-    viewport: { width: 1440, height: 900 }
-  });
-  const detachAbortHandler = runOnAbort(signal, async () => {
-    logger.info("[sohu:upload] timeout abort received");
-    if (finalAttempt) {
-      await session.fail(new Error("\u641C\u72D0\u4E0A\u4F20\u8D85\u65F6"));
-      return;
-    }
-    await session.release();
-  });
-  try {
-    await session.page.setViewportSize({ width: 1440, height: 900 });
-    await session.page.goto(SOHU_PUBLISH_URL, { waitUntil: "domcontentloaded", timeout: payload.timeoutMs });
-    await session.page.waitForTimeout(PAGE_READY_WAIT_MS);
-    await captureInitialPageDiagnostics(session.page);
-    if (session.page.url().includes("/mpfe/v4/login")) {
-      throw new PlatformCookieInvalidError(SOHU_PLATFORM_LABEL, payload.accountFile || payload.accountId);
-    }
-    await setVideoFile(session.page, payload.videoPath);
-    await waitForUploadComplete(session.page);
-    await setTitle(session.page, payload.title);
-    await setDescription(session.page, payload.description || payload.introduction || payload.title);
-    await setTags(session.page, payload.tags || []);
-    await setThumbnail(session.page, payload.coverPath || "");
-    await ensureSecondaryCategory(session.page);
-    if (payload.scheduledAt) {
-    }
-    await clickPublish(session.page);
-    await waitForPublishSuccess(session.page);
-    await session.complete();
-    return buildSuccessOutcome({ detail: "\u641C\u72D0\u53D1\u5E03\u6210\u529F" });
-  } catch (error) {
-    if (finalAttempt) {
-      await session.fail(error);
-    } else {
-      await session.release();
-    }
-    throw error;
-  } finally {
-    detachAbortHandler();
-  }
+
+interface SohuResponse<T = unknown> {
+  code?: number;
+  data?: T;
+  detail?: string;
+  message?: string;
+  msg?: string;
 }
-async function upload(payload) {
-  const parsed = parsePayload(payload);
-  try {
-    return await withUploadRetry(
-      MAX_UPLOAD_ATTEMPTS,
-      async (attempt) => runUploadAttemptWithTimeout(SOHU_PLATFORM_LABEL, (signal) => uploadOnce(parsed, attempt, MAX_UPLOAD_ATTEMPTS, signal), parsed.timeoutMs ?? UPLOAD_ATTEMPT_TIMEOUT_MS),
-      {
-        normalizeError: (error) => normalizeUploadAttemptError(SOHU_PLATFORM_LABEL, error)
-      }
-    );
-  } catch (error) {
-    if (error instanceof Error) {
-      return buildFailureOutcome(error.message);
-    }
-    return buildFailureOutcome(String(error));
+
+interface SohuAccountContext {
+  accountId: string;
+  cookieHeader: string;
+  dvId: string;
+  mpCv?: string;
+  spCm: string;
+}
+
+interface CreateVideoData {
+  id?: string | number;
+  token?: string;
+  vto?: string;
+}
+
+interface CompleteVideoData {
+  videoHtml?: string;
+}
+
+interface RawChannel {
+  id?: number;
+  name?: string;
+}
+
+interface RawVideoChannel {
+  channelId?: number;
+  id?: number;
+  name?: string;
+}
+
+export interface SohuVideoChannel {
+  id: number;
+  name: string;
+}
+
+export interface SohuChannel {
+  id: number;
+  name: string;
+  videoChannels: SohuVideoChannel[];
+}
+
+export interface SohuVideoChunk {
+  end: number;
+  partNumber: number;
+  start: number;
+}
+
+interface SohuPublication {
+  brief: string;
+  title: string;
+}
+
+interface SohuUploadInput {
+  accountFile: string;
+  channelId: number;
+  coverPath: string;
+  publication: SohuPublication;
+  scheduledAt: string;
+  videoChannelId: number;
+  videoPath: string;
+}
+
+interface SohuPreparedContext {
+  account: SohuAccountContext;
+  http: AxiosInstance;
+  payload: Record<string, unknown>;
+  publication: SohuPublication;
+}
+
+/** 搜狐接口或账号凭据错误。 */
+class SohuInfraError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SohuInfraError";
   }
 }
 
-var DEFAULT_RECORD_STATUS_TIMEOUT_MS = 6e4;
-function normalizeOptionalString(value) {
-  if (typeof value !== "string") {
-    return null;
+/** 搜狐审核状态页面等待超时。 */
+class SohuTimeoutError extends SohuInfraError {
+  constructor(step: string, timeoutMs: number) {
+    super(`搜狐在步骤 ${step} 上等待超时: ${timeoutMs}ms`);
+    this.name = "SohuTimeoutError";
   }
+}
+
+/** 将未知值收窄为普通记录。 */
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+/** 将未知值收窄为非空字符串。 */
+function asString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
   const normalized = value.trim();
-  return normalized ? normalized : null;
-}
-function normalizeOptionalRecord(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-  return value;
-}
-function resolvePayloadTitle(payload) {
-  const directTitle = normalizeOptionalString(payload.title);
-  if (directTitle) {
-    return directTitle;
-  }
-  const publishResultTitle = normalizeOptionalRecord(payload.publishResult)?.title;
-  if (typeof publishResultTitle === "string" && publishResultTitle.trim()) {
-    return publishResultTitle.trim();
-  }
-  const attributes = normalizeOptionalRecord(payload.attributes);
-  const clueTitle = normalizeOptionalRecord(attributes?.review_state_clues)?.title;
-  return typeof clueTitle === "string" && clueTitle.trim() ? clueTitle.trim() : null;
-}
-function resolveRecordStatusTimeoutMs(timeoutMs) {
-  return typeof timeoutMs === "number" && Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : DEFAULT_RECORD_STATUS_TIMEOUT_MS;
-}
-function createPublishedStateResult(input) {
-  return {
-    status: input.status,
-    link: normalizeOptionalString(input.link) ?? null,
-    raw: input.raw,
-    matchedBy: input.matchedBy ?? "unknown",
-    reason: normalizeOptionalString(input.reason) ?? null
-  };
-}
-
-function isSohuLoginSuccessUrl(url) {
-  try {
-    const parsed = new URL(url);
-    return parsed.origin === "https://mp.sohu.com" && parsed.pathname === "/mpfe/v4/contentManagement/first/page";
-  } catch {
-    return url.startsWith(SOHU_LOGIN_SUCCESS_URL);
-  }
-}
-
-var SOHU_RECORD_STATUS_URL = "https://mp.sohu.com/mpfe/v4/contentManagement/first/page";
-var SOHU_NEWS_LIST_URL_MARKER = "/mpbp/bp/news/v4/users/news";
-var SOHU_STATUS_RESPONSE_TIMEOUT_MS = 15e3;
-var SOHU_STATUS_PAGINATION_ATTEMPTS = 3;
-var SOHU_LOGIN_HINTS = ["\u767B\u5F55\u641C\u72D0", "\u626B\u7801\u767B\u5F55", "\u624B\u673A\u53F7\u767B\u5F55", "\u8D26\u53F7\u767B\u5F55"];
-function normalizeComparisonText(value) {
-  if (!value) {
-    return null;
-  }
-  const normalized = value.replace(/\s+/g, " ").trim().toLowerCase();
   return normalized || null;
 }
-function resolveSohuAuditStatusValue(record) {
-  const auditStatusValue = record.auditStatus;
-  if (typeof auditStatusValue === "string") {
-    const normalized = auditStatusValue.trim();
-    return normalized || null;
+
+/** 隐藏日志中的搜狐身份凭据。 */
+function serializeHeaders(headers: unknown): unknown {
+  const values = headers instanceof AxiosHeaders ? headers.toJSON() : headers;
+  if (!values || typeof values !== "object") return values;
+  const sensitive = new Set(["cookie", "set-cookie", "dv-id", "sp-cm", "mp-cv"]);
+  return Object.fromEntries(Object.entries(values).map(([name, value]) => [
+    name,
+    sensitive.has(name.toLowerCase()) ? "<redacted>" : value,
+  ]));
+}
+
+/** 将请求体转换成不会输出二进制内容的日志值。 */
+function serializeRequestBody(body: unknown): unknown {
+  if (body instanceof FormData) return "<multipart-form-data>";
+  if (body instanceof URLSearchParams) return body.toString();
+  return body;
+}
+
+/** 记录搜狐 HTTP 请求，认证字段和二进制内容始终隐藏。 */
+function logHttpRequest(config: InternalAxiosRequestConfig): InternalAxiosRequestConfig {
+  logger.info({
+    type: "sohu-http-request",
+    request: {
+      body: serializeRequestBody(config.data),
+      headers: serializeHeaders(config.headers),
+      method: config.method?.toUpperCase(),
+      url: axios.getUri(config),
+    },
+  });
+  return config;
+}
+
+/** 创建搜狐 HTTP 客户端；仅 GET 网络错误、429 和 5xx 可自动重试。 */
+function createHttpClient(account: SohuAccountContext, userAgent: string): AxiosInstance {
+  const http = axios.create({
+    headers: {
+      Cookie: account.cookieHeader,
+      Referer: SOHU_REFERER,
+      "User-Agent": userAgent,
+      "dv-id": account.dvId,
+      "sp-cm": account.spCm,
+      ...(account.mpCv ? { "mp-cv": account.mpCv } : {}),
+    },
+    maxBodyLength: Number.POSITIVE_INFINITY,
+    maxContentLength: Number.POSITIVE_INFINITY,
+    timeout: SOHU_HTTP_TIMEOUT_MS,
+  });
+  axiosRetry(http, {
+    retries: 2,
+    retryCondition: (error) => {
+      if (error.config?.method?.toLowerCase() !== "get") return false;
+      const status = error.response?.status;
+      return axiosRetry.isNetworkError(error) || status === 429 || (status != null && status >= 500);
+    },
+    retryDelay: axiosRetry.exponentialDelay,
+  });
+  http.interceptors.request.use(logHttpRequest);
+  http.interceptors.response.use((response) => {
+    logger.info({
+      type: "sohu-http-response",
+      response: {
+        body: response.data,
+        headers: serializeHeaders(response.headers),
+        status: response.status,
+        url: response.config.url,
+      },
+    });
+    return response;
+  }, (error: unknown) => {
+    if (axios.isAxiosError(error)) {
+      logger.error({
+        type: "sohu-http-error",
+        error: {
+          body: error.response?.data,
+          message: error.message,
+          method: error.config?.method?.toUpperCase(),
+          status: error.response?.status,
+          url: error.config?.url,
+        },
+      });
+    }
+    throw error;
+  });
+  return http;
+}
+
+/** 从 storage-state 读取搜狐平台账号 ID、Cookie 和客户端校验字段。 */
+export async function loadSohuAccountContext(accountFile: string): Promise<SohuAccountContext> {
+  const state = JSON.parse(await readFile(accountFile, "utf8")) as StorageState;
+  const now = Date.now() / 1_000;
+  const cookies = state.cookies.filter((cookie) =>
+    ["sohu.com", ".sohu.com", "mp.sohu.com"].includes(cookie.domain)
+    && (cookie.expires === -1 || cookie.expires > now));
+  if (cookies.length === 0) throw new SohuInfraError("搜狐账号凭据不完整，请重新登录：缺少有效 Cookie");
+
+  const origin = state.origins?.find((item) => item.origin === SOHU_ORIGIN);
+  const localStorage = new Map(origin?.localStorage.map((item) => [item.name, item.value]) ?? []);
+  const vuexValue = localStorage.get("vuex");
+  if (!vuexValue) throw new SohuInfraError("搜狐账号凭据不完整，请重新登录：缺少 vuex");
+  const vuex = JSON.parse(vuexValue) as {
+    app?: {
+      UandAStatus?: { userCode?: string };
+      userInfo?: { id?: string | number };
+    };
+  };
+  const accountId = String(vuex.app?.userInfo?.id ?? "").trim();
+  if (!accountId) throw new SohuInfraError("搜狐账号凭据不完整，请重新登录：缺少平台 accountId");
+  const userCode = vuex.app?.UandAStatus?.userCode;
+  const mpCv = cookies.find((cookie) => cookie.name === "mp-cv")?.value;
+  const spCm = (userCode ? localStorage.get(`${userCode}-sp-cm`) : undefined)
+    ?? localStorage.get("preview-sp-cm")
+    ?? mpCv;
+  if (!spCm) throw new SohuInfraError("搜狐账号凭据不完整，请重新登录：缺少 sp-cm");
+  const dvId = localStorage.get("preview-dv-id");
+  if (!dvId) throw new SohuInfraError("搜狐账号凭据不完整，请重新登录：缺少 dv-id");
+  return {
+    accountId,
+    cookieHeader: cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; "),
+    dvId,
+    mpCv,
+    spCm,
+  };
+}
+
+/** 断言搜狐接口返回当前操作允许的业务成功码。 */
+function assertSohuSuccess(response: SohuResponse, expectedCodes: readonly number[], operation: string): void {
+  if (expectedCodes.includes(response.code ?? Number.NaN)) return;
+  throw new SohuInfraError(
+    `${operation}失败：code=${response.code ?? "unknown"} ${response.msg ?? response.message ?? response.detail ?? ""}`,
+  );
+}
+
+/** 将普通键值编码为搜狐表单接口使用的 URLSearchParams。 */
+function toUrlEncoded(values: Record<string, string | number | boolean>): URLSearchParams {
+  const body = new URLSearchParams();
+  for (const [name, value] of Object.entries(values)) body.set(name, String(value));
+  return body;
+}
+
+/** 生成搜狐视频任务接口要求的 authKey。 */
+export function createSohuAuthKey(accountId: string, timestamp = Date.now()): string {
+  const digest = createHash("md5").update(`sohu-mp-${accountId}-${timestamp}`).digest("hex");
+  return `${timestamp}_${digest}`;
+}
+
+/** 按 512 KiB 规则生成从 1 开始编号的视频分片。 */
+export function createSohuVideoChunks(size: number): SohuVideoChunk[] {
+  const chunks: SohuVideoChunk[] = [];
+  for (let start = 0, partNumber = 1; start < size; start += SOHU_CHUNK_SIZE, partNumber += 1) {
+    chunks.push({ end: Math.min(start + SOHU_CHUNK_SIZE, size), partNumber, start });
   }
-  if (typeof auditStatusValue === "number" && Number.isFinite(auditStatusValue)) {
-    return String(auditStatusValue);
+  return chunks;
+}
+
+/** 将标签直接加井号后置于简介首行，并应用搜狐 brief 长度规则。 */
+export function createSohuBrief(introduction: string, tags: unknown): string {
+  const description = introduction.trim();
+  const tagLine = Array.isArray(tags) ? tags.map((tag) => `#${String(tag)}`).join(" ") : "";
+  const complete = tagLine ? `${tagLine}${description ? `\n${description}` : ""}` : description;
+  if (complete.length < 5) throw new SohuInfraError("搜狐视频简介长度必须至少为 5 个字符");
+  return complete.slice(0, 200);
+}
+
+/** 应用搜狐标题和简介规则，构造最终发布文案。 */
+export function createSohuPublication(title: unknown, introduction: unknown, tags: unknown): SohuPublication {
+  const normalizedTitle = String(title ?? "").trim().slice(0, 60);
+  if (normalizedTitle.length < 5) throw new SohuInfraError("搜狐视频标题长度必须至少为 5 个字符");
+  const description = String(introduction ?? normalizedTitle).trim();
+  return { brief: createSohuBrief(description, tags), title: normalizedTitle };
+}
+
+/** 解析并在网络请求前校验搜狐统一发布参数。 */
+async function parseUploadInput(input: VideoUploadPayload): Promise<SohuUploadInput> {
+  const scheduledAt = String(input.scheduledAt ?? "").trim();
+  if (scheduledAt && scheduledAt !== "0") throw new SohuInfraError('搜狐当前仅支持立即发布，scheduledAt 必须为 "0"');
+  const accountFile = String(input.accountFile ?? "").trim();
+  const coverFile = String(input.coverPath ?? input.thumbnailPath ?? "").trim();
+  const videoFile = String(input.videoPath ?? input.filePath ?? "").trim();
+  const rawTitle = String(input.title ?? "").trim();
+  const channelId = Number(input.channelId ?? input.channel_id);
+  const videoChannelId = Number(input.videoChannelId ?? input.video_channel_id);
+  if (!accountFile || !coverFile || !videoFile || !rawTitle) {
+    throw new SohuInfraError("搜狐发布缺少账号、封面、视频或标题");
+  }
+  const publication = createSohuPublication(
+    rawTitle,
+    input.introduction ?? input.description ?? rawTitle,
+    input.tags,
+  );
+  if (!Number.isSafeInteger(channelId) || channelId <= 0) throw new SohuInfraError("搜狐发布缺少有效的 channelId");
+  if (!Number.isSafeInteger(videoChannelId) || videoChannelId <= 0) throw new SohuInfraError("搜狐发布缺少有效的 videoChannelId");
+  const resolvedAccountFile = isAbsolute(accountFile) ? accountFile : resolve(process.cwd(), accountFile);
+  const coverPath = isAbsolute(coverFile) ? coverFile : resolve(process.cwd(), coverFile);
+  const videoPath = isAbsolute(videoFile) ? videoFile : resolve(process.cwd(), videoFile);
+  const [accountStats, coverStats, videoStats] = await Promise.all([
+    stat(resolvedAccountFile),
+    stat(coverPath),
+    stat(videoPath),
+  ]);
+  if (!accountStats.isFile() || !coverStats.isFile() || coverStats.size <= 0 || !videoStats.isFile() || videoStats.size <= 0) {
+    throw new SohuInfraError("搜狐发布的账号、封面或视频文件无效");
+  }
+  return {
+    accountFile: resolvedAccountFile,
+    channelId,
+    coverPath,
+    publication,
+    scheduledAt: scheduledAt || "0",
+    videoChannelId,
+    videoPath,
+  };
+}
+
+/** 验证搜狐账号 Cookie 当前仍然有效。 */
+async function assertAuthenticated(http: AxiosInstance, accountId: string): Promise<void> {
+  const response = await http.get<SohuResponse>(SOHU_AUTH_URL, { params: { accountId } });
+  assertSohuSuccess(response.data, [2_000_000], "验证搜狐账号");
+}
+
+/** 查询并规范化当前搜狐账号的一级、二级频道树。 */
+async function fetchSohuChannels(http: AxiosInstance, accountId: string): Promise<SohuChannel[]> {
+  const [channelsResponse, videoChannelsResponse] = await Promise.all([
+    http.get<SohuResponse<RawChannel[]> | RawChannel[]>(SOHU_CHANNELS_URL, {
+      params: { accountId, status: 1 },
+    }),
+    http.get<SohuResponse<RawVideoChannel[]>>(SOHU_VIDEO_CHANNELS_URL, { params: { accountId } }),
+  ]);
+  const rawChannels = Array.isArray(channelsResponse.data)
+    ? channelsResponse.data
+    : (channelsResponse.data.data ?? []);
+  const rawVideoChannels = videoChannelsResponse.data.data ?? [];
+  const videoChannels = rawVideoChannels.flatMap((channel) => {
+    const id = Number(channel.id);
+    const channelId = Number(channel.channelId);
+    const name = String(channel.name ?? "").trim();
+    return Number.isSafeInteger(id) && id > 0 && Number.isSafeInteger(channelId) && channelId > 0 && name
+      ? [{ channelId, id, name }]
+      : [];
+  });
+  const channels = rawChannels.flatMap((channel) => {
+    const id = Number(channel.id);
+    const name = String(channel.name ?? "").trim();
+    if (!Number.isSafeInteger(id) || id <= 0 || !name) return [];
+    return [{
+      id,
+      name,
+      videoChannels: videoChannels
+        .filter((videoChannel) => videoChannel.channelId === id)
+        .map(({ id: videoChannelId, name: videoChannelName }) => ({ id: videoChannelId, name: videoChannelName })),
+    }];
+  });
+  if (!channels.some((channel) => channel.videoChannels.length > 0)) {
+    throw new SohuInfraError("当前搜狐账号没有可用的一级、二级频道组合");
+  }
+  return channels;
+}
+
+/** 查询指定 storage-state 对应账号的搜狐频道树，供发布计划 UI 使用。 */
+export async function getSohuChannels(accountFile: string): Promise<SohuChannel[]> {
+  const resolvedAccountFile = isAbsolute(accountFile) ? accountFile : resolve(process.cwd(), accountFile);
+  const [account, userAgent] = await Promise.all([
+    loadSohuAccountContext(resolvedAccountFile),
+    loadSohuBrowserUserAgent(),
+  ]);
+  const http = createHttpClient(account, userAgent);
+  await assertAuthenticated(http, account.accountId);
+  return fetchSohuChannels(http, account.accountId);
+}
+
+/** 断言 payload 频道 ID 属于账号当前返回的同一父子组合。 */
+export function assertSohuChannelSelection(
+  channels: SohuChannel[],
+  channelId: number,
+  videoChannelId: number,
+): void {
+  const channel = channels.find((candidate) => candidate.id === channelId);
+  if (!channel) throw new SohuInfraError(`搜狐 channelId=${channelId} 不在当前账号的频道列表中`);
+  if (!channel.videoChannels.some((candidate) => candidate.id === videoChannelId)) {
+    throw new SohuInfraError(`搜狐 videoChannelId=${videoChannelId} 不属于 channelId=${channelId}`);
+  }
+}
+
+/** 创建视频任务、流式读取并上传全部分片，然后合并为发布资源。 */
+async function uploadVideo(
+  http: AxiosInstance,
+  accountId: string,
+  videoPath: string,
+): Promise<{ videoHtml: string; videoId: string }> {
+  const videoStats = await stat(videoPath);
+  const videoName = basename(videoPath);
+  const nameMd5 = createHash("md5").update(`${videoName}_${videoStats.size}`).digest("hex");
+  const createResponse = await http.post<SohuResponse<CreateVideoData>>(
+    SOHU_CREATE_VIDEO_URL,
+    toUrlEncoded({
+      accountId,
+      authKey: createSohuAuthKey(accountId),
+      cateCode: 329,
+      delayAudit: true,
+      nameMd5,
+      title: "",
+      uploadFrom: 277,
+      uploadSource: "mp",
+      uploadType: 2,
+      videoName,
+      videoSize: videoStats.size,
+    }),
+    { params: { accountId } },
+  );
+  assertSohuSuccess(createResponse.data, [2_000_000], "创建搜狐视频任务");
+  const videoId = String(createResponse.data.data?.id ?? "");
+  const uploadUrl = createResponse.data.data?.vto;
+  const token = createResponse.data.data?.token;
+  if (!videoId || !uploadUrl || !token) throw new SohuInfraError("创建搜狐视频任务响应缺少 id、vto 或 token");
+
+  const file = await open(videoPath, "r");
+  try {
+    const limit = pLimit(SOHU_CHUNK_CONCURRENCY);
+    await Promise.all(createSohuVideoChunks(videoStats.size).map((chunk) => limit(async () => {
+      const length = chunk.end - chunk.start;
+      const buffer = Buffer.allocUnsafe(length);
+      const { bytesRead } = await file.read(buffer, 0, length, chunk.start);
+      if (bytesRead !== length) throw new SohuInfraError(`读取搜狐视频分片 ${chunk.partNumber} 不完整`);
+      const form = new FormData();
+      form.append("file", new Blob([new Uint8Array(buffer)], { type: "application/octet-stream" }), videoName);
+      const separator = uploadUrl.includes("?") ? "&" : "?";
+      const url = `${uploadUrl}${separator}id=${encodeURIComponent(videoId)}`
+        + `&type=6&partNo=${chunk.partNumber}&outType=3&partsize=${SOHU_CHUNK_SIZE}`;
+      const response = await http.post<SohuResponse>(url, form, { params: { accountId } });
+      assertSohuSuccess(response.data, [100], `上传搜狐视频分片 ${chunk.partNumber}`);
+    })));
+  } finally {
+    await file.close();
+  }
+
+  const completeResponse = await http.post<SohuResponse<CompleteVideoData>>(
+    SOHU_COMPLETE_VIDEO_URL,
+    toUrlEncoded({
+      accountId,
+      authKey: createSohuAuthKey(accountId),
+      token,
+      vid: videoId,
+      videoName,
+      videoSize: videoStats.size,
+      vto: uploadUrl,
+    }),
+    { params: { accountId } },
+  );
+  assertSohuSuccess(completeResponse.data, [2_000_000], "合并搜狐视频分片");
+  const videoHtml = completeResponse.data.data?.videoHtml;
+  if (!videoHtml) throw new SohuInfraError("合并搜狐视频响应缺少 videoHtml");
+  return { videoHtml: videoHtml.replace(/[\r\n]/gu, ""), videoId };
+}
+
+/** 上传封面并生成搜狐最终发布所需的居中 3:2 裁剪 URL。 */
+async function uploadCover(http: AxiosInstance, accountId: string, coverPath: string): Promise<string> {
+  const input = await readFile(coverPath);
+  const metadata = await sharp(input).metadata();
+  if (!metadata.width || !metadata.height || metadata.width < 450 || metadata.height < 300) {
+    throw new SohuInfraError("搜狐封面尺寸必须大于等于 450×300");
+  }
+  const jpeg = await sharp(input).jpeg({ quality: 90 }).toBuffer();
+  const form = new FormData();
+  form.append("accountId", accountId);
+  form.append("file", new Blob([new Uint8Array(jpeg)], { type: "image/jpeg" }), "cover.jpg");
+  const uploadResponse = await http.post<SohuResponse<{ url?: string }> & { url?: string }>(
+    SOHU_COVER_UPLOAD_URL,
+    form,
+  );
+  const originalUrl = uploadResponse.data.url ?? uploadResponse.data.data?.url;
+  if (!originalUrl) throw new SohuInfraError(`上传搜狐封面失败：${uploadResponse.data.msg ?? uploadResponse.data.message ?? "响应缺少 url"}`);
+  const ratio = metadata.width / metadata.height;
+  const cropHeight = ratio > 1.5 ? metadata.height : Math.floor((metadata.width * 2) / 3);
+  const cropWidth = ratio > 1.5 ? Math.floor(metadata.height * 1.5) : metadata.width;
+  const x = ratio > 1.5 ? Math.floor((metadata.width - cropWidth) / 2) : 0;
+  const y = ratio > 1.5 ? 0 : Math.floor((metadata.height - cropHeight) / 2);
+  const normalized = originalUrl.startsWith("http") ? originalUrl : `https:${originalUrl}`;
+  const parsed = new URL(normalized);
+  const transformedUrl = `//${parsed.hostname}/a_auto,c_cut,q_70,x_${x},y_${y},w_${cropWidth},h_${cropHeight}${parsed.pathname}`;
+  const compressedResponse = await http.post<SohuResponse<{ url?: string }> & { url?: string }>(
+    SOHU_COVER_COMPRESS_URL,
+    toUrlEncoded({ accountId, url: transformedUrl }),
+  );
+  const coverUrl = compressedResponse.data.url ?? compressedResponse.data.data?.url;
+  if (!coverUrl) throw new SohuInfraError(`生成搜狐封面失败：${compressedResponse.data.msg ?? compressedResponse.data.message ?? "响应缺少 url"}`);
+  return coverUrl;
+}
+
+/** 构造搜狐最终视频发布 JSON。 */
+export function createSohuPublishPayload(input: {
+  accountId: string;
+  brief: string;
+  channelId: number;
+  cover: string;
+  title: string;
+  videoChannelId: number;
+  videoHtml: string;
+  videoId: string;
+}): Record<string, unknown> {
+  return {
+    accountId: input.accountId,
+    brief: input.brief,
+    channelId: input.channelId,
+    columnNewsIds: [],
+    content: input.videoHtml,
+    cover: input.cover,
+    headImage: "",
+    id: 0,
+    infoResource: 0,
+    mobileTitle: "",
+    modelId: "",
+    sourceUrl: "",
+    title: input.title,
+    topicIds: [],
+    userColumnId: 0,
+    userLabels: "[]",
+    videoChannelId: input.videoChannelId,
+    videoId: input.videoId,
+  };
+}
+
+/** 完成最终发布前的账号、素材、频道校验和远端资源上传。 */
+async function prepare(input: VideoUploadPayload): Promise<SohuPreparedContext> {
+  const parsed = await parseUploadInput(input);
+  const [account, userAgent] = await Promise.all([
+    loadSohuAccountContext(parsed.accountFile),
+    loadSohuBrowserUserAgent(),
+  ]);
+  const http = createHttpClient(account, userAgent);
+  await assertAuthenticated(http, account.accountId);
+  const channels = await fetchSohuChannels(http, account.accountId);
+  assertSohuChannelSelection(channels, parsed.channelId, parsed.videoChannelId);
+  logger.info({ message: "[1/4] 创建任务并上传搜狐视频分片", type: "info" });
+  const uploadedVideo = await uploadVideo(http, account.accountId, parsed.videoPath);
+  logger.info({ message: "[2/4] 上传并生成搜狐封面", type: "info" });
+  const cover = await uploadCover(http, account.accountId, parsed.coverPath);
+  logger.info({ message: "[3/4] 构造搜狐最终发布参数", type: "info" });
+  return {
+    account,
+    http,
+    publication: parsed.publication,
+    payload: createSohuPublishPayload({
+      accountId: account.accountId,
+      brief: parsed.publication.brief,
+      channelId: parsed.channelId,
+      cover,
+      title: parsed.publication.title,
+      videoChannelId: parsed.videoChannelId,
+      videoHtml: uploadedVideo.videoHtml,
+      videoId: uploadedVideo.videoId,
+    }),
+  };
+}
+
+/** 从搜狐最终发布响应中提取作品 ID，不使用视频上传任务 ID。 */
+export function extractSohuPublishedWorkId(response: unknown): string | null {
+  const body = asRecord(response);
+  const data = asRecord(body?.data);
+  for (const candidate of [body?.clientNewsId, data?.clientNewsId, body?.id, data?.id]) {
+    if (typeof candidate === "string" || typeof candidate === "number") {
+      const normalized = String(candidate).trim();
+      if (normalized) return normalized;
+    }
   }
   return null;
 }
-function parseSohuRecordStatus(rawRecord) {
-  const record = normalizeOptionalRecord(rawRecord);
-  if (!record) {
-    return null;
-  }
-  const auditStatusValue = resolveSohuAuditStatusValue(record);
-  if (!auditStatusValue) {
-    return null;
-  }
-  return createPublishedStateResult({
-    status: auditStatusValue === "4" ? "public" : "reviewing",
-    raw: rawRecord,
-    matchedBy: "unknown",
-    reason: `sohu.auditStatus=${auditStatusValue}`
+
+/** 查询发布额度并发送唯一一次最终发布请求。 */
+async function publish(prepared: SohuPreparedContext): Promise<VideoUploadResult> {
+  const limitResponse = await prepared.http.get<SohuResponse<Record<string, number>>>(SOHU_PUBLISH_LIMIT_URL, {
+    params: { accountId: prepared.account.accountId, type: 3 },
   });
-}
-function resolvePayloadClues(payload) {
-  const attributes = normalizeOptionalRecord(payload.attributes);
-  const reviewStateClues = normalizeOptionalRecord(attributes?.review_state_clues);
-  const publishResult = normalizeOptionalRecord(payload.publishResult);
-  const platformWorkId = normalizeOptionalString(reviewStateClues?.platform_work_id == null ? null : String(reviewStateClues?.platform_work_id)) ?? normalizeOptionalString(publishResult?.clientNewsId == null ? null : String(publishResult?.clientNewsId)) ?? normalizeOptionalString(publishResult?.id == null ? null : String(publishResult?.id)) ?? normalizeOptionalString(publishResult?.postId == null ? null : String(publishResult?.postId)) ?? normalizeOptionalString(publishResult?.articleId == null ? null : String(publishResult?.articleId)) ?? null;
-  const publishedAtRaw = normalizeOptionalString(reviewStateClues?.published_at) ?? normalizeOptionalString(payload.publishedAt) ?? null;
-  const publishedAtMs = publishedAtRaw ? Date.parse(publishedAtRaw) : Number.NaN;
+  assertSohuSuccess(limitResponse.data, [2_000_000], "查询搜狐发布额度");
+  if ((limitResponse.data.data?.[3] ?? 0) <= 0) throw new SohuInfraError("搜狐号今日视频发布额度已用完");
+  logger.info({ message: "[4/4] 提交搜狐视频发布", type: "info" });
+  const response = await prepared.http.post<SohuResponse>(
+    `${SOHU_PUBLISH_URL}?accountId=${encodeURIComponent(prepared.account.accountId)}`,
+    prepared.payload,
+    { headers: { "Content-Type": "application/json" } },
+  );
+  assertSohuSuccess(response.data, [2_000_000], "发布搜狐视频");
+  const postId = extractSohuPublishedWorkId(response.data);
   return {
-    platformWorkId,
-    title: resolvePayloadTitle(payload),
-    publishedAtMs: Number.isFinite(publishedAtMs) ? publishedAtMs : null
+    success: true,
+    title: prepared.publication.title,
+    ...(postId ? { clientNewsId: postId, postId } : {}),
+    response: response.data,
   };
 }
-function collectSohuRecordsFromPayload(rawPayload) {
-  const payloadRecord = normalizeOptionalRecord(rawPayload);
-  if (!payloadRecord) {
-    return [];
-  }
-  const candidates = [
-    normalizeOptionalRecord(payloadRecord.data)?.news,
-    payloadRecord.news
-  ];
-  for (const candidate of candidates) {
-    if (Array.isArray(candidate)) {
-      return candidate.map((item) => normalizeOptionalRecord(item)).filter((item) => Boolean(item));
-    }
-    const candidateRecord = normalizeOptionalRecord(candidate);
-    if (candidateRecord) {
-      return Object.values(candidateRecord).map((item) => normalizeOptionalRecord(item)).filter((item) => Boolean(item));
-    }
+
+/** 搜狐直接通过 HTTP 发布，不需要 Electron 发布运行时。 */
+export function configureSohuVideoRuntime(_runtime: VideoRuntime): void {}
+
+/** 搜狐 HTTP 发布不持有发布窗口。 */
+export function destroySohuVideoWindows(): void {}
+
+/** 规范化审核查询中的比较文本。 */
+function normalizeComparisonText(value: string | null): string | null {
+  if (!value) return null;
+  const normalized = value.replace(/\s+/gu, " ").trim().toLowerCase();
+  return normalized || null;
+}
+
+/** 从任务或发布结果中解析标题。 */
+function resolvePayloadTitle(payload: PublishedStatePayload): string | null {
+  const directTitle = asString(payload.title);
+  if (directTitle) return directTitle;
+  const publishResultTitle = asString(asRecord(payload.publishResult)?.title);
+  if (publishResultTitle) return publishResultTitle;
+  return asString(asRecord(asRecord(payload.attributes)?.review_state_clues)?.title);
+}
+
+/** 生成统一的审核状态结果。 */
+function createPublishedStateResult(input: {
+  link?: unknown;
+  matchedBy?: PublishedStateResult["matchedBy"];
+  raw: unknown;
+  reason?: unknown;
+  status: PublishedTaskStatus;
+}): PublishedStateResult {
+  return {
+    status: input.status,
+    link: asString(input.link) ?? null,
+    raw: input.raw,
+    matchedBy: input.matchedBy ?? "unknown",
+    reason: asString(input.reason) ?? null,
+  };
+}
+
+/** 解析搜狐记录的 auditStatus。 */
+export function parseSohuRecordStatus(rawRecord: unknown): PublishedStateResult | null {
+  const record = asRecord(rawRecord);
+  if (!record) return null;
+  const rawValue = record.auditStatus;
+  const auditStatus = typeof rawValue === "number" && Number.isFinite(rawValue)
+    ? String(rawValue)
+    : asString(rawValue);
+  if (!auditStatus) return null;
+  return createPublishedStateResult({
+    status: auditStatus === "4" ? "public" : "reviewing",
+    raw: rawRecord,
+    reason: `sohu.auditStatus=${auditStatus}`,
+  });
+}
+
+/** 从搜狐列表响应的数组或数字键对象中收集记录。 */
+export function collectSohuRecordsFromPayload(rawPayload: unknown): Record<string, unknown>[] {
+  const payload = asRecord(rawPayload);
+  if (!payload) return [];
+  for (const candidate of [asRecord(payload.data)?.news, payload.news]) {
+    if (Array.isArray(candidate)) return candidate.flatMap((item) => asRecord(item) ? [asRecord(item)!] : []);
+    const record = asRecord(candidate);
+    if (record) return Object.values(record).flatMap((item) => asRecord(item) ? [asRecord(item)!] : []);
   }
   return [];
 }
-function hasSohuNewsCollection(rawPayload) {
-  const payloadRecord = normalizeOptionalRecord(rawPayload);
-  if (!payloadRecord) {
-    return false;
-  }
-  const directNews = payloadRecord.news;
-  const nestedNews = normalizeOptionalRecord(payloadRecord.data)?.news;
-  const candidates = [nestedNews, directNews];
-  return candidates.some((candidate) => Array.isArray(candidate) || Boolean(normalizeOptionalRecord(candidate)));
+
+/** 判断搜狐响应仍包含预期的 news 集合。 */
+function hasSohuNewsCollection(rawPayload: unknown): boolean {
+  const payload = asRecord(rawPayload);
+  if (!payload) return false;
+  const candidates = [asRecord(payload.data)?.news, payload.news];
+  return candidates.some((candidate) => Array.isArray(candidate) || Boolean(asRecord(candidate)));
 }
-function resolveSohuRecordPublishedAtMs(record) {
-  const numericCandidates = [record.postTime, record.createdTime, record.modifiedTime];
-  for (const candidate of numericCandidates) {
-    const parsed = Number(candidate);
-    if (Number.isFinite(parsed) && parsed > 0) {
-      return parsed;
-    }
-  }
-  const stringCandidates = [
-    normalizeOptionalString(record.postTime == null ? null : String(record.postTime)),
-    normalizeOptionalString(record.createdTime == null ? null : String(record.createdTime)),
-    normalizeOptionalString(record.modifiedTime == null ? null : String(record.modifiedTime))
-  ];
-  for (const candidate of stringCandidates) {
-    if (!candidate) {
-      continue;
-    }
-    const parsed = Date.parse(candidate);
-    if (Number.isFinite(parsed)) {
-      return parsed;
-    }
+
+/** 解析记录的发布时间毫秒值。 */
+function resolveSohuRecordPublishedAtMs(record: Record<string, unknown>): number | null {
+  for (const candidate of [record.postTime, record.createdTime, record.modifiedTime]) {
+    const numeric = Number(candidate);
+    if (Number.isFinite(numeric) && numeric > 0) return numeric;
+    const parsed = typeof candidate === "string" ? Date.parse(candidate) : Number.NaN;
+    if (Number.isFinite(parsed)) return parsed;
   }
   return null;
 }
-function withinPublishedAtWindow(leftMs, rightMs) {
-  if (leftMs == null || rightMs == null) {
-    return false;
-  }
-  return Math.abs(leftMs - rightMs) <= 48 * 60 * 60 * 1e3;
+
+/** 从审核查询参数中提取平台作品 ID、标题和发布时间线索。 */
+function resolvePayloadClues(payload: PublishedStatePayload): {
+  platformWorkId: string | null;
+  publishedAtMs: number | null;
+  title: string | null;
+} {
+  const attributes = asRecord(payload.attributes);
+  const clues = asRecord(attributes?.review_state_clues);
+  const result = asRecord(payload.publishResult);
+  const platformWorkId = [clues?.platform_work_id, result?.clientNewsId, result?.id, result?.postId, result?.articleId]
+    .map((value) => value == null ? null : asString(String(value)))
+    .find(Boolean) ?? null;
+  const publishedAtRaw = asString(clues?.published_at) ?? asString(payload.publishedAt);
+  const parsed = publishedAtRaw ? Date.parse(publishedAtRaw) : Number.NaN;
+  return {
+    platformWorkId,
+    publishedAtMs: Number.isFinite(parsed) ? parsed : null,
+    title: resolvePayloadTitle(payload),
+  };
 }
-function findSohuRecordInList(records, payload) {
+
+/** 按作品 ID、标题和发布时间顺序在搜狐列表中匹配记录。 */
+export function findSohuRecordInList(
+  records: Record<string, unknown>[],
+  payload: PublishedStatePayload,
+): { matchedBy: "platform_work_id" | "title" | "title_and_time_window"; record: Record<string, unknown> } | null {
   const clues = resolvePayloadClues(payload);
   if (clues.platformWorkId) {
-    const matched = records.find((record) => {
-      const candidates = [
-        normalizeOptionalString(record.id == null ? null : String(record.id)),
-        normalizeOptionalString(record.clientNewsId == null ? null : String(record.clientNewsId))
-      ];
-      return candidates.includes(clues.platformWorkId);
-    });
-    if (matched) {
-      return { matchedBy: "platform_work_id", record: matched };
-    }
+    const record = records.find((candidate) => [candidate.id, candidate.clientNewsId]
+      .map((value) => value == null ? null : asString(String(value)))
+      .includes(clues.platformWorkId));
+    if (record) return { matchedBy: "platform_work_id", record };
   }
-  const normalizedTitle = normalizeComparisonText(clues.title);
-  if (normalizedTitle) {
-    const titleMatches = records.filter((record) => {
-      const candidateTitles = [
-        normalizeOptionalString(record.title),
-        normalizeOptionalString(record.mobileTitle)
-      ].map((value) => normalizeComparisonText(value)).filter((value) => Boolean(value));
-      return candidateTitles.some((candidateTitle) => candidateTitle === normalizedTitle);
-    });
-    if (titleMatches.length === 1) {
-      return { matchedBy: "title", record: titleMatches[0] };
-    }
-    if (titleMatches.length > 1 && clues.publishedAtMs != null) {
-      const timeWindowMatched = titleMatches.map((record) => ({
-        record,
-        publishedAtMs: resolveSohuRecordPublishedAtMs(record)
-      })).filter((candidate) => withinPublishedAtWindow(candidate.publishedAtMs, clues.publishedAtMs)).sort((left, right) => {
-        return Math.abs((left.publishedAtMs ?? 0) - clues.publishedAtMs) - Math.abs((right.publishedAtMs ?? 0) - clues.publishedAtMs);
-      })[0]?.record;
-      if (timeWindowMatched) {
-        return { matchedBy: "title_and_time_window", record: timeWindowMatched };
-      }
-    }
-    if (titleMatches.length > 0) {
-      return { matchedBy: "title", record: titleMatches[0] };
-    }
+  const title = normalizeComparisonText(clues.title);
+  if (!title) return null;
+  const titleMatches = records.filter((record) => [record.title, record.mobileTitle]
+    .map((value) => asString(value))
+    .map(normalizeComparisonText)
+    .includes(title));
+  if (titleMatches.length === 1) return { matchedBy: "title", record: titleMatches[0]! };
+  if (titleMatches.length > 1 && clues.publishedAtMs != null) {
+    const record = titleMatches
+      .map((candidate) => ({ candidate, publishedAtMs: resolveSohuRecordPublishedAtMs(candidate) }))
+      .filter(({ publishedAtMs }) => publishedAtMs != null && Math.abs(publishedAtMs - clues.publishedAtMs!) <= 48 * 60 * 60 * 1_000)
+      .sort((left, right) => Math.abs(left.publishedAtMs! - clues.publishedAtMs!) - Math.abs(right.publishedAtMs! - clues.publishedAtMs!))[0]?.candidate;
+    if (record) return { matchedBy: "title_and_time_window", record };
   }
-  return null;
+  return titleMatches[0] ? { matchedBy: "title", record: titleMatches[0] } : null;
 }
-async function assertSohuLoggedIn(page, accountFile) {
+
+/** 尝试定位本机 Chrome/Chromium，供打包环境中的审核查询使用。 */
+function resolveBrowserExecutablePath(): string | undefined {
+  const environmentKeys = ["PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH", "GOOGLE_CHROME_BIN", "CHROME_BIN", "CHROME_PATH"];
+  for (const key of environmentKeys) {
+    const candidate = process.env[key];
+    if (candidate && existsSync(candidate)) return candidate;
+  }
+  for (const command of ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "msedge"]) {
+    const executable = process.platform === "win32" ? `${command}.exe` : command;
+    for (const segment of (process.env.PATH ?? "").split(delimiter)) {
+      const candidate = join(segment, executable);
+      if (existsSync(candidate)) return candidate;
+    }
+  }
+  const home = process.env.HOME ?? process.env.USERPROFILE ?? "";
+  const candidates = [
+    join(home, "Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+    "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+  ];
+  return candidates.find(existsSync);
+}
+
+/** 使用 storage-state 创建搜狐审核查询浏览器上下文。 */
+async function createStatusBrowserContext(accountFile: string): Promise<BrowserContext> {
+  const executablePath = resolveBrowserExecutablePath();
+  const browser = await chromium.launch({ headless: true, ...(executablePath ? { executablePath } : {}) });
+  try {
+    return await browser.newContext({ storageState: accountFile });
+  } catch (error) {
+    await browser.close().catch(() => undefined);
+    throw error;
+  }
+}
+
+/** 判断审核页 URL 是否为搜狐内容管理首页。 */
+function isSohuLoginSuccessUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.origin === SOHU_ORIGIN && parsed.pathname === "/mpfe/v4/contentManagement/first/page";
+  } catch {
+    return url.startsWith(SOHU_RECORD_STATUS_URL);
+  }
+}
+
+/** 通过 URL 与页面文案断言搜狐审核查询仍处于登录态。 */
+async function assertSohuLoggedIn(page: Page, accountFile: string): Promise<void> {
   const currentUrl = page.url();
   if (!currentUrl.includes("mp.sohu.com") || currentUrl.includes("/login")) {
-    throw new PlatformCookieInvalidError("\u641C\u72D0", accountFile);
+    throw new SohuInfraError(`搜狐账号文件登录状态无效: ${accountFile}`);
   }
   const bodyText = await page.locator("body").innerText().catch(() => "");
   if (SOHU_LOGIN_HINTS.some((hint) => bodyText.includes(hint))) {
-    throw new PlatformCookieInvalidError("\u641C\u72D0", accountFile);
+    throw new SohuInfraError(`搜狐账号文件登录状态无效: ${accountFile}`);
   }
-  if (!isSohuLoginSuccessUrl(currentUrl)) {
-    const lowered = currentUrl.toLowerCase();
-    if (lowered.includes("passport") || lowered.includes("verify") || lowered.includes("captcha")) {
-      throw new PlatformCookieInvalidError("\u641C\u72D0", accountFile);
-    }
+  if (!isSohuLoginSuccessUrl(currentUrl) && /passport|verify|captcha/iu.test(currentUrl)) {
+    throw new SohuInfraError(`搜狐账号文件登录状态无效: ${accountFile}`);
   }
 }
-function isSohuNewsListResponse(response, expectedPage = null) {
-  if (response.request().method() !== "GET") {
-    return false;
-  }
-  const url = response.url();
-  if (!url.includes(SOHU_NEWS_LIST_URL_MARKER)) {
-    return false;
-  }
-  if (expectedPage == null) {
-    return true;
-  }
+
+/** 判断网络响应是否为指定页码的搜狐作品列表。 */
+function isSohuNewsListResponse(response: Response, expectedPage: number | null = null): boolean {
+  if (response.request().method() !== "GET" || !response.url().includes(SOHU_NEWS_LIST_URL_MARKER)) return false;
+  if (expectedPage == null) return true;
   try {
-    return new URL(url).searchParams.get("pno") === String(expectedPage);
+    return new URL(response.url()).searchParams.get("pno") === String(expectedPage);
   } catch {
-    return url.includes(`pno=${expectedPage}`);
+    return response.url().includes(`pno=${expectedPage}`);
   }
 }
-async function waitForSohuNewsListResponse(page, timeoutMs, expectedPage = null) {
+
+/** 等待搜狐作品列表响应。 */
+function waitForSohuNewsListResponse(page: Page, timeoutMs: number, expectedPage: number | null = null): Promise<Response> {
   return page.waitForResponse((candidate) => isSohuNewsListResponse(candidate, expectedPage), { timeout: timeoutMs });
 }
-function buildSohuNewsListUrl(baseUrl, pageNumber) {
+
+/** 构造下一页搜狐作品列表 URL。 */
+function buildSohuNewsListUrl(baseUrl: string, pageNumber: number): string {
   const url = new URL(baseUrl);
   url.searchParams.set("pno", String(pageNumber));
   return url.toString();
 }
-async function waitForTriggeredSohuNewsListPayload(page, timeoutMs, requestUrl, expectedPage) {
+
+/** 在页面登录上下文中触发下一页请求并读取 JSON。 */
+async function fetchTriggeredSohuNewsList(
+  page: Page,
+  timeoutMs: number,
+  requestUrl: string,
+  expectedPage: number,
+): Promise<{ payload: unknown; responseUrl: string } | null> {
   const responsePromise = waitForSohuNewsListResponse(page, timeoutMs, expectedPage).catch(() => null);
   await page.evaluate(async (url) => {
-    await fetch(url, {
-      method: "GET",
-      credentials: "include"
-    });
+    await fetch(url, { credentials: "include", method: "GET" });
   }, requestUrl);
   const response = await responsePromise;
-  if (!response) {
-    return null;
-  }
-  return {
-    payload: await response.json(),
-    responseUrl: response.url()
-  };
+  return response ? { payload: await response.json(), responseUrl: response.url() } : null;
 }
-async function fetchPublishedState(payload) {
-  const accountFile = normalizeOptionalString(payload.accountFile);
-  if (!accountFile) {
-    throw new Error("\u641C\u72D0\u53D1\u5E03\u72B6\u6001\u67E5\u8BE2\u7F3A\u5C11 accountFile");
-  }
-  const timeoutMs = resolveRecordStatusTimeoutMs(payload.timeoutMs);
-  const context = await createContextFromAccountFile(accountFile, "record-status:sohu");
+
+/** 查询搜狐视频当前审核状态。 */
+export async function fetchPublishedState(payload: PublishedStatePayload): Promise<PublishedStateResult | null> {
+  const accountFile = asString(payload.accountFile);
+  if (!accountFile) throw new SohuInfraError("搜狐发布状态查询缺少 accountFile");
+  const timeoutMs = typeof payload.timeoutMs === "number" && Number.isFinite(payload.timeoutMs) && payload.timeoutMs > 0
+    ? payload.timeoutMs
+    : DEFAULT_RECORD_STATUS_TIMEOUT_MS;
+  const context = await createStatusBrowserContext(accountFile);
   const browser = context.browser();
   try {
     const page = await context.newPage();
     page.setDefaultTimeout(timeoutMs);
     page.setDefaultNavigationTimeout(timeoutMs);
     const responseTimeoutMs = Math.min(timeoutMs, SOHU_STATUS_RESPONSE_TIMEOUT_MS);
-    const pageRecordCache = /* @__PURE__ */ new Map();
     const firstResponsePromise = waitForSohuNewsListResponse(page, responseTimeoutMs, 1);
     await page.goto(SOHU_RECORD_STATUS_URL, { waitUntil: "domcontentloaded", timeout: timeoutMs });
-    await page.waitForLoadState("networkidle", { timeout: Math.min(timeoutMs, 1e4) }).catch(() => void 0);
+    await page.waitForLoadState("networkidle", { timeout: Math.min(timeoutMs, 10_000) }).catch(() => undefined);
     await assertSohuLoggedIn(page, accountFile);
-    let currentPayload;
-    let currentResponseUrl;
-    try {
-      const firstResponse = await firstResponsePromise;
-      currentPayload = await firstResponse.json();
-      currentResponseUrl = firstResponse.url();
-    } catch {
-      throw new PlatformTimeoutError("\u641C\u72D0", "wait-news-list", responseTimeoutMs);
-    }
+    const firstResponse = await firstResponsePromise.catch(() => null);
+    if (!firstResponse) throw new SohuTimeoutError("wait-news-list", responseTimeoutMs);
+    let currentPayload: unknown = await firstResponse.json();
+    let currentResponseUrl = firstResponse.url();
+    const pageRecordCache = new Map<number, Record<string, unknown>[]>();
     for (let attempt = 0; attempt < SOHU_STATUS_PAGINATION_ATTEMPTS; attempt += 1) {
-      const currentPage = attempt + 1;
+      const pageNumber = attempt + 1;
       const records = collectSohuRecordsFromPayload(currentPayload);
-      pageRecordCache.set(currentPage, records);
-      if (!hasSohuNewsCollection(currentPayload)) {
-        throw new Error("\u641C\u72D0\u63A5\u53E3\u8FD4\u56DE\u7ED3\u6784\u53D8\u5316\uFF0C\u672A\u627E\u5230 data.news");
-      }
+      pageRecordCache.set(pageNumber, records);
+      if (!hasSohuNewsCollection(currentPayload)) throw new SohuInfraError("搜狐接口返回结构变化，未找到 data.news");
       const matched = findSohuRecordInList(records, payload);
       if (matched) {
         const parsed = parseSohuRecordStatus(matched.record);
-        if (!parsed) {
-          throw new Error("\u641C\u72D0\u547D\u4E2D\u8BB0\u5F55\u4F46 record.auditStatus \u7F3A\u5931\u6216\u7C7B\u578B\u5F02\u5E38");
-        }
+        if (!parsed) throw new SohuInfraError("搜狐命中记录但 auditStatus 缺失或类型异常");
         return createPublishedStateResult({
           status: parsed.status,
-          link: payload.link ?? null,
-          raw: matched.record,
+          link: payload.link,
           matchedBy: matched.matchedBy,
-          reason: parsed.reason
+          raw: matched.record,
+          reason: parsed.reason,
         });
       }
-      if (attempt === SOHU_STATUS_PAGINATION_ATTEMPTS - 1) {
-        break;
-      }
-      const nextPage = currentPage + 1;
-      const nextPayload = await waitForTriggeredSohuNewsListPayload(
+      if (attempt === SOHU_STATUS_PAGINATION_ATTEMPTS - 1) break;
+      const nextPage = pageNumber + 1;
+      const next = await fetchTriggeredSohuNewsList(
         page,
         responseTimeoutMs,
         buildSohuNewsListUrl(currentResponseUrl, nextPage),
-        nextPage
+        nextPage,
       );
-      if (!nextPayload) {
-        break;
-      }
-      currentPayload = nextPayload.payload;
-      currentResponseUrl = nextPayload.responseUrl;
+      if (!next) break;
+      currentPayload = next.payload;
+      currentResponseUrl = next.responseUrl;
     }
     return createPublishedStateResult({
       status: "reviewing",
-      link: payload.link ?? null,
+      link: payload.link,
       raw: {
-        scannedPages: Array.from(pageRecordCache.entries()).map(([pageNumber, records]) => ({
+        scannedPages: [...pageRecordCache.entries()].map(([pageNumber, records]) => ({
           pageNumber,
-          recordCount: records.length
-        }))
+          recordCount: records.length,
+        })),
       },
-      matchedBy: "unknown",
-      reason: "sohu news list did not match current publish task"
+      reason: "sohu news list did not match current publish task",
     });
   } finally {
-    await context.close().catch(() => void 0);
-    await browser?.close().catch(() => void 0);
+    await context.close().catch(() => undefined);
+    await browser?.close().catch(() => undefined);
   }
 }
 
-class SohuVideo implements Video {
-  /** 记录搜狐预发布请求；搜狐当前不执行实际预发布流程。 */
-  dryRun(payload: VideoUploadPayload): Promise<void> {
-    logger.info({
-      type: "sohu-dry-run",
-      message: "搜狐暂不支持 dry-run，已跳过",
-      payload,
-    });
-    return Promise.resolve();
+/** 搜狐视频资源：HTTP 发布，浏览器查询审核状态。 */
+export class SohuVideo implements Video {
+  /** 执行完整素材上传和 Payload 构造，但不提交最终作品。 */
+  async dryRun(payload: VideoUploadPayload): Promise<void> {
+    await prepare(payload);
   }
 
-  /** 发布搜狐视频。 */
-  upload(payload: VideoUploadPayload): Promise<VideoUploadResult> {
-    return upload(payload) as Promise<VideoUploadResult>;
+  /** 上传素材并提交搜狐视频作品。 */
+  async upload(payload: VideoUploadPayload): Promise<VideoUploadResult> {
+    return publish(await prepare(payload));
   }
+
   /** 查询搜狐视频发布状态。 */
   fetchPublishedState(payload: PublishedStatePayload): Promise<PublishedStateResult | null> {
-    return fetchPublishedState(payload) as Promise<PublishedStateResult | null>;
+    return fetchPublishedState(payload);
   }
 }
-export {
-  SOHU_NEWS_LIST_URL_MARKER,
-  SOHU_RECORD_STATUS_URL,
-  SOHU_STATUS_PAGINATION_ATTEMPTS,
-  SOHU_STATUS_RESPONSE_TIMEOUT_MS,
-  SohuVideo,
-  collectSohuRecordsFromPayload,
-  configureElectronPublishRuntime as configureSohuVideoRuntime,
-  destroyElectronPublishWindows as destroySohuVideoWindows,
-  fetchPublishedState,
-  findSohuRecordInList,
-  parseSohuRecordStatus,
-  upload
-};

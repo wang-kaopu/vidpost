@@ -56,8 +56,7 @@ const SIGNING_TIMEOUT = 30_000;
 async function loadDouyinBrowserIdentity(appPath: string): Promise<DouyinBrowserIdentity> {
   const fileName = process.platform === "win32"
     ? "browser-identity.windows.json"
-    : process.platform === "darwin" ? "browser-identity.macos.json" : null;
-  if (!fileName) throw new Error(`当前系统 ${process.platform} 不支持抖音浏览器身份`);
+    : "browser-identity.macos.json";
 
   const identityPath = join(appPath, "assets", "douyin", fileName);
   let parsed: unknown;
@@ -2545,7 +2544,6 @@ async function disposeWorker(worker: InProcessWorker): Promise<void> {
 async function prepare(input: VideoUploadPayload): Promise<DouyinPreparedContext> {
   const scheduledAt = String(input.scheduledAt ?? "").trim();
   if (scheduledAt && scheduledAt !== "0") throw new Error('抖音当前仅支持立即发布，scheduledAt 必须为 "0"');
-  if (process.platform === "linux") throw new Error("抖音发布暂不支持 Linux");
   const browserPartition = String(input.browserPartition ?? "").trim();
   const videoFile = String(input.videoPath ?? input.filePath ?? "").trim();
   const coverFile = String(input.coverPath ?? input.thumbnailPath ?? "").trim();

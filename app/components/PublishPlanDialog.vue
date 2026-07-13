@@ -18,6 +18,15 @@ type PublishPlanRow = {
   humanTypes: Array<{ id: number; name: string }>;
   humanTypesError: string;
   humanTypesLoading: boolean;
+  channelId: number | null;
+  videoChannelId: number | null;
+  sohuChannels: Array<{
+    id: number;
+    name: string;
+    videoChannels: Array<{ id: number; name: string }>;
+  }>;
+  sohuChannelsError: string;
+  sohuChannelsLoading: boolean;
   visibility: "public" | "friends" | "self";
 };
 
@@ -49,7 +58,7 @@ const emit = defineEmits<{
   confirm: [];
   "update-row-field": [payload: {
     rowId: string;
-    field: "title" | "summary" | "scheduledAt" | "humanTypeId" | "visibility";
+    field: "title" | "summary" | "scheduledAt" | "humanTypeId" | "channelId" | "videoChannelId" | "visibility";
     value: string | number | null;
   }];
   "apply-all": [payload: { title: string; summary: string; scheduledAt: string }];
@@ -58,13 +67,25 @@ const emit = defineEmits<{
 const totalPlanCount = computed(() => props.groups.reduce((total, group) => total + group.rows.length, 0));
 const canConfirm = computed(() => totalPlanCount.value > 0 && props.groups.every((group) =>
   group.rows.every((row) =>
-    (row.platformKey === "sohu" || Boolean(row.coverUrl))
+    Boolean(row.coverUrl)
     && (row.platformKey !== "bilibili" || (
       !row.humanTypesLoading
       && !row.humanTypesError
       && Number.isSafeInteger(row.humanTypeId)
       && Number(row.humanTypeId) > 0
       && row.humanTypes.some((type) => type.id === row.humanTypeId)
+    ))
+    && (row.platformKey !== "sohu" || (
+      !row.sohuChannelsLoading
+      && !row.sohuChannelsError
+      && Number.isSafeInteger(row.channelId)
+      && Number(row.channelId) > 0
+      && Number.isSafeInteger(row.videoChannelId)
+      && Number(row.videoChannelId) > 0
+      && row.sohuChannels.some((channel) =>
+        channel.id === row.channelId
+        && channel.videoChannels.some((videoChannel) => videoChannel.id === row.videoChannelId)
+      )
     ))
   )
 ));
@@ -251,6 +272,42 @@ useDialogLayer(() => props.visible);
                     </select>
                     <small v-if="row.humanTypesLoading">正在加载投稿分区…</small>
                     <small v-if="row.humanTypesError" class="platform-option-error">{{ row.humanTypesError }}</small>
+                  </label>
+                  <label v-else-if="row.platformKey === 'sohu'" class="publish-plan-platform-option">
+                    <select
+                      :value="row.channelId ?? ''"
+                      :disabled="row.sohuChannelsLoading || Boolean(row.sohuChannelsError) || !row.sohuChannels.length"
+                      @change="emit('update-row-field', {
+                        rowId: row.id,
+                        field: 'channelId',
+                        value: Number(($event.target as HTMLSelectElement).value) || null,
+                      })"
+                    >
+                      <option value="" disabled>选择一级频道</option>
+                      <option v-for="channel in row.sohuChannels" :key="channel.id" :value="channel.id">
+                        {{ channel.name }}
+                      </option>
+                    </select>
+                    <select
+                      :value="row.videoChannelId ?? ''"
+                      :disabled="row.sohuChannelsLoading || Boolean(row.sohuChannelsError) || !row.channelId"
+                      @change="emit('update-row-field', {
+                        rowId: row.id,
+                        field: 'videoChannelId',
+                        value: Number(($event.target as HTMLSelectElement).value) || null,
+                      })"
+                    >
+                      <option value="" disabled>选择二级频道</option>
+                      <option
+                        v-for="videoChannel in row.sohuChannels.find((channel) => channel.id === row.channelId)?.videoChannels || []"
+                        :key="videoChannel.id"
+                        :value="videoChannel.id"
+                      >
+                        {{ videoChannel.name }}
+                      </option>
+                    </select>
+                    <small v-if="row.sohuChannelsLoading">正在加载搜狐频道…</small>
+                    <small v-if="row.sohuChannelsError" class="platform-option-error">{{ row.sohuChannelsError }}</small>
                   </label>
                   <label v-else-if="row.platformKey === 'douyin'" class="publish-plan-platform-option">
                     <select

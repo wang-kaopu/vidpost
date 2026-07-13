@@ -1,5 +1,6 @@
 import { open, readFile, stat } from "node:fs/promises";
-import { isAbsolute, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import axios, { type AxiosInstance } from "axios";
 import axiosRetry from "axios-retry";
@@ -31,6 +32,43 @@ const COVER_UPLOAD_URL = "https://member.bilibili.com/x/vu/web/cover/up";
 const HUMAN_TYPE_URL = "https://member.bilibili.com/x/vupre/web/archive/human/type2/list";
 const PUBLISH_URL = "https://member.bilibili.com/x/vu/web/add/v3";
 const CHUNK_SIZE = 10 * 1024 * 1024;
+
+/** 从 assets 中严格读取当前系统对应的 Bilibili Chrome 138 User-Agent。 */
+async function loadBilibiliBrowserUserAgent(): Promise<string> {
+  const fileName = process.platform === "win32"
+    ? "browser-identity.windows.json"
+    : "browser-identity.macos.json";
+  const moduleDirectory = dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    join(process.cwd(), "assets", "douyin", fileName),
+    resolve(moduleDirectory, "../../../assets/douyin", fileName),
+    resolve(moduleDirectory, "../assets/douyin", fileName),
+  ];
+  let parsed: unknown;
+  let identityPath = candidates[0]!;
+  for (const candidate of candidates) {
+    try {
+      parsed = JSON.parse(await readFile(candidate, "utf8"));
+      identityPath = candidate;
+      break;
+    } catch {
+      continue;
+    }
+  }
+  const identity = parsed && typeof parsed === "object" && !Array.isArray(parsed)
+    ? parsed as Record<string, unknown>
+    : null;
+  const expectedPlatform = process.platform === "win32" ? "Win32" : "MacIntel";
+  if (
+    !identity
+    || identity.browserPlatform !== expectedPlatform
+    || typeof identity.userAgent !== "string"
+    || !identity.userAgent.includes("Chrome/138.0.0.0")
+  ) {
+    throw new Error(`Bilibili 浏览器身份缺失、格式无效或与当前系统不匹配: ${identityPath}`);
+  }
+  return identity.userAgent;
+}
 
 export interface StoredCookie {
   domain: string;
@@ -122,8 +160,10 @@ export interface BilibiliPublishResponse {
 function createHttpClient(
   retryEnabled: boolean,
   responses: SerializedAxiosResponse[],
+  userAgent: string,
 ): AxiosInstance {
   const client = axios.create({
+    headers: { "User-Agent": userAgent },
     maxBodyLength: Number.POSITIVE_INFINITY,
     maxContentLength: Number.POSITIVE_INFINITY,
     timeout: 120_000,
@@ -243,7 +283,7 @@ async function fetchHumanTypes(cookie: CookieContext, http: AxiosInstance): Prom
 export async function getBilibiliHumanTypes(
   cookiesPath: string,
 ): Promise<HumanType[]> {
-  const http = createHttpClient(true, []);
+  const http = createHttpClient(true, [], await loadBilibiliBrowserUserAgent());
   const cookie = await loadCookieContext(isAbsolute(cookiesPath) ? cookiesPath : resolve(process.cwd(), cookiesPath));
   return fetchHumanTypes(cookie, http);
 }
@@ -494,8 +534,9 @@ async function prepare(input: VideoUploadPayload): Promise<BilibiliPreparedConte
   const videoPath = isAbsolute(videoFile) ? videoFile : resolve(process.cwd(), videoFile);
 
   const responses: SerializedAxiosResponse[] = [];
-  const retryableHttp = createHttpClient(true, responses);
-  const nonRetryableHttp = createHttpClient(false, responses);
+  const userAgent = await loadBilibiliBrowserUserAgent();
+  const retryableHttp = createHttpClient(true, responses, userAgent);
+  const nonRetryableHttp = createHttpClient(false, responses, userAgent);
   const cookie = await loadCookieContext(cookiesPath);
   const humanTypes = await fetchHumanTypes(cookie, retryableHttp);
   const humanType = humanTypes.find((type) => type.id === humanTypeId);

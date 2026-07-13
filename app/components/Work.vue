@@ -39,7 +39,18 @@ type PublishPlanRow = {
   humanTypes: Array<{ id: number; name: string }>;
   humanTypesError: string;
   humanTypesLoading: boolean;
+  channelId: number | null;
+  videoChannelId: number | null;
+  sohuChannels: SohuChannel[];
+  sohuChannelsError: string;
+  sohuChannelsLoading: boolean;
   visibility: "public" | "friends" | "self";
+};
+
+type SohuChannel = {
+  id: number;
+  name: string;
+  videoChannels: Array<{ id: number; name: string }>;
 };
 
 type PublishPlanGroup = {
@@ -52,6 +63,8 @@ type PublishPlanDraft = {
   summary: string;
   scheduledAt: string;
   humanTypeId: number | null;
+  channelId: number | null;
+  videoChannelId: number | null;
   visibility: "public" | "friends" | "self";
 };
 
@@ -110,6 +123,9 @@ const publishPlanDrafts = ref<Record<string, PublishPlanDraft>>({});
 const bilibiliHumanTypesByAccount = ref<Record<string, Array<{ id: number; name: string }>>>({});
 const bilibiliHumanTypesErrors = ref<Record<string, string>>({});
 const bilibiliHumanTypesLoading = ref<Record<string, boolean>>({});
+const sohuChannelsByAccount = ref<Record<string, SohuChannel[]>>({});
+const sohuChannelsErrors = ref<Record<string, string>>({});
+const sohuChannelsLoading = ref<Record<string, boolean>>({});
 const publishPlanSubmitting = ref(false);
 const notificationCenter = useNotificationCenter();
 
@@ -178,6 +194,11 @@ const publishPlanGroups = computed<PublishPlanGroup[]>(() => {
         humanTypes: bilibiliHumanTypesByAccount.value[account.id] || [],
         humanTypesError: bilibiliHumanTypesErrors.value[account.id] || "",
         humanTypesLoading: bilibiliHumanTypesLoading.value[account.id] || false,
+        channelId: draft?.channelId ?? null,
+        videoChannelId: draft?.videoChannelId ?? null,
+        sohuChannels: sohuChannelsByAccount.value[account.id] || [],
+        sohuChannelsError: sohuChannelsErrors.value[account.id] || "",
+        sohuChannelsLoading: sohuChannelsLoading.value[account.id] || false,
         visibility: draft?.visibility || "public",
       });
     }
@@ -217,6 +238,8 @@ const syncPublishPlanDrafts = (rowAccountSelections: Record<string, string[]>): 
         summary: currentDraft?.summary || `同步到${account.platform}账号「${account.nickname}」的默认简介`,
         scheduledAt: currentDraft?.scheduledAt || IMMEDIATE_PUBLISH_VALUE,
         humanTypeId: currentDraft?.humanTypeId ?? null,
+        channelId: currentDraft?.channelId ?? null,
+        videoChannelId: currentDraft?.videoChannelId ?? null,
         visibility: currentDraft?.visibility || "public",
       };
     }
@@ -239,10 +262,7 @@ const openPublishPlatformAccountDialog = async (): Promise<void> => {
   syncPublishPlanDrafts(nextSelections);
 
   try {
-    const [res, capabilities] = await Promise.all([
-      getPublishAccounts({ limit: 999 }),
-      window.electronAPI?.getVideoPublishCapabilities?.() ?? Promise.resolve({ douyin: { enabled: true, reason: null } }),
-    ]);
+    const res = await getPublishAccounts({ limit: 999 });
     publishPlatformAccounts.value = (res.list || []).map((raw) => {
       const normalized = normalizePublishAccount(raw);
       return {
@@ -254,9 +274,7 @@ const openPublishPlatformAccountDialog = async (): Promise<void> => {
         rawStatus: normalized.status,
         phone: normalized.phoneNumber,
         tag: normalized.tags.join(" / ") || "--",
-        disabledReason: normalized.platformKey === "douyin" && !capabilities.douyin.enabled
-          ? capabilities.douyin.reason
-          : null,
+        disabledReason: null,
       } as AccountItem;
     });
   } catch {
@@ -287,36 +305,80 @@ const handlePublishPlatformAccountConfirm = async (rowAccountSelections: Record<
   const bilibiliAccounts = selectedLoginSuccessPublishAccounts.value.filter((account) =>
     selectedAccountIds.includes(account.id) && account.platformKey === "bilibili"
   );
-  const query = window.electronAPI?.getBilibiliHumanTypes;
+  const sohuAccounts = selectedLoginSuccessPublishAccounts.value.filter((account) =>
+    selectedAccountIds.includes(account.id) && account.platformKey === "sohu"
+  );
+  const bilibiliQuery = window.electronAPI?.getBilibiliHumanTypes;
+  const sohuQuery = window.electronAPI?.getSohuChannels;
   bilibiliHumanTypesLoading.value = {
     ...bilibiliHumanTypesLoading.value,
     ...Object.fromEntries(bilibiliAccounts.map((account) => [account.id, true])),
   };
+  sohuChannelsLoading.value = {
+    ...sohuChannelsLoading.value,
+    ...Object.fromEntries(sohuAccounts.map((account) => [account.id, true])),
+  };
   publishPlanDialogVisible.value = true;
-  await Promise.all(bilibiliAccounts.map(async (account) => {
-    if (!query) {
-      bilibiliHumanTypesErrors.value = {
-        ...bilibiliHumanTypesErrors.value,
-        [account.id]: "当前环境未注入 Bilibili 投稿分区查询能力",
-      };
-      bilibiliHumanTypesLoading.value = { ...bilibiliHumanTypesLoading.value, [account.id]: false };
-      return;
-    }
-    try {
-      const types = await query({ accountId: account.id });
-      bilibiliHumanTypesByAccount.value = { ...bilibiliHumanTypesByAccount.value, [account.id]: types };
-      const nextErrors = { ...bilibiliHumanTypesErrors.value };
-      delete nextErrors[account.id];
-      bilibiliHumanTypesErrors.value = nextErrors;
-    } catch (error) {
-      bilibiliHumanTypesErrors.value = {
-        ...bilibiliHumanTypesErrors.value,
-        [account.id]: error instanceof Error ? error.message : String(error),
-      };
-    } finally {
-      bilibiliHumanTypesLoading.value = { ...bilibiliHumanTypesLoading.value, [account.id]: false };
-    }
-  }));
+  await Promise.all([
+    ...bilibiliAccounts.map(async (account) => {
+      if (!bilibiliQuery) {
+        bilibiliHumanTypesErrors.value = {
+          ...bilibiliHumanTypesErrors.value,
+          [account.id]: "当前环境未注入 Bilibili 投稿分区查询能力",
+        };
+        bilibiliHumanTypesLoading.value = { ...bilibiliHumanTypesLoading.value, [account.id]: false };
+        return;
+      }
+      try {
+        const types = await bilibiliQuery({ accountId: account.id });
+        bilibiliHumanTypesByAccount.value = { ...bilibiliHumanTypesByAccount.value, [account.id]: types };
+        const nextErrors = { ...bilibiliHumanTypesErrors.value };
+        delete nextErrors[account.id];
+        bilibiliHumanTypesErrors.value = nextErrors;
+      } catch (error) {
+        bilibiliHumanTypesErrors.value = {
+          ...bilibiliHumanTypesErrors.value,
+          [account.id]: error instanceof Error ? error.message : String(error),
+        };
+      } finally {
+        bilibiliHumanTypesLoading.value = { ...bilibiliHumanTypesLoading.value, [account.id]: false };
+      }
+    }),
+    ...sohuAccounts.map(async (account) => {
+      if (!sohuQuery) {
+        sohuChannelsErrors.value = {
+          ...sohuChannelsErrors.value,
+          [account.id]: "当前环境未注入搜狐频道查询能力",
+        };
+        sohuChannelsLoading.value = { ...sohuChannelsLoading.value, [account.id]: false };
+        return;
+      }
+      try {
+        const channels = await sohuQuery({ accountId: account.id });
+        const firstChannel = channels.find((channel) => channel.videoChannels.length > 0);
+        if (!firstChannel) {
+          throw new Error("当前搜狐账号没有可用的一级、二级频道组合");
+        }
+        sohuChannelsByAccount.value = { ...sohuChannelsByAccount.value, [account.id]: channels };
+        publishPlanDrafts.value = Object.fromEntries(Object.entries(publishPlanDrafts.value).map(([rowId, draft]) => [
+          rowId,
+          rowId.endsWith(`:${account.id}`)
+            ? { ...draft, channelId: firstChannel.id, videoChannelId: firstChannel.videoChannels[0]!.id }
+            : draft,
+        ]));
+        const nextErrors = { ...sohuChannelsErrors.value };
+        delete nextErrors[account.id];
+        sohuChannelsErrors.value = nextErrors;
+      } catch (error) {
+        sohuChannelsErrors.value = {
+          ...sohuChannelsErrors.value,
+          [account.id]: error instanceof Error ? error.message : String(error),
+        };
+      } finally {
+        sohuChannelsLoading.value = { ...sohuChannelsLoading.value, [account.id]: false };
+      }
+    }),
+  ]);
 };
 
 const handlePublishPlanRemove = (payload: { workId: string; accountId: string }): void => {
@@ -338,6 +400,21 @@ const handlePublishPlanFieldUpdate = (payload: {
   const currentDraft = publishPlanDrafts.value[payload.rowId];
   if (!currentDraft) return;
 
+  if (payload.field === "channelId") {
+    const row = publishPlanGroups.value.flatMap((group) => group.rows).find((candidate) => candidate.id === payload.rowId);
+    const channelId = typeof payload.value === "number" ? payload.value : null;
+    const channel = row?.sohuChannels.find((candidate) => candidate.id === channelId);
+    publishPlanDrafts.value = {
+      ...publishPlanDrafts.value,
+      [payload.rowId]: {
+        ...currentDraft,
+        channelId,
+        videoChannelId: channel?.videoChannels[0]?.id ?? null,
+      },
+    };
+    return;
+  }
+
   publishPlanDrafts.value = {
     ...publishPlanDrafts.value,
     [payload.rowId]: {
@@ -357,6 +434,8 @@ const handlePublishPlanApplyAll = (payload: { title: string; summary: string; sc
         summary: payload.summary,
         scheduledAt: IMMEDIATE_PUBLISH_VALUE,
         humanTypeId: publishPlanDrafts.value[row.id]?.humanTypeId ?? null,
+        channelId: publishPlanDrafts.value[row.id]?.channelId ?? null,
+        videoChannelId: publishPlanDrafts.value[row.id]?.videoChannelId ?? null,
         visibility: publishPlanDrafts.value[row.id]?.visibility || "public",
       };
     }
@@ -388,6 +467,9 @@ const resetPublishPlanState = (): void => {
   bilibiliHumanTypesByAccount.value = {};
   bilibiliHumanTypesErrors.value = {};
   bilibiliHumanTypesLoading.value = {};
+  sohuChannelsByAccount.value = {};
+  sohuChannelsErrors.value = {};
+  sohuChannelsLoading.value = {};
   publishPlatformAccountSummary.value = "";
   activePublishWorkRowId.value = "";
   selectedWorkIds.value = new Set();
@@ -427,17 +509,27 @@ const handlePublishPlanConfirm = async (): Promise<void> => {
           videoType: workPayload.videoType,
           accountName: row.accountName,
           humanTypeId: row.humanTypeId,
+          channelId: row.channelId,
+          videoChannelId: row.videoChannelId,
           visibility: row.visibility,
         };
       }),
     );
 
     for (const task of publishTasks) {
-      if ((task.platform === "bilibili" || task.platform === "baijiahao" || task.platform === "douyin") && !task.coverUrl) {
+      if ((task.platform === "bilibili" || task.platform === "baijiahao" || task.platform === "douyin" || task.platform === "sohu") && !task.coverUrl) {
         throw new Error(`${task.platformLabel}账号「${task.accountName}」的任务缺少封面`);
       }
       if (task.platform === "bilibili" && (!Number.isSafeInteger(task.humanTypeId) || Number(task.humanTypeId) <= 0)) {
         throw new Error(`Bilibili 账号「${task.accountName}」必须选择投稿分区`);
+      }
+      if (task.platform === "sohu" && (
+        !Number.isSafeInteger(task.channelId)
+        || Number(task.channelId) <= 0
+        || !Number.isSafeInteger(task.videoChannelId)
+        || Number(task.videoChannelId) <= 0
+      )) {
+        throw new Error(`搜狐账号「${task.accountName}」必须选择一级频道和二级频道`);
       }
       const validationError = buildPublishTaskScheduleValidationError(task);
       if (validationError) {

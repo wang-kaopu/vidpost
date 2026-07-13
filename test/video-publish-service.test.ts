@@ -37,14 +37,17 @@ test("video implementations expose dry-run and upload instance methods", () => {
   }
 });
 
-test("platform modules do not expose prepare or dispose functions", async () => {
+test("platform modules expose publishing only through Video instances", async () => {
   for (const module of await Promise.all([
     import("../src/infra/video/bilibili-video.ts"),
     import("../src/infra/video/baijiahao-video.ts"),
     import("../src/infra/video/douyin-video.ts"),
+    import("../src/infra/video/sohu-video.ts"),
   ])) {
     assert.equal("prepare" in module, false);
+    assert.equal("publish" in module, false);
     assert.equal("dispose" in module, false);
+    assert.equal("upload" in module, false);
   }
 });
 
@@ -53,6 +56,7 @@ test("migrated platform uploads reject scheduled publishing before touching file
   await assert.rejects(new BilibiliVideo().upload(scheduled), /仅支持立即发布/u);
   await assert.rejects(new BaijiahaoVideo().upload(scheduled), /仅支持立即发布/u);
   await assert.rejects(new DouyinVideo().upload(scheduled), /仅支持立即发布/u);
+  await assert.rejects(new SohuVideo().upload(scheduled), /仅支持立即发布/u);
 });
 
 test("HTTP platform dry-run requires the mandatory cover", async () => {
@@ -71,13 +75,18 @@ test("HTTP platform dry-run requires the mandatory cover", async () => {
     title: "标题",
     videoPath: "video.mp4",
   }), /缺少账号、封面、视频或标题/u);
+  await assert.rejects(new SohuVideo().dryRun({
+    accountFile: "account.json",
+    channelId: 15,
+    coverPath: "",
+    scheduledAt: "0",
+    title: "搜狐演练标题",
+    videoChannelId: 101,
+    videoPath: "video.mp4",
+  }), /缺少账号、封面、视频或标题/u);
 });
 
-test("Sohu dry-run succeeds without executing a publish flow", async () => {
-  await assert.doesNotReject(new SohuVideo().dryRun({ title: "演练标题" }));
-});
-
-test("douyin fixed identity assets contain complete Chrome 138 fields", () => {
+test("fixed identity assets contain complete Chrome 138 fields", () => {
   for (const identity of [windowsIdentity, macosIdentity]) {
     assert.deepEqual(Object.keys(identity).sort(), [
       "acceptLanguage",
@@ -94,6 +103,25 @@ test("douyin fixed identity assets contain complete Chrome 138 fields", () => {
     assert.equal(typeof identity.secChUaPlatform, "string");
     assert.match(identity.userAgent, /Chrome\/138\.0\.0\.0/u);
     assert.match(identity.secChUa, /"Chromium";v="138"/u);
+  }
+});
+
+test("platform modules independently load the fixed identity without a shared implementation", () => {
+  for (const [fileName, loaderName] of [
+    ["bilibili-video.ts", "loadBilibiliBrowserUserAgent"],
+    ["baijiahao-video.ts", "loadBaijiahaoBrowserUserAgent"],
+    ["sohu-video.ts", "loadSohuBrowserUserAgent"],
+    ["douyin-video.ts", "loadDouyinBrowserIdentity"],
+  ]) {
+    const source = fs.readFileSync(path.join(projectRoot, "src", "infra", "video", fileName), "utf8");
+    assert.match(source, new RegExp(`(?:async )?function ${loaderName}\\(`, "u"));
+    assert.match(source, /browser-identity\.windows\.json/u);
+    assert.match(source, /browser-identity\.macos\.json/u);
+    assert.match(source, /Chrome\/138\.0\.0\.0/u);
+  }
+  for (const fileName of ["bilibili-video.ts", "baijiahao-video.ts", "sohu-video.ts"]) {
+    const source = fs.readFileSync(path.join(projectRoot, "src", "infra", "video", fileName), "utf8");
+    assert.match(source, /"User-Agent": userAgent/u);
   }
 });
 
@@ -114,7 +142,7 @@ test("douyin publish profile consumes the same fixed identities used by login", 
 
 test("douyin publish profile rejects an unsupported identity platform", () => {
   assert.throws(
-    () => createMachineProfile({ ...windowsIdentity, browserPlatform: "Linux" }),
+    () => createMachineProfile({ ...windowsIdentity, browserPlatform: "Unsupported" }),
     /不支持的抖音浏览器身份平台/u,
   );
 });

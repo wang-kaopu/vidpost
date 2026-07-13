@@ -27,19 +27,22 @@ The Electron main process is emitted as `.build/main.js` in ESM format. `preload
 
 ## Video publishing pipeline
 
-The Bilibili, Baijiahao, and Douyin publishing implementations now live directly in their corresponding `src/infra/video/xx-video.ts` files without generated CJS/ESM wrappers. Module-private `prepare()` performs everything before the final submission, private `publish()` confirms only that last operation, and private `dispose()` cleans resources. The complete `dryRun()`, `upload()`, and `fetchPublishedState()` implementations live directly in each platform `Video` class and are called through the common `Video` interface. Sohu publishing is unchanged; its `dryRun()` only logs the input payload and resolves successfully.
+The Bilibili, Baijiahao, Douyin, and Sohu publishing implementations live directly in their corresponding `src/infra/video/xx-video.ts` files. Module-private `prepare()` performs everything before the final submission, private `publish()` confirms only that last operation, and platforms that retain runtime resources use `dispose()` for cleanup. The complete `dryRun()`, `upload()`, and `fetchPublishedState()` implementations are called through the common `Video` interface.
 
-- A title, video, and cover are mandatory for all three migrated platforms.
+- A title, video, and cover are mandatory for all four platforms.
 - Only immediate publishing is supported. Scheduling controls stay visible but disabled, and the backend accepts only `scheduledAt: "0"`.
 - Every Bilibili task must select an account-specific `humanTypeId` fetched from Bilibili.
+- Every Sohu task must explicitly provide an account-specific `channelId` and `videoChannelId`. The UI fetches the hierarchy and selects the first valid pair automatically, while the service validates that the pair still belongs together.
+- Sohu publishing uses Node.js and Axios with 512 KiB streaming chunks at concurrency three. The previous Electron publish window, DOM form filling, and click workflow are deprecated and removed.
+- Sohu storage-state files must include cookies, `vuex`, `sp-cm`, and `dv-id`. Incomplete historical credentials require a new login and never fall back to browser publishing.
 - Every Douyin task selects `public`, `friends`, or `self`; the default is `public`.
 - Douyin reuses the current Electron account partition instead of opening the same profile in a second Electron process. Douyin publishing is available on macOS and Windows only.
-- Douyin login and publish select the corresponding fixed Chrome 138 identity file under `assets/douyin` from the host OS, then consistently use its UA, platform, and Client Hints. Fingerprint overrides through environment variables or runtime arguments are unsupported. GPU, CPU, memory, and screen information still comes from the host Chromium runtime.
+- Each platform independently loads the host-specific fixed Chrome 138 identity under `assets/douyin`. Bilibili, Baijiahao, and Sohu explicitly inject its UA into their Axios clients; Douyin also aligns the browser platform and Client Hints. Environment and runtime identity overrides are unsupported. GPU, CPU, memory, and screen information still comes from the host Chromium runtime.
 - When Douyin's security gateway requires identity verification for the final submission, the task fails directly and reports the account nickname, verification reason, scene, and available methods. Complete verification in the same account partition before publishing again.
-- `dryRun()` executes the complete pre-publish flow without making the final submission and does not return the internal prepared context. Bilibili, Baijiahao, and Douyin dry runs may upload temporary remote assets. Douyin closes its hidden windows, IPC, and session resources after the dry run. Cleanup failures are logged and never thrown.
+- `dryRun()` executes the complete pre-publish flow without making the final submission and does not return the internal prepared context. All four platforms may upload temporary remote assets during a dry run. Douyin closes its hidden windows, IPC, and session resources afterward. Cleanup failures are logged and never thrown.
 - Final publish requests and complete workflows are never retried automatically. Only safe probes and media chunks have bounded retries.
 - HTTP debug logs intentionally include full headers, cookies, tokens, and responses. Treat production logs as sensitive.
-- Remote task records store only platform IDs, public links, and non-sensitive publishing options, never complete HTTP responses.
+- Remote task records store platform IDs, public links, and non-sensitive publishing options. Sohu also keeps the final publish response under `publish_result.response` for diagnostics and later ID parsing.
 
 The migrated services use `axios-retry`, `crc-32`, `file-type`, `mp4box`, `p-limit`, and `sharp`. `npm run build:electron` emits the Douyin hidden-window bundle at `.build/douyin-publish-renderer.js`.
 

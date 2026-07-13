@@ -350,8 +350,7 @@ var { BrowserWindow: ElectronBrowserWindow, shell } = electron;
 async function loadDouyinBrowserIdentity(): Promise<DouyinBrowserIdentity> {
   const fileName = process.platform === "win32"
     ? "browser-identity.windows.json"
-    : process.platform === "darwin" ? "browser-identity.macos.json" : null;
-  if (!fileName) throw new Error(`当前系统 ${process.platform} 不支持抖音浏览器身份`);
+    : "browser-identity.macos.json";
 
   const identityPath = path3.join(electron.app.getAppPath(), "assets", "douyin", fileName);
   let parsed: unknown;

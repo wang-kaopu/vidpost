@@ -53,7 +53,7 @@ Electron 主进程构建为 `.build/main.js` ESM。`preload.ts` 仍在源码层�
 
 对象会压缩为单行 JSON；普通字符串及错误堆栈中的换行保持不变，并且每次 logger 调用只添加一次前缀。`Buffer`、ArrayBuffer、TypedArray 和 DataView 会显示 Base64 编码后的前 100 个字符，同时记录类型、原始字节数和截断状态。Blob、File 只记录名称、MIME 和字节数；FormData 会展开字段并按相同规则描述其中的文件。
 
-日志不会脱敏，HTTP Header、Cookie、Token 和请求数据可能完整显示。生产日志不得交给无关人员。ESLint 对业务源码启用 `no-console`，仅两个 logger 实现及其契约测试允许访问原生 console。平台账号模块和搜狐视频模块保留迁移生成风格，因此只对其关闭 `no-var` 与遗留未使用变量检查，其余推荐规则和日志约束仍然生效。
+日志不会脱敏，HTTP Header、Cookie、Token 和请求数据可能完整显示。生产日志不得交给无关人员。ESLint 对业务源码启用 `no-console`，仅两个 logger 实现及其契约测试允许访问原生 console。平台账号模块仍保留部分迁移生成风格，因此只对其关闭 `no-var` 与遗留未使用变量检查；搜狐视频模块已经整理为类型化源码，其余推荐规则和日志约束均生效。
 
 ## 平台资源基础设施
 
@@ -81,21 +81,24 @@ src/infra/
 
 ### 视频上传链路
 
-Bilibili、百家号和抖音的发布逻辑已分别内联到 `src/infra/video` 下对应的 `xx-video.ts`，不再包含迁移工具生成的 CJS/ESM 包装代码。每个平台由模块私有的 `prepare()` 完成最终投稿前的全部操作，私有 `publish()` 只确认最后一次投稿，私有 `dispose()` 负责清理；`dryRun()`、`upload()` 与 `fetchPublishedState()` 的完整实现直接位于平台 `Video` 类中。业务层通过统一的 `Video` 接口调用。搜狐上传保持不变，其 `dryRun()` 仅记录传入 payload 后成功返回。
+Bilibili、百家号、抖音和搜狐的发布逻辑分别位于 `src/infra/video` 下对应的 `xx-video.ts`。每个平台由模块私有的 `prepare()` 完成最终投稿前的全部操作，私有 `publish()` 只确认最后一次投稿；需要持有运行时资源的平台再由 `dispose()` 清理。`dryRun()`、`upload()` 与 `fetchPublishedState()` 的完整实现直接位于平台 `Video` 类中，业务层通过统一接口调用。
 
-- 三个平台都要求标题、视频和封面，封面缺失时任务不会提交。
+- 四个平台都要求标题、视频和封面，封面缺失时任务不会提交。
 - 当前所有平台仅支持立即发布；发布计划中的定时控件保留为禁用状态，后端只接受 `scheduledAt: "0"`。
 - Bilibili 必须按账号动态查询并选择投稿分区 `humanTypeId`。
+- 搜狐必须按账号动态查询一级、二级频道。UI 自动选择首个有效组合，底层发布仍强制要求显式 `channelId` 和 `videoChannelId`，并校验父子关系。
+- 搜狐使用 Node.js + Axios 复刻生产内容管理协议，以 512 KiB、并发 3 的方式流式上传视频分片；旧的发布窗口、DOM 填表和点击发布路径已废弃。
+- 搜狐账号文件必须包含 Cookie、`vuex`、`sp-cm` 和 `dv-id`。历史残缺账号需要重新登录，不提供浏览器发布兜底。
 - 抖音必须逐任务选择 `public`、`friends` 或 `self`，默认 `public`。
-- 抖音 HTTP 上传复用当前应用的账号级 Electron partition，不启动第二个 Electron Profile；该链路仅支持 macOS 和 Windows。
-- 抖音登录与发布根据宿主 OS 读取 `assets/douyin` 下对应的固定 Chrome 138 身份文件，并统一使用其中的 UA、平台及 Client Hints；不支持通过环境变量或运行参数自定义指纹。GPU、CPU、内存和屏幕信息仍由当前宿主 Chromium 提供。
+- 抖音 HTTP 上传复用当前应用的账号级 Electron partition，不启动第二个 Electron Profile。
+- 四个平台分别根据宿主 OS 读取 `assets/douyin` 下对应的固定 Chrome 138 身份文件。Bilibili、百家号和搜狐将其中的 UA 显式注入各自 Axios 客户端；抖音同时统一 UA、平台及 Client Hints。不通过环境变量或运行参数回退或自定义身份。GPU、CPU、内存和屏幕信息仍由当前宿主 Chromium 提供。
 - 抖音最终投稿被安全网关要求身份验证时，任务会直接失败并报告账号昵称、验证原因、验证场景和可用验证方式；完成同一账号 partition 中的身份验证后再重新发布。
-- `dryRun()` 执行完整预发布流程但不进行最终投稿，成功时不返回内部准备上下文。Bilibili、百家号和抖音的演练可能上传远端临时素材；抖音演练结束后会关闭隐藏窗口、IPC 和 Session 资源。清理失败只记录日志，不向调用方抛错。
-- 最终投稿请求和整条发布流程不会自动重试，只对可安全重复的探测请求及视频分片做有限重试。
+- `dryRun()` 执行完整预发布流程但不进行最终投稿，成功时不返回内部准备上下文。四个平台的演练都可能上传远端临时素材；抖音演练结束后会关闭隐藏窗口、IPC 和 Session 资源。清理失败只记录日志，不向调用方抛错。
+- 最终投稿请求和整条发布流程不会自动重试。搜狐只重试 GET 网络错误、429 和 5xx，所有写请求（包括分片）失败后直接暴露；其他平台只对各自可安全重复的探测请求及分片做有限重试。
 - HTTP 调试日志按原 Service 行为输出完整 Header、Cookie、Token 和响应，请勿把生产日志交给无关人员。
-- 远程任务只保存平台作品 ID、公开链接及非敏感发布选项，不保存完整 HTTP 响应。
+- 远程任务保存平台作品 ID、公开链接和非敏感发布选项；搜狐还在 `publish_result.response` 中保存最终发布接口响应，便于无法返回作品 ID 时排查和后续解析。
 
-新增上传实现依赖 `axios-retry`、`crc-32`、`file-type`、`mp4box`、`p-limit` 和 `sharp`。抖音隐藏网络窗口脚本由 `npm run build:electron` 生成到 `.build/douyin-publish-renderer.js`。
+上传实现复用 `axios-retry`、`crc-32`、`file-type`、`mp4box`、`p-limit` 和 `sharp`，搜狐迁移没有新增依赖。抖音隐藏网络窗口脚本由 `npm run build:electron` 生成到 `.build/douyin-publish-renderer.js`。
 
 ## 账号浏览器环境隔离
 

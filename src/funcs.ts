@@ -9,6 +9,7 @@ import {
 } from './service/account-service.ts'
 import { publishAndUpdateRemoteTask } from './service/task-service.ts'
 import { getBilibiliHumanTypes as queryBilibiliHumanTypes } from './infra/video/bilibili-video.ts'
+import { getSohuChannels as querySohuChannels } from './infra/video/sohu-video.ts'
 import { syncTaskStateBg } from './service/task-state-service.ts'
 import { broadcast } from './sse/sse-server.ts'
 
@@ -47,14 +48,13 @@ export async function getBilibiliHumanTypes(_event, payload) {
   return queryBilibiliHumanTypes(cookiesPath)
 }
 
-/** 返回当前操作系统支持的平台发布能力。 */
-export async function getVideoPublishCapabilities() {
-  return {
-    douyin: {
-      enabled: process.platform !== 'linux',
-      reason: process.platform === 'linux' ? '抖音发布暂不支持 Linux' : null,
-    },
+/** 查询指定搜狐账号当前可用的一级、二级频道。 */
+export async function getSohuChannels(_event, payload) {
+  const accountId = String(payload?.accountId ?? '').trim()
+  if (!accountId) {
+    throw new Error('查询搜狐频道缺少 accountId')
   }
+  return querySohuChannels(resolveAccountFilePath(accountId, 'sohu'))
 }
 
 export { syncTaskStateBg }

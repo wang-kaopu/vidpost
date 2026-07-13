@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { open, readFile, stat } from "node:fs/promises";
-import { basename, isAbsolute, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import axios, { type AxiosInstance } from "axios";
 import { createFile, type Movie } from "mp4box";
@@ -33,6 +34,43 @@ const PREUPLOAD_URL = `${BAIJIAHAO_ORIGIN}/materialui/video/preuploadvideo`;
 const CHUNK_UPLOAD_URL = "https://rsbjh10.baidu.com/materialui/video/uploadvideo";
 const COMPLETE_UPLOAD_URL = `${BAIJIAHAO_ORIGIN}/materialui/video/compuploadvideo`;
 const COVER_UPLOAD_URL = `${BAIJIAHAO_ORIGIN}/pcui/picture/processproxy`;
+
+/** 从 assets 中严格读取当前系统对应的百家号 Chrome 138 User-Agent。 */
+async function loadBaijiahaoBrowserUserAgent(): Promise<string> {
+  const fileName = process.platform === "win32"
+    ? "browser-identity.windows.json"
+    : "browser-identity.macos.json";
+  const moduleDirectory = dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    join(process.cwd(), "assets", "douyin", fileName),
+    resolve(moduleDirectory, "../../../assets/douyin", fileName),
+    resolve(moduleDirectory, "../assets/douyin", fileName),
+  ];
+  let parsed: unknown;
+  let identityPath = candidates[0]!;
+  for (const candidate of candidates) {
+    try {
+      parsed = JSON.parse(await readFile(candidate, "utf8"));
+      identityPath = candidate;
+      break;
+    } catch {
+      continue;
+    }
+  }
+  const identity = parsed && typeof parsed === "object" && !Array.isArray(parsed)
+    ? parsed as Record<string, unknown>
+    : null;
+  const expectedPlatform = process.platform === "win32" ? "Win32" : "MacIntel";
+  if (
+    !identity
+    || identity.browserPlatform !== expectedPlatform
+    || typeof identity.userAgent !== "string"
+    || !identity.userAgent.includes("Chrome/138.0.0.0")
+  ) {
+    throw new Error(`百家号浏览器身份缺失、格式无效或与当前系统不匹配: ${identityPath}`);
+  }
+  return identity.userAgent;
+}
 const TOPIC_SEARCH_URL = `${BAIJIAHAO_ORIGIN}/pcui/pcpublisher/searchtopic`;
 const PUBLISH_URL = `${BAIJIAHAO_ORIGIN}/pcui/article/publish`;
 const CHUNK_SIZE = 2 * 1024 * 1024;
@@ -756,7 +794,9 @@ async function prepare(input: VideoUploadPayload): Promise<BaijiahaoPreparedCont
   const coverPath = isAbsolute(coverFile) ? coverFile : resolve(process.cwd(), coverFile);
   const videoPath = isAbsolute(videoFile) ? videoFile : resolve(process.cwd(), videoFile);
   const responses: SerializedAxiosResponse[] = [];
+  const userAgent = await loadBaijiahaoBrowserUserAgent();
   const http = axios.create({
+    headers: { "User-Agent": userAgent },
     maxBodyLength: Number.POSITIVE_INFINITY,
     maxContentLength: Number.POSITIVE_INFINITY,
     timeout: 120_000,
