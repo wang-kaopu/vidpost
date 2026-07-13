@@ -75,7 +75,7 @@ src/infra/
     └── sohu-video.ts
 ```
 
-`account.ts` 定义登录、探活和昵称同步接口，`video.ts` 定义预发布演练、发布和发布状态查询接口。业务调用方通过 `createAccount(platform)` 和 `createVideo(platform)` 获取具体实现。
+`account.ts` 定义登录和探活接口，`video.ts` 定义预发布演练、发布和发布状态查询接口。业务调用方通过 `createAccount(platform)` 和 `createVideo(platform)` 获取具体实现。平台登录保存草稿账号文件后必须调用同一个 HTTP `ping()` 完成最终在线校验和昵称读取；不再通过 DOM 或 Playwright 单独同步昵称。
 
 各平台实现有意保持自包含。浏览器启动、Cookie 状态、Electron 发布窗口、页面交互、上传重试和状态解析代码不通过 shared 模块跨平台复用。新增平台时必须分别提供 `Account` 和 `Video` 实现，不再使用旧的 `platformRegistry` 或 `src/infra/platforms` 目录。
 
@@ -120,7 +120,11 @@ Bilibili、百家号、抖音和搜狐的发布逻辑分别位于 `src/infra/vid
 - 不同账号 ID 使用不同 partition，避免浏览器状态串号。
 - 主应用窗口使用 `persist:app-main`，不与平台账号页面共用。
 - 登录窗口关闭不会删除账号 partition。
+- 登录窗口确认成功并保存草稿账号文件后，四个平台统一执行一次最多 20 秒的 HTTP `ping()`；离线或检测异常时不创建远程账号。
+- `ping()` 返回昵称时直接创建远程账号；昵称缺失时先创建账号，再在写入账号文件路径和 partition 的同一次更新中使用远程账号 ID 作为昵称。
 
 ## 已移除能力
 
 历史人工验证码存储模块及其桌面轮询链路已删除，因为其依赖的 runtime store 不存在。抖音发布短信验证码仍支持通过 `MATRIX_DOUYIN_PUBLISH_SMS_CODE` 环境变量自动填写。
+
+登录后的 `syncNickname()` 接口、登录结果昵称字段，以及四个平台基于 DOM/Playwright 的昵称提取实现均已删除。账号昵称统一来自 HTTP `ping()` 响应。

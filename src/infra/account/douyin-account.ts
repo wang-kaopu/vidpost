@@ -3,22 +3,8 @@ import axios from "axios";
 import type { Account, AccountLoginOptions, AccountLoginResult, AccountPingResult } from "./account.ts";
 import { logger } from "../../utils/logger.ts";
 
-import "playwright";
 
 import fs from "node:fs/promises";
-async function readStorageState(accountFile) {
-  try {
-    const content = await fs.readFile(accountFile, "utf8");
-    return JSON.parse(content);
-  } catch {
-    return null;
-  }
-}
-async function loadContextStorageState(accountFile) {
-  const storageState = await readStorageState(accountFile);
-  return storageState ? { storageState } : {};
-}
-
 var PlatformInfraError = class extends Error {
   constructor(message) {
     super(message);
@@ -32,10 +18,7 @@ var PlatformTimeoutError = class extends PlatformInfraError {
   }
 };
 
-import fs2 from "node:fs/promises";
-import path from "node:path";
-import { chromium } from "playwright";
-
+/** 抖音登录窗口使用的固定 Chrome 身份字段。 */
 interface DouyinBrowserIdentity {
   acceptLanguage: string;
   browserPlatform: "MacIntel" | "Win32";
@@ -45,150 +28,6 @@ interface DouyinBrowserIdentity {
   userAgent: string;
 }
 
-var PLAYWRIGHT_HEADLESS_CONFIG = {
-  default: false,
-  probe: false,
-  "login-success:douyin": true,
-  "login-success:bilibili": true,
-  "login-success:sohu": true,
-  "login-success:baijiahao": true,
-  "publish:douyin": false,
-  "publish:sohu": false,
-  "publish:baijiahao": false,
-  "record-status:douyin": true,
-  "record-status:bilibili": true,
-  "record-status:sohu": true,
-  "record-status:baijiahao": true,
-  "script:douyin-record-status": false,
-  "script:baijiahao-video-state-success": false,
-  "script:bilibili-video-state-success": false
-};
-function resolvePlaywrightHeadlessMode(scenario = "default") {
-  return PLAYWRIGHT_HEADLESS_CONFIG[scenario];
-}
-
-var ENV_BROWSER_PATH_KEYS = [
-  "PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH",
-  "GOOGLE_CHROME_BIN",
-  "CHROME_BIN",
-  "CHROME_PATH",
-  "CHROMIUM_BIN",
-  "CHROMIUM_PATH"
-];
-var PATH_BROWSER_COMMANDS = [
-  "google-chrome",
-  "google-chrome-stable",
-  "chrome",
-  "chromium",
-  "chromium-browser",
-  "msedge"
-];
-var LOCAL_BROWSER_PATH_CANDIDATES = [
-  "~/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-  "~/Applications/Chromium.app/Contents/MacOS/Chromium",
-  "/Applications/Chromium.app/Contents/MacOS/Chromium",
-  "~/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-  "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-  "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
-  "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
-  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
-  "/usr/bin/google-chrome",
-  "/usr/bin/google-chrome-stable",
-  "/usr/bin/chromium",
-  "/usr/bin/chromium-browser",
-  "/usr/bin/microsoft-edge"
-];
-function normalizeBrowserPath(candidate) {
-  const token = String(candidate ?? "").trim();
-  if (!token) {
-    return null;
-  }
-  const resolved = path.resolve(token.replace(/^~(?=$|[\\/])/, process.env.HOME || "~"));
-  return resolved;
-}
-async function fileExists(targetPath) {
-  try {
-    await fs2.access(targetPath);
-    return true;
-  } catch {
-    return false;
-  }
-}
-async function resolveEnvBrowserPath() {
-  for (const envKey of ENV_BROWSER_PATH_KEYS) {
-    const normalized = normalizeBrowserPath(process.env[envKey]);
-    if (normalized && await fileExists(normalized)) {
-      return normalized;
-    }
-  }
-  for (const command of PATH_BROWSER_COMMANDS) {
-    const commandPath = process.platform === "win32" ? `${command}.exe` : command;
-    const envPath = process.env.PATH || "";
-    for (const segment of envPath.split(path.delimiter)) {
-      const normalized = normalizeBrowserPath(path.join(segment, commandPath));
-      if (normalized && await fileExists(normalized)) {
-        return normalized;
-      }
-    }
-  }
-  return null;
-}
-async function resolveLocalBrowserPath(configuredPath) {
-  const envBrowserPath = await resolveEnvBrowserPath();
-  if (envBrowserPath) {
-    return envBrowserPath;
-  }
-  const configured = normalizeBrowserPath(configuredPath);
-  if (configured && await fileExists(configured)) {
-    return configured;
-  }
-  for (const candidate of LOCAL_BROWSER_PATH_CANDIDATES) {
-    const normalized = normalizeBrowserPath(candidate);
-    if (normalized && await fileExists(normalized)) {
-      return normalized;
-    }
-  }
-  return null;
-}
-async function launchChromiumBrowser(browserType: any, options: any = {}) {
-  const { configuredExecutablePath, ...launchOptions } = options;
-  const explicitExecutablePath = normalizeBrowserPath(launchOptions.executablePath);
-  if (explicitExecutablePath) {
-    try {
-      return await browserType.launch({ ...launchOptions, executablePath: explicitExecutablePath });
-    } catch {
-    }
-  }
-  const localBrowserPath = await resolveLocalBrowserPath(configuredExecutablePath);
-  if (localBrowserPath) {
-    try {
-      return await browserType.launch({ ...launchOptions, executablePath: localBrowserPath });
-    } catch {
-    }
-  }
-  return browserType.launch(launchOptions);
-}
-async function createBrowserSession(options: any = {}) {
-  const browser = await launchChromiumBrowser(chromium, {
-    headless: resolvePlaywrightHeadlessMode(options.headlessMode),
-    configuredExecutablePath: options.configuredExecutablePath,
-    ...options.launchOptions
-  });
-  try {
-    const context = await browser.newContext(options.contextOptions);
-    const page = await context.newPage();
-    return { browser, context, page };
-  } catch (error) {
-    await browser.close().catch(() => void 0);
-    throw error;
-  }
-}
-
-var sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-import { chromium as chromium2 } from "playwright";
 
 import fs3 from "node:fs";
 import path2 from "node:path";
@@ -252,17 +91,6 @@ function resolvePartitionForAccount(store, accountId) {
   return partition;
 }
 
-var DEFAULT_BROWSER_TIMEOUT_MS = 18e4;
-async function createContextFromAccountFile(accountFile, headlessMode = "default") {
-  const contextOptions = await loadContextStorageState(accountFile);
-  const session = await createBrowserSession({ accountFile, contextOptions, headlessMode });
-  try {
-    return session.context;
-  } catch (error) {
-    await session.browser.close().catch(() => void 0);
-    throw error;
-  }
-}
 const DOUYIN_ACCOUNT_INFO_URL = "https://creator.douyin.com/web/api/media/user/info/";
 const ACCOUNT_PING_ATTEMPTS = 3;
 const ACCOUNT_PING_TIMEOUT_MS = 20_000;
@@ -292,11 +120,11 @@ async function loadDouyinPingContext(accountFile: string): Promise<{ cookieHeade
   const msToken = [...cookies].reverse().find((cookie) => cookie.name === "msToken")?.value ?? "";
 
   const fileName = process.platform === "win32" ? "browser-identity.windows.json" : "browser-identity.macos.json";
-  const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
+  const moduleDirectory = path2.dirname(fileURLToPath(import.meta.url));
   const candidates = [
-    path.join(process.cwd(), "assets", "douyin", fileName),
-    path.resolve(moduleDirectory, "../../../assets/douyin", fileName),
-    path.resolve(moduleDirectory, "../assets/douyin", fileName)
+    path2.join(process.cwd(), "assets", "douyin", fileName),
+    path2.resolve(moduleDirectory, "../../../assets/douyin", fileName),
+    path2.resolve(moduleDirectory, "../assets/douyin", fileName)
   ];
   const expectedPlatform = process.platform === "win32" ? "Win32" : "MacIntel";
   let userAgent = "";
@@ -724,11 +552,9 @@ async function completeLoginState(options) {
       options.loginWindow.close();
     });
   }
-  const nickname = await options.resolveNickname?.().catch(() => void 0);
   return {
     accountFile: options.context.accountFile,
-    loginSucceeded: true,
-    nickname
+    loginSucceeded: true
   };
 }
 async function runPlatformLoginFlow(hooks, options) {
@@ -787,8 +613,7 @@ async function runPlatformLoginFlow(hooks, options) {
           persistState: async () => {
             await hooks.beforePersist?.(loginWindow);
             await exportStorageState(loginWindow, options.accountFile, hooks.consolePrefix || context.platform);
-          },
-          resolveNickname: hooks.resolveNickname ? async () => hooks.resolveNickname?.(loginWindow) : void 0
+          }
         });
         finish(result);
       } catch (error) {
@@ -895,58 +720,6 @@ var runDouyinLogin = async (options) => runPlatformLoginFlow(
   options
 );
 
-var DOUYIN_HOME_URL = "https://creator.douyin.com/creator-micro/home";
-var DOUYIN_PRIMARY_NICKNAME_SELECTOR = "div.header-_F2uzl div.left-zEzdJX div.name-_lSSDc";
-var DOUYIN_NICKNAME_SELECTORS = [
-  DOUYIN_PRIMARY_NICKNAME_SELECTOR,
-  "div[class*='header'] div[class*='left'] > div[class*='name']",
-  "div[class*='creator'] div[class*='name']",
-  "header div[class*='name']"
-];
-async function readLocatorText(locator) {
-  try {
-    await locator.waitFor({ state: "attached", timeout: 5e3 });
-    const nickname = (await locator.textContent())?.trim();
-    return nickname || void 0;
-  } catch {
-    return void 0;
-  }
-}
-async function pickNicknameFromSelectors(page, selectors) {
-  for (const selector of selectors) {
-    const locator = page.locator(selector).first();
-    const nickname = await readLocatorText(locator);
-    if (nickname) {
-      return nickname;
-    }
-  }
-  return void 0;
-}
-async function syncDouyinNickname(accountFile, timeoutMs) {
-  const context = await createContextFromAccountFile(accountFile, "login-success:douyin");
-  const browser = context.browser();
-  try {
-    const page = await context.newPage();
-    page.setDefaultTimeout(timeoutMs);
-    page.setDefaultNavigationTimeout(timeoutMs);
-    logger.info(`[douyin] opening nickname page: ${DOUYIN_HOME_URL}`);
-    await page.goto(DOUYIN_HOME_URL, { waitUntil: "domcontentloaded", timeout: timeoutMs });
-    await page.waitForURL(DOUYIN_HOME_URL, { timeout: Math.min(timeoutMs, 2e4) }).catch(() => void 0);
-    await page.waitForLoadState("domcontentloaded", { timeout: timeoutMs }).catch(() => void 0);
-    await page.waitForLoadState("networkidle", { timeout: Math.min(timeoutMs, 15e3) }).catch(() => void 0);
-    const primaryNickname = await pickNicknameFromSelectors(page, [DOUYIN_PRIMARY_NICKNAME_SELECTOR]);
-    if (primaryNickname) {
-      logger.info(`[douyin] primary selector matched: ${DOUYIN_PRIMARY_NICKNAME_SELECTOR}`);
-      return primaryNickname;
-    }
-    logger.info(`[douyin] primary selector missed, falling back to generic selectors`);
-    return pickNicknameFromSelectors(page, DOUYIN_NICKNAME_SELECTORS.slice(1));
-  } finally {
-    await context.close().catch(() => void 0);
-    await browser?.close().catch(() => void 0);
-  }
-}
-
 class DouyinAccount implements Account {
   /** 完成抖音登录。 */
   login(options: AccountLoginOptions): Promise<AccountLoginResult> {
@@ -956,13 +729,7 @@ class DouyinAccount implements Account {
   ping(accountFile: string): Promise<AccountPingResult> {
     return cookieAuth(accountFile);
   }
-  /** 读取抖音账号昵称。 */
-  syncNickname(accountFile: string, timeoutMs: number): Promise<string | undefined> {
-    return syncDouyinNickname(accountFile, timeoutMs);
-  }
 }
 export {
-  DouyinAccount,
-  PLAYWRIGHT_HEADLESS_CONFIG,
-  resolvePlaywrightHeadlessMode
+  DouyinAccount
 };

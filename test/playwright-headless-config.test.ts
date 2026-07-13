@@ -9,15 +9,10 @@ const ACCOUNT_MODULES = {
 }
 
 for (const [platform, loadAccountModule] of Object.entries(ACCOUNT_MODULES)) {
-  test(`${platform} account owns an independent headless configuration`, async () => {
-    const { PLAYWRIGHT_HEADLESS_CONFIG, resolvePlaywrightHeadlessMode } = await loadAccountModule()
+  test(`${platform} account removes the obsolete Playwright nickname runtime`, async () => {
+    const accountModule = await loadAccountModule()
 
-    assert.equal(resolvePlaywrightHeadlessMode(), PLAYWRIGHT_HEADLESS_CONFIG.default)
-    assert.equal(resolvePlaywrightHeadlessMode('probe'), PLAYWRIGHT_HEADLESS_CONFIG.probe)
-    assert.equal(resolvePlaywrightHeadlessMode(`ping:${platform}`), undefined)
-    assert.equal(
-      resolvePlaywrightHeadlessMode(`login-success:${platform}`),
-      PLAYWRIGHT_HEADLESS_CONFIG[`login-success:${platform}`],
-    )
+    assert.equal('PLAYWRIGHT_HEADLESS_CONFIG' in accountModule, false)
+    assert.equal('resolvePlaywrightHeadlessMode' in accountModule, false)
   })
 }

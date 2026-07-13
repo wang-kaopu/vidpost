@@ -11,7 +11,7 @@ for (const platform of ['douyin', 'bilibili', 'baijiahao', 'sohu'] as const) {
 
     assert.equal(typeof account.login, 'function')
     assert.equal(typeof account.ping, 'function')
-    assert.equal(typeof account.syncNickname, 'function')
+    assert.equal('syncNickname' in account, false)
     assert.equal(typeof video.dryRun, 'function')
     assert.equal(typeof video.upload, 'function')
     assert.equal(typeof video.fetchPublishedState, 'function')

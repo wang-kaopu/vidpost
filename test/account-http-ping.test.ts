@@ -167,24 +167,97 @@ test('douyin ping sends an empty msToken when the Cookie snapshot does not conta
   assert.deepEqual(requestConfig?.params, { msToken: '', a_bogus: '' })
 })
 
-test('sohu ping authenticates with the complete stored account identity', async (t) => {
+test('sohu ping checks authentication and then reads the nickname with fresh cache stamps', async (t) => {
   const accountFile = createSohuAccountFile()
   const calls: Array<{ config: Record<string, any>; url: string }> = []
+  let now = 1_000
+  t.mock.method(Date, 'now', () => {
+    now += 1
+    return now
+  })
   t.mock.method(axios, 'get', async (url: string, config: Record<string, any>) => {
     calls.push({ config, url })
-    return { data: { code: 2_000_000 } }
+    return url.endsWith('/check/user')
+      ? { data: { code: 2_000_000 } }
+      : { data: { code: 2_000_000, data: { nickName: '  搜狐账号  ', status: 0 } } }
   })
 
-  assert.deepEqual(await new SohuAccount().ping(accountFile), { online: true })
-  assert.equal(calls.length, 1)
+  assert.deepEqual(await new SohuAccount().ping(accountFile), { online: true, nickname: '搜狐账号' })
+  assert.equal(calls.length, 2)
   assert.equal(calls[0]?.url, 'https://mp.sohu.com/mpbp/bp/account/check/user')
-  assert.deepEqual(calls[0]?.config.params, { accountId: '123' })
+  assert.equal(calls[1]?.url, 'https://mp.sohu.com/mpbp/bp/account/info')
+  assert.deepEqual(calls[0]?.config.params, { accountId: '123', _: 1_002 })
+  assert.deepEqual(calls[1]?.config.params, { accountId: '123', _: 1_003 })
   assert.equal(calls[0]?.config.headers.Cookie, 'session=sohu-session; mp-cv=sohu-mp-cv')
+  assert.equal(calls[1]?.config.headers.Cookie, calls[0]?.config.headers.Cookie)
   assert.equal(calls[0]?.config.headers.Referer, 'https://mp.sohu.com/mpfe/v4/contentManagement/news/addvideo')
   assert.equal(calls[0]?.config.headers['dv-id'], 'sohu-dv-id')
   assert.equal(calls[0]?.config.headers['sp-cm'], 'sohu-sp-cm')
   assert.equal(calls[0]?.config.headers['mp-cv'], 'sohu-mp-cv')
   assert.match(String(calls[0]?.config.headers['User-Agent']), /Chrome\/138\.0\.0\.0/)
+})
+
+test('sohu ping returns online without a nickname when account info omits it', async (t) => {
+  const accountFile = createSohuAccountFile()
+  t.mock.method(axios, 'get', async (url: string) => url.endsWith('/check/user')
+    ? { data: { code: 2_000_000 } }
+    : { data: { code: 2_000_000, data: {} } })
+
+  assert.deepEqual(await new SohuAccount().ping(accountFile), { online: true })
+})
+
+test('sohu ping returns online without a nickname when account info contains only whitespace', async (t) => {
+  const accountFile = createSohuAccountFile()
+  t.mock.method(axios, 'get', async (url: string) => url.endsWith('/check/user')
+    ? { data: { code: 2_000_000 } }
+    : { data: { code: 2_000_000, data: { nickName: '   ' } } })
+
+  assert.deepEqual(await new SohuAccount().ping(accountFile), { online: true })
+})
+
+test('sohu ping rejects malformed account info data', async (t) => {
+  const accountFile = createSohuAccountFile()
+  t.mock.method(axios, 'get', async (url: string) => url.endsWith('/check/user')
+    ? { data: { code: 2_000_000 } }
+    : { data: { code: 2_000_000, data: [] } })
+
+  await assert.rejects(new SohuAccount().ping(accountFile), /data 必须是对象/u)
+})
+
+test('sohu ping rejects a non-string account info nickname', async (t) => {
+  const accountFile = createSohuAccountFile()
+  t.mock.method(axios, 'get', async (url: string) => url.endsWith('/check/user')
+    ? { data: { code: 2_000_000 } }
+    : { data: { code: 2_000_000, data: { nickName: 123 } } })
+
+  await assert.rejects(new SohuAccount().ping(accountFile), /nickName 必须是字符串/u)
+})
+
+test('sohu ping does not retry a failed account info business response', async (t) => {
+  const accountFile = createSohuAccountFile()
+  let calls = 0
+  t.mock.method(axios, 'get', async (url: string) => {
+    calls += 1
+    return url.endsWith('/check/user')
+      ? { data: { code: 2_000_000 } }
+      : { data: { code: 1, data: { nickName: '不会使用' } } }
+  })
+
+  await assert.rejects(new SohuAccount().ping(accountFile), /账号信息请求失败/u)
+  assert.equal(calls, 2)
+})
+
+test('sohu ping propagates account info authentication errors instead of reporting offline', async (t) => {
+  const accountFile = createSohuAccountFile()
+  let calls = 0
+  t.mock.method(axios, 'get', async (url: string) => {
+    calls += 1
+    if (url.endsWith('/check/user')) return { data: { code: 2_000_000 } }
+    throw axiosStatusError(403)
+  })
+
+  await assert.rejects(new SohuAccount().ping(accountFile), /HTTP 403/u)
+  assert.equal(calls, 2)
 })
 
 test('sohu ping rejects incomplete localStorage credentials before requesting the platform', async (t) => {

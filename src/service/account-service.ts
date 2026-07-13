@@ -55,17 +55,23 @@ export async function loginAndCreateRemoteAccount(platform, accountFile, parentW
             parentWindow,
         })
 
-        const nickname = await account.syncNickname(accountFile, 6000)
-        logger.info(`登录完成，获取到的 ${platform} 昵称为: ${nickname}`)
+        const pingResult = await account.ping(accountFile)
+        if (!pingResult.online) {
+            throw new Error(`${platform} login verification failed: account is offline`)
+        }
+        const nickname = pingResult.nickname?.trim() || undefined
+        logger.info(`登录完成，${platform} 账号在线，获取到的昵称为: ${nickname}`)
 
         const { remoteAccountId } = await createPublishAccount({
-            nickname,
+            ...(nickname ? { nickname } : {}),
             platform,
             status: 'online',
         })
+        const effectiveNickname = nickname || String(remoteAccountId)
         const finalizedAccountFile = finalizeAccountFile(accountFile, remoteAccountId, platform)
         const accountPartition = movePartitionMapping(partitionStore, draftPartitionAccountId, String(remoteAccountId))
         await updatePublishAccount(remoteAccountId, {
+            ...(!nickname ? { nickname: effectiveNickname } : {}),
             attributes: {
                 cookieFilePath: finalizedAccountFile,
                 browserPartition: accountPartition,
@@ -76,7 +82,7 @@ export async function loginAndCreateRemoteAccount(platform, accountFile, parentW
 
         return createAccountPageModel({
             id: remoteAccountId,
-            nickname,
+            nickname: effectiveNickname,
             platform,
             status: 'online',
             phoneNumber: null,

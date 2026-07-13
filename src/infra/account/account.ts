@@ -23,7 +23,6 @@ export interface AccountLoginResult {
   accountFile: string;
   loginSucceeded: boolean;
   error?: string;
-  nickname?: string;
 }
 
 /** 平台账号在线状态检测结果。 */
@@ -41,9 +40,6 @@ export interface Account {
 
   /** 检查本地账号状态是否仍然有效，并返回平台侧最新账号信息。 */
   ping(accountFile: string): Promise<AccountPingResult>;
-
-  /** 从平台读取当前账号昵称。 */
-  syncNickname(accountFile: string, timeoutMs: number): Promise<string | undefined>;
 }
 
 /**

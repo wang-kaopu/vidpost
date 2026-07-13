@@ -3,22 +3,8 @@ import axios from "axios";
 import type { Account, AccountLoginOptions, AccountLoginResult, AccountPingResult } from "./account.ts";
 import { logger } from "../../utils/logger.ts";
 
-import "playwright";
 
 import fs from "node:fs/promises";
-async function readStorageState(accountFile) {
-  try {
-    const content = await fs.readFile(accountFile, "utf8");
-    return JSON.parse(content);
-  } catch {
-    return null;
-  }
-}
-async function loadContextStorageState(accountFile) {
-  const storageState = await readStorageState(accountFile);
-  return storageState ? { storageState } : {};
-}
-
 var PlatformInfraError = class extends Error {
   constructor(message) {
     super(message);
@@ -32,154 +18,6 @@ var PlatformTimeoutError = class extends PlatformInfraError {
   }
 };
 
-import fs2 from "node:fs/promises";
-import path from "node:path";
-import { chromium } from "playwright";
-
-var PLAYWRIGHT_HEADLESS_CONFIG = {
-  default: false,
-  probe: false,
-  "login-success:douyin": true,
-  "login-success:bilibili": true,
-  "login-success:sohu": true,
-  "login-success:baijiahao": true,
-  "publish:douyin": false,
-  "publish:sohu": false,
-  "publish:baijiahao": false,
-  "record-status:douyin": true,
-  "record-status:bilibili": true,
-  "record-status:sohu": true,
-  "record-status:baijiahao": true,
-  "script:douyin-record-status": false,
-  "script:baijiahao-video-state-success": false,
-  "script:bilibili-video-state-success": false
-};
-function resolvePlaywrightHeadlessMode(scenario = "default") {
-  return PLAYWRIGHT_HEADLESS_CONFIG[scenario];
-}
-
-var ENV_BROWSER_PATH_KEYS = [
-  "PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH",
-  "GOOGLE_CHROME_BIN",
-  "CHROME_BIN",
-  "CHROME_PATH",
-  "CHROMIUM_BIN",
-  "CHROMIUM_PATH"
-];
-var PATH_BROWSER_COMMANDS = [
-  "google-chrome",
-  "google-chrome-stable",
-  "chrome",
-  "chromium",
-  "chromium-browser",
-  "msedge"
-];
-var LOCAL_BROWSER_PATH_CANDIDATES = [
-  "~/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-  "~/Applications/Chromium.app/Contents/MacOS/Chromium",
-  "/Applications/Chromium.app/Contents/MacOS/Chromium",
-  "~/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-  "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-  "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
-  "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
-  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
-  "/usr/bin/google-chrome",
-  "/usr/bin/google-chrome-stable",
-  "/usr/bin/chromium",
-  "/usr/bin/chromium-browser",
-  "/usr/bin/microsoft-edge"
-];
-function normalizeBrowserPath(candidate) {
-  const token = String(candidate ?? "").trim();
-  if (!token) {
-    return null;
-  }
-  const resolved = path.resolve(token.replace(/^~(?=$|[\\/])/, process.env.HOME || "~"));
-  return resolved;
-}
-async function fileExists(targetPath) {
-  try {
-    await fs2.access(targetPath);
-    return true;
-  } catch {
-    return false;
-  }
-}
-async function resolveEnvBrowserPath() {
-  for (const envKey of ENV_BROWSER_PATH_KEYS) {
-    const normalized = normalizeBrowserPath(process.env[envKey]);
-    if (normalized && await fileExists(normalized)) {
-      return normalized;
-    }
-  }
-  for (const command of PATH_BROWSER_COMMANDS) {
-    const commandPath = process.platform === "win32" ? `${command}.exe` : command;
-    const envPath = process.env.PATH || "";
-    for (const segment of envPath.split(path.delimiter)) {
-      const normalized = normalizeBrowserPath(path.join(segment, commandPath));
-      if (normalized && await fileExists(normalized)) {
-        return normalized;
-      }
-    }
-  }
-  return null;
-}
-async function resolveLocalBrowserPath(configuredPath) {
-  const envBrowserPath = await resolveEnvBrowserPath();
-  if (envBrowserPath) {
-    return envBrowserPath;
-  }
-  const configured = normalizeBrowserPath(configuredPath);
-  if (configured && await fileExists(configured)) {
-    return configured;
-  }
-  for (const candidate of LOCAL_BROWSER_PATH_CANDIDATES) {
-    const normalized = normalizeBrowserPath(candidate);
-    if (normalized && await fileExists(normalized)) {
-      return normalized;
-    }
-  }
-  return null;
-}
-async function launchChromiumBrowser(browserType: any, options: any = {}) {
-  const { configuredExecutablePath, ...launchOptions } = options;
-  const explicitExecutablePath = normalizeBrowserPath(launchOptions.executablePath);
-  if (explicitExecutablePath) {
-    try {
-      return await browserType.launch({ ...launchOptions, executablePath: explicitExecutablePath });
-    } catch {
-    }
-  }
-  const localBrowserPath = await resolveLocalBrowserPath(configuredExecutablePath);
-  if (localBrowserPath) {
-    try {
-      return await browserType.launch({ ...launchOptions, executablePath: localBrowserPath });
-    } catch {
-    }
-  }
-  return browserType.launch(launchOptions);
-}
-async function createBrowserSession(options: any = {}) {
-  const browser = await launchChromiumBrowser(chromium, {
-    headless: resolvePlaywrightHeadlessMode(options.headlessMode),
-    configuredExecutablePath: options.configuredExecutablePath,
-    ...options.launchOptions
-  });
-  try {
-    const context = await browser.newContext(options.contextOptions);
-    const page = await context.newPage();
-    return { browser, context, page };
-  } catch (error) {
-    await browser.close().catch(() => void 0);
-    throw error;
-  }
-}
-
-var sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-import { chromium as chromium2 } from "playwright";
 
 import fs3 from "node:fs";
 import path2 from "node:path";
@@ -243,17 +81,6 @@ function resolvePartitionForAccount(store, accountId) {
   return partition;
 }
 
-var DEFAULT_BROWSER_TIMEOUT_MS = 18e4;
-async function createContextFromAccountFile(accountFile, headlessMode = "default") {
-  const contextOptions = await loadContextStorageState(accountFile);
-  const session = await createBrowserSession({ accountFile, contextOptions, headlessMode });
-  try {
-    return session.context;
-  } catch (error) {
-    await session.browser.close().catch(() => void 0);
-    throw error;
-  }
-}
 const BILIBILI_ACCOUNT_INFO_URL = "https://api.bilibili.com/x/web-interface/nav";
 const ACCOUNT_PING_ATTEMPTS = 3;
 const ACCOUNT_PING_TIMEOUT_MS = 20_000;
@@ -281,11 +108,11 @@ async function loadBilibiliPingContext(accountFile: string): Promise<{ cookieHea
   if (!cookies.length) throw new Error("Bilibili 账号文件中没有可用的 bilibili.com Cookie");
 
   const fileName = process.platform === "win32" ? "browser-identity.windows.json" : "browser-identity.macos.json";
-  const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
+  const moduleDirectory = path2.dirname(fileURLToPath(import.meta.url));
   const candidates = [
-    path.join(process.cwd(), "assets", "douyin", fileName),
-    path.resolve(moduleDirectory, "../../../assets/douyin", fileName),
-    path.resolve(moduleDirectory, "../assets/douyin", fileName)
+    path2.join(process.cwd(), "assets", "douyin", fileName),
+    path2.resolve(moduleDirectory, "../../../assets/douyin", fileName),
+    path2.resolve(moduleDirectory, "../assets/douyin", fileName)
   ];
   const expectedPlatform = process.platform === "win32" ? "Win32" : "MacIntel";
   let userAgent = "";
@@ -828,11 +655,9 @@ async function completeLoginState(options) {
       options.loginWindow.close();
     });
   }
-  const nickname = await options.resolveNickname?.().catch(() => void 0);
   return {
     accountFile: options.context.accountFile,
-    loginSucceeded: true,
-    nickname
+    loginSucceeded: true
   };
 }
 async function runPlatformLoginFlow(hooks, options) {
@@ -890,8 +715,7 @@ async function runPlatformLoginFlow(hooks, options) {
           persistState: async () => {
             await hooks.beforePersist?.(loginWindow);
             await exportStorageState(loginWindow, options.accountFile, hooks.consolePrefix || context.platform);
-          },
-          resolveNickname: hooks.resolveNickname ? async () => hooks.resolveNickname?.(loginWindow) : void 0
+          }
         });
         finish(result);
       } catch (error) {
@@ -1067,69 +891,6 @@ var runBilibiliLogin = async (options) => runPlatformLoginFlow(
   options
 );
 
-var BILIBILI_HOME_URL = "https://account.bilibili.com/account/home";
-var BILIBILI_PRIMARY_NICKNAME_SELECTOR = "span.home-top-msg-name";
-var BILIBILI_NICKNAME_SELECTORS = [
-  BILIBILI_PRIMARY_NICKNAME_SELECTOR,
-  "[class*='user-name']",
-  "[class*='uname']",
-  "[class*='nickname']",
-  "header [class*='name']",
-  "aside [class*='name']"
-];
-var BILIBILI_BLOCKED_TEXTS = /* @__PURE__ */ new Set(["\u521B\u4F5C\u4E2D\u5FC3", "\u6295\u7A3F\u89C6\u9891", "\u53D1\u5E03\u4F5C\u54C1", "\u4E0A\u4F20\u89C6\u9891", "\u767B\u5F55", "\u8D26\u53F7\u5B89\u5168", "\u5B89\u5168\u9996\u9875"]);
-function normalizeNickname(value) {
-  const nickname = String(value || "").replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").replace(/[▼▽▾▿⏷⌄]+/g, "").trim();
-  if (!nickname || BILIBILI_BLOCKED_TEXTS.has(nickname) || nickname.length < 2 || nickname.length > 40) {
-    return void 0;
-  }
-  return nickname;
-}
-async function pickNicknameFromSelectors(page, selectors) {
-  for (const selector of selectors) {
-    const locator = page.locator(selector);
-    try {
-      const count = await locator.count();
-      for (let index = 0; index < count; index += 1) {
-        const candidate = locator.nth(index);
-        if (!await candidate.isVisible().catch(() => false)) {
-          continue;
-        }
-        const nickname = normalizeNickname(await candidate.textContent().catch(() => ""));
-        if (nickname) {
-          return nickname;
-        }
-      }
-    } catch {
-      continue;
-    }
-  }
-  return void 0;
-}
-async function syncBilibiliNickname(accountFile, timeoutMs) {
-  const context = await createContextFromAccountFile(accountFile, "login-success:bilibili");
-  const browser = context.browser();
-  try {
-    const page = await context.newPage();
-    page.setDefaultTimeout(timeoutMs);
-    page.setDefaultNavigationTimeout(timeoutMs);
-    logger.info(`[bilibili] opening nickname page: ${BILIBILI_HOME_URL}`);
-    await page.goto(BILIBILI_HOME_URL, { waitUntil: "domcontentloaded", timeout: timeoutMs });
-    await page.waitForLoadState("domcontentloaded", { timeout: timeoutMs }).catch(() => void 0);
-    await page.waitForLoadState("networkidle", { timeout: Math.min(timeoutMs, 15e3) }).catch(() => void 0);
-    const primaryNickname = await pickNicknameFromSelectors(page, [BILIBILI_PRIMARY_NICKNAME_SELECTOR]);
-    if (primaryNickname) {
-      logger.info(`[bilibili] primary selector matched: ${BILIBILI_PRIMARY_NICKNAME_SELECTOR}`);
-      return primaryNickname;
-    }
-    logger.info(`[bilibili] primary selector missed, falling back to generic selectors`);
-    return pickNicknameFromSelectors(page, BILIBILI_NICKNAME_SELECTORS.slice(1));
-  } finally {
-    await context.close().catch(() => void 0);
-    await browser?.close().catch(() => void 0);
-  }
-}
-
 class BilibiliAccount implements Account {
   /** 完成 Bilibili 登录。 */
   login(options: AccountLoginOptions): Promise<AccountLoginResult> {
@@ -1139,13 +900,7 @@ class BilibiliAccount implements Account {
   ping(accountFile: string): Promise<AccountPingResult> {
     return cookieAuth(accountFile);
   }
-  /** 读取 Bilibili 账号昵称。 */
-  syncNickname(accountFile: string, timeoutMs: number): Promise<string | undefined> {
-    return syncBilibiliNickname(accountFile, timeoutMs);
-  }
 }
 export {
-  BilibiliAccount,
-  PLAYWRIGHT_HEADLESS_CONFIG,
-  resolvePlaywrightHeadlessMode
+  BilibiliAccount
 };

@@ -3,22 +3,8 @@ import { logger } from "../../utils/logger.ts";
 
 import axios from "axios";
 
-import "playwright";
 
 import fs from "node:fs/promises";
-async function readStorageState(accountFile) {
-  try {
-    const content = await fs.readFile(accountFile, "utf8");
-    return JSON.parse(content);
-  } catch {
-    return null;
-  }
-}
-async function loadContextStorageState(accountFile) {
-  const storageState = await readStorageState(accountFile);
-  return storageState ? { storageState } : {};
-}
-
 var PlatformInfraError = class extends Error {
   constructor(message) {
     super(message);
@@ -32,157 +18,6 @@ var PlatformTimeoutError = class extends PlatformInfraError {
   }
 };
 
-import fs2 from "node:fs/promises";
-import path from "node:path";
-import { chromium } from "playwright";
-
-var PLAYWRIGHT_HEADLESS_CONFIG = {
-  default: false,
-  probe: false,
-  "ping:douyin": true,
-  "ping:bilibili": true,
-  "ping:baijiahao": true,
-  "login-success:douyin": true,
-  "login-success:bilibili": true,
-  "login-success:sohu": true,
-  "login-success:baijiahao": true,
-  "publish:douyin": false,
-  "publish:sohu": false,
-  "publish:baijiahao": false,
-  "record-status:douyin": true,
-  "record-status:bilibili": true,
-  "record-status:sohu": true,
-  "record-status:baijiahao": true,
-  "script:douyin-record-status": false,
-  "script:baijiahao-video-state-success": false,
-  "script:bilibili-video-state-success": false
-};
-function resolvePlaywrightHeadlessMode(scenario = "default") {
-  return PLAYWRIGHT_HEADLESS_CONFIG[scenario];
-}
-
-var ENV_BROWSER_PATH_KEYS = [
-  "PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH",
-  "GOOGLE_CHROME_BIN",
-  "CHROME_BIN",
-  "CHROME_PATH",
-  "CHROMIUM_BIN",
-  "CHROMIUM_PATH"
-];
-var PATH_BROWSER_COMMANDS = [
-  "google-chrome",
-  "google-chrome-stable",
-  "chrome",
-  "chromium",
-  "chromium-browser",
-  "msedge"
-];
-var LOCAL_BROWSER_PATH_CANDIDATES = [
-  "~/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-  "~/Applications/Chromium.app/Contents/MacOS/Chromium",
-  "/Applications/Chromium.app/Contents/MacOS/Chromium",
-  "~/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-  "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-  "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
-  "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
-  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
-  "/usr/bin/google-chrome",
-  "/usr/bin/google-chrome-stable",
-  "/usr/bin/chromium",
-  "/usr/bin/chromium-browser",
-  "/usr/bin/microsoft-edge"
-];
-function normalizeBrowserPath(candidate) {
-  const token = String(candidate ?? "").trim();
-  if (!token) {
-    return null;
-  }
-  const resolved = path.resolve(token.replace(/^~(?=$|[\\/])/, process.env.HOME || "~"));
-  return resolved;
-}
-async function fileExists(targetPath) {
-  try {
-    await fs2.access(targetPath);
-    return true;
-  } catch {
-    return false;
-  }
-}
-async function resolveEnvBrowserPath() {
-  for (const envKey of ENV_BROWSER_PATH_KEYS) {
-    const normalized = normalizeBrowserPath(process.env[envKey]);
-    if (normalized && await fileExists(normalized)) {
-      return normalized;
-    }
-  }
-  for (const command of PATH_BROWSER_COMMANDS) {
-    const commandPath = process.platform === "win32" ? `${command}.exe` : command;
-    const envPath = process.env.PATH || "";
-    for (const segment of envPath.split(path.delimiter)) {
-      const normalized = normalizeBrowserPath(path.join(segment, commandPath));
-      if (normalized && await fileExists(normalized)) {
-        return normalized;
-      }
-    }
-  }
-  return null;
-}
-async function resolveLocalBrowserPath(configuredPath) {
-  const envBrowserPath = await resolveEnvBrowserPath();
-  if (envBrowserPath) {
-    return envBrowserPath;
-  }
-  const configured = normalizeBrowserPath(configuredPath);
-  if (configured && await fileExists(configured)) {
-    return configured;
-  }
-  for (const candidate of LOCAL_BROWSER_PATH_CANDIDATES) {
-    const normalized = normalizeBrowserPath(candidate);
-    if (normalized && await fileExists(normalized)) {
-      return normalized;
-    }
-  }
-  return null;
-}
-async function launchChromiumBrowser(browserType: any, options: any = {}) {
-  const { configuredExecutablePath, ...launchOptions } = options;
-  const explicitExecutablePath = normalizeBrowserPath(launchOptions.executablePath);
-  if (explicitExecutablePath) {
-    try {
-      return await browserType.launch({ ...launchOptions, executablePath: explicitExecutablePath });
-    } catch {
-    }
-  }
-  const localBrowserPath = await resolveLocalBrowserPath(configuredExecutablePath);
-  if (localBrowserPath) {
-    try {
-      return await browserType.launch({ ...launchOptions, executablePath: localBrowserPath });
-    } catch {
-    }
-  }
-  return browserType.launch(launchOptions);
-}
-async function createBrowserSession(options: any = {}) {
-  const browser = await launchChromiumBrowser(chromium, {
-    headless: resolvePlaywrightHeadlessMode(options.headlessMode),
-    configuredExecutablePath: options.configuredExecutablePath,
-    ...options.launchOptions
-  });
-  try {
-    const context = await browser.newContext(options.contextOptions);
-    const page = await context.newPage();
-    return { browser, context, page };
-  } catch (error) {
-    await browser.close().catch(() => void 0);
-    throw error;
-  }
-}
-
-var sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-import { chromium as chromium2 } from "playwright";
 
 import fs3 from "node:fs";
 import path2 from "node:path";
@@ -246,19 +81,9 @@ function resolvePartitionForAccount(store, accountId) {
   return partition;
 }
 
-var DEFAULT_BROWSER_TIMEOUT_MS = 18e4;
-async function createContextFromAccountFile(accountFile, headlessMode = "default") {
-  const contextOptions = await loadContextStorageState(accountFile);
-  const session = await createBrowserSession({ accountFile, contextOptions, headlessMode });
-  try {
-    return session.context;
-  } catch (error) {
-    await session.browser.close().catch(() => void 0);
-    throw error;
-  }
-}
 const SOHU_ORIGIN = "https://mp.sohu.com";
 const SOHU_ACCOUNT_AUTH_URL = `${SOHU_ORIGIN}/mpbp/bp/account/check/user`;
+const SOHU_ACCOUNT_INFO_URL = `${SOHU_ORIGIN}/mpbp/bp/account/info`;
 const SOHU_ACCOUNT_REFERER = `${SOHU_ORIGIN}/mpfe/v4/contentManagement/news/addvideo`;
 const ACCOUNT_PING_ATTEMPTS = 3;
 const ACCOUNT_PING_TIMEOUT_MS = 20_000;
@@ -325,11 +150,11 @@ async function cookieAuth(accountFile: string): Promise<AccountPingResult> {
     if (!dvId) throw new Error("搜狐账号凭据不完整，请重新登录：缺少 dv-id");
 
     const fileName = process.platform === "win32" ? "browser-identity.windows.json" : "browser-identity.macos.json";
-    const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
+    const moduleDirectory = path2.dirname(fileURLToPath(import.meta.url));
     const candidates = [
-      path.join(process.cwd(), "assets", "douyin", fileName),
-      path.resolve(moduleDirectory, "../../../assets/douyin", fileName),
-      path.resolve(moduleDirectory, "../assets/douyin", fileName)
+      path2.join(process.cwd(), "assets", "douyin", fileName),
+      path2.resolve(moduleDirectory, "../../../assets/douyin", fileName),
+      path2.resolve(moduleDirectory, "../assets/douyin", fileName)
     ];
     const expectedPlatform = process.platform === "win32" ? "Win32" : "MacIntel";
     let userAgent = "";
@@ -359,15 +184,40 @@ async function cookieAuth(accountFile: string): Promise<AccountPingResult> {
       ...(mpCv ? { "mp-cv": mpCv } : {})
     };
     for (let attempt = 0; attempt < ACCOUNT_PING_ATTEMPTS; attempt += 1) {
+      let response;
       try {
-        const response = await axios.get(SOHU_ACCOUNT_AUTH_URL, { headers, params: { accountId } });
-        if (response.data?.code === 2_000_000) return { online: true };
+        response = await axios.get(SOHU_ACCOUNT_AUTH_URL, {
+          headers,
+          params: { accountId, _: Date.now() }
+        });
       } catch (error) {
         if (axios.isAxiosError(error) && (error.response?.status === 401 || error.response?.status === 403)) {
           return { online: false };
         }
         throw error;
       }
+      if (response.data?.code !== 2_000_000) continue;
+
+      const infoResponse = await axios.get(SOHU_ACCOUNT_INFO_URL, {
+        headers,
+        params: { accountId, _: Date.now() }
+      });
+      if (infoResponse.data?.code !== 2_000_000) {
+        throw new Error(`搜狐账号信息请求失败: code=${String(infoResponse.data?.code)}`);
+      }
+      const info = infoResponse.data.data;
+      if (!info || typeof info !== "object" || Array.isArray(info)) {
+        throw new Error("搜狐账号信息响应格式异常：data 必须是对象");
+      }
+      const rawNickname = info.nickName;
+      if (rawNickname === undefined || rawNickname === null) {
+        return { online: true };
+      }
+      if (typeof rawNickname !== "string") {
+        throw new Error("搜狐账号信息响应格式异常：nickName 必须是字符串");
+      }
+      const nickname = rawNickname.trim();
+      return nickname ? { online: true, nickname } : { online: true };
     }
     return { online: false };
   })();
@@ -885,11 +735,9 @@ async function completeLoginState(options) {
       options.loginWindow.close();
     });
   }
-  const nickname = await options.resolveNickname?.().catch(() => void 0);
   return {
     accountFile: options.context.accountFile,
-    loginSucceeded: true,
-    nickname
+    loginSucceeded: true
   };
 }
 async function runPlatformLoginFlow(hooks, options) {
@@ -947,8 +795,7 @@ async function runPlatformLoginFlow(hooks, options) {
           persistState: async () => {
             await hooks.beforePersist?.(loginWindow);
             await exportStorageState(loginWindow, options.accountFile, hooks.consolePrefix || context.platform);
-          },
-          resolveNickname: hooks.resolveNickname ? async () => hooks.resolveNickname?.(loginWindow) : void 0
+          }
         });
         finish(result);
       } catch (error) {
@@ -1025,111 +872,6 @@ function isSohuLoginSuccessUrl(url) {
     return url.startsWith(SOHU_LOGIN_SUCCESS_URL);
   }
 }
-async function extractSohuNickname(webContents) {
-  const script = `(() => {
-    const blockedTexts = new Set([
-      "",
-      "\u641C\u72D0\u53F7",
-      "\u7533\u8BF7\u8BA4\u8BC1",
-      "\u53BB\u8BBE\u7F6E",
-      "\u8D26\u53F7\u4FE1\u606F",
-      "\u4E2A\u4EBA\u4E2D\u5FC3",
-      "\u9080\u8BF7\u5165\u9A7B",
-      "\u6388\u6743\u4FE1\u606F",
-      "\u6C34\u5370\u8BBE\u7F6E",
-      "\u8FD0\u8425\u4EBA\u4FE1\u606F",
-      "\u5165\u9A7B\u7C7B\u578B",
-      "\u4EFB\u52A1\u4E2D\u5FC3",
-      "\u680F\u76EE\u7BA1\u7406",
-      "\u6D3B\u52A8",
-      "\u7D20\u6750\u5E93",
-      "\u4E92\u52A8\u7BA1\u7406",
-      "\u6570\u636E\u5206\u6790",
-      "\u641C\u72D0\u53F7\u767E\u79D1",
-    ]);
-
-    const normalize = (value) =>
-      String(value || "")
-        .replace(/[\\r\\n\\t]+/g, " ")
-        .replace(/\\s+/g, " ")
-        .replace(/[\u25BC\u25BD\u25BE\u25BF\u23F7\u2304]+/g, "")
-        .trim();
-
-    const isValid = (value) => {
-      const text = normalize(value);
-      if (!text || blockedTexts.has(text)) {
-        return false;
-      }
-      if (text.length < 2 || text.length > 40) {
-        return false;
-      }
-      if (/^(\u641C\u72D0|\u8BBE\u7F6E|\u901A\u77E5|\u6D88\u606F|\u9000\u51FA|\u767B\u5F55|\u4E2A\u4EBA\u4E2D\u5FC3)/.test(text)) {
-        return false;
-      }
-      if (/^[0-9\\W_]+$/.test(text)) {
-        return false;
-      }
-      return true;
-    };
-
-    const pickText = (elements) => {
-      for (const element of elements) {
-        const text = normalize(element?.textContent || "");
-        if (isValid(text)) {
-          return text;
-        }
-      }
-      return null;
-    };
-
-    const selectorGroups = [
-      ".user-info .name, .user-info .nickname, .user-info .user-name",
-      "[class*='user'] [class*='name'], [class*='user'] [class*='nick']",
-      "[class*='account'] [class*='name'], [class*='account'] [class*='nick']",
-      ".account-info [class*='name'], .account-info [class*='nick']",
-      ".personal-center [class*='name'], .personal-center [class*='nick']",
-    ];
-
-    for (const selector of selectorGroups) {
-      const text = pickText(Array.from(document.querySelectorAll(selector)));
-      if (text) {
-        return text;
-      }
-    }
-
-    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
-    const heuristicElements = Array.from(document.querySelectorAll("span, a, div, p, strong, h1, h2"))
-      .filter((element) => {
-        const text = normalize(element.textContent || "");
-        if (!isValid(text)) {
-          return false;
-        }
-        const rect = element.getBoundingClientRect();
-        if (!rect || rect.width <= 0 || rect.height <= 0) {
-          return false;
-        }
-        const nearTop = rect.top >= 0 && rect.top <= 220;
-        const nearRight = rect.right <= viewportWidth && rect.right >= viewportWidth - 420;
-        return nearTop && nearRight;
-      })
-      .sort((left, right) => {
-        const leftRect = left.getBoundingClientRect();
-        const rightRect = right.getBoundingClientRect();
-        return leftRect.top - rightRect.top || rightRect.right - leftRect.right;
-      });
-
-    return pickText(heuristicElements);
-  })()`;
-  for (let attempt = 0; attempt < 10; attempt += 1) {
-    const nickname = await webContents.executeJavaScript(script, true).catch(() => null);
-    if (typeof nickname === "string" && nickname.trim()) {
-      return nickname.trim();
-    }
-    await new Promise((resolve) => setTimeout(resolve, 500));
-  }
-  return void 0;
-}
-
 var runSohuLogin = async (options) => runPlatformLoginFlow(
   {
     title: "\u641C\u72D0\u53F7",
@@ -1137,142 +879,10 @@ var runSohuLogin = async (options) => runPlatformLoginFlow(
     loginUrl: SOHU_LOGIN_URL,
     closeButtonScript: SOHU_CLOSE_BUTTON_SCRIPT,
     consolePrefix: "sohu",
-    isSuccess: async ({ url }) => isSohuLoginSuccessUrl(url),
-    resolveNickname: async (loginWindow) => extractSohuNickname(loginWindow.webContents).catch(() => void 0)
+    isSuccess: async ({ url }) => isSohuLoginSuccessUrl(url)
   },
   options
 );
-
-var SOHU_HOME_URL = "https://mp.sohu.com/mpfe/v4/contentManagement/first/page";
-var SOHU_PRIMARY_NICKNAME_SELECTOR = "div#header-user.user-info-wrap.has-more div.user-head div.user-desc span.user-name";
-var SOHU_NICKNAME_SELECTORS = [
-  SOHU_PRIMARY_NICKNAME_SELECTOR,
-  ".user-info .name, .user-info .nickname, .user-info .user-name",
-  "[class*='user'] [class*='name'], [class*='user'] [class*='nick']",
-  "[class*='account'] [class*='name'], [class*='account'] [class*='nick']",
-  ".account-info [class*='name'], .account-info [class*='nick']",
-  ".personal-center [class*='name'], .personal-center [class*='nick']"
-];
-var SOHU_BLOCKED_TEXTS = /* @__PURE__ */ new Set([
-  "",
-  "\u641C\u72D0\u53F7",
-  "\u7533\u8BF7\u8BA4\u8BC1",
-  "\u53BB\u8BBE\u7F6E",
-  "\u8D26\u53F7\u4FE1\u606F",
-  "\u4E2A\u4EBA\u4E2D\u5FC3",
-  "\u9080\u8BF7\u5165\u9A7B",
-  "\u6388\u6743\u4FE1\u606F",
-  "\u6C34\u5370\u8BBE\u7F6E",
-  "\u8FD0\u8425\u4EBA\u4FE1\u606F",
-  "\u5165\u9A7B\u7C7B\u578B",
-  "\u4EFB\u52A1\u4E2D\u5FC3",
-  "\u680F\u76EE\u7BA1\u7406",
-  "\u6D3B\u52A8",
-  "\u7D20\u6750\u5E93",
-  "\u4E92\u52A8\u7BA1\u7406",
-  "\u6570\u636E\u5206\u6790",
-  "\u641C\u72D0\u53F7\u767E\u79D1"
-]);
-function normalizeNickname(value) {
-  const nickname = String(value || "").replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").replace(/[▼▽▾▿⏷⌄]+/g, "").trim();
-  if (!nickname || SOHU_BLOCKED_TEXTS.has(nickname) || nickname.length < 2 || nickname.length > 40) {
-    return void 0;
-  }
-  if (/^(搜狐|设置|通知|消息|退出|登录|个人中心)/.test(nickname) || /^[0-9\W_]+$/.test(nickname)) {
-    return void 0;
-  }
-  return nickname;
-}
-async function pickSohuNickname(page) {
-  const primaryNickname = await pickNicknameFromSelectors(page, [SOHU_PRIMARY_NICKNAME_SELECTOR]);
-  if (primaryNickname) {
-    logger.info(`[sohu] primary selector matched: ${SOHU_PRIMARY_NICKNAME_SELECTOR}`);
-    return primaryNickname;
-  }
-  logger.info(`[sohu] primary selector missed, falling back to generic selectors`);
-  const genericNickname = await pickNicknameFromSelectors(page, SOHU_NICKNAME_SELECTORS.slice(1));
-  if (genericNickname) {
-    return genericNickname;
-  }
-  logger.info("[sohu] generic selectors missed, falling back to heuristic scan");
-  return page.evaluate((blockedTexts) => {
-    const blocked = new Set(blockedTexts);
-    const normalize = (value) => String(value || "").replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").replace(/[▼▽▾▿⏷⌄]+/g, "").trim();
-    const isValid = (value) => {
-      const text = normalize(value);
-      if (!text || blocked.has(text) || text.length < 2 || text.length > 40) {
-        return false;
-      }
-      if (/^(搜狐|设置|通知|消息|退出|登录|个人中心)/.test(text)) {
-        return false;
-      }
-      if (/^[0-9\W_]+$/.test(text)) {
-        return false;
-      }
-      return true;
-    };
-    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
-    const heuristicElements = Array.from(document.querySelectorAll("span, a, div, p, strong, h1, h2")).filter((element) => {
-      const text = normalize(element.textContent || "");
-      if (!isValid(text)) {
-        return false;
-      }
-      const rect = element.getBoundingClientRect();
-      if (!rect || rect.width <= 0 || rect.height <= 0) {
-        return false;
-      }
-      const nearTop = rect.top >= 0 && rect.top <= 220;
-      const nearRight = rect.right <= viewportWidth && rect.right >= viewportWidth - 420;
-      return nearTop && nearRight;
-    }).sort((left, right) => {
-      const leftRect = left.getBoundingClientRect();
-      const rightRect = right.getBoundingClientRect();
-      return leftRect.top - rightRect.top || rightRect.right - leftRect.right;
-    });
-    for (const element of heuristicElements) {
-      const text = normalize(element.textContent || "");
-      if (isValid(text)) {
-        return text;
-      }
-    }
-    return void 0;
-  }, [...SOHU_BLOCKED_TEXTS]);
-}
-async function pickNicknameFromSelectors(page, selectors) {
-  for (const selector of selectors) {
-    const locator = page.locator(selector);
-    try {
-      const count = await locator.count();
-      for (let index = 0; index < count; index += 1) {
-        const candidate = locator.nth(index);
-        const nickname = normalizeNickname(await candidate.textContent().catch(() => ""));
-        if (nickname) {
-          return nickname;
-        }
-      }
-    } catch {
-      continue;
-    }
-  }
-  return void 0;
-}
-async function syncSohuNickname(accountFile, timeoutMs) {
-  const context = await createContextFromAccountFile(accountFile, "login-success:sohu");
-  const browser = context.browser();
-  try {
-    const page = await context.newPage();
-    page.setDefaultTimeout(timeoutMs);
-    page.setDefaultNavigationTimeout(timeoutMs);
-    logger.info(`[sohu] opening nickname page: ${SOHU_HOME_URL}`);
-    await page.goto(SOHU_HOME_URL, { waitUntil: "domcontentloaded", timeout: timeoutMs });
-    await page.waitForLoadState("domcontentloaded", { timeout: timeoutMs }).catch(() => void 0);
-    await page.waitForLoadState("networkidle", { timeout: Math.min(timeoutMs, 15e3) }).catch(() => void 0);
-    return await pickSohuNickname(page);
-  } finally {
-    await context.close().catch(() => void 0);
-    await browser?.close().catch(() => void 0);
-  }
-}
 
 class SohuAccount implements Account {
   /** 完成搜狐登录。 */
@@ -1283,13 +893,7 @@ class SohuAccount implements Account {
   ping(accountFile: string): Promise<AccountPingResult> {
     return cookieAuth(accountFile);
   }
-  /** 读取搜狐账号昵称。 */
-  syncNickname(accountFile: string, timeoutMs: number): Promise<string | undefined> {
-    return syncSohuNickname(accountFile, timeoutMs);
-  }
 }
 export {
-  PLAYWRIGHT_HEADLESS_CONFIG,
-  resolvePlaywrightHeadlessMode,
   SohuAccount
 };
