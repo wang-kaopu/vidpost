@@ -25,6 +25,8 @@ npm run forge:package
 
 The Electron main process is emitted as `.build/main.js` in ESM format. `preload.ts` uses TypeScript and ESM syntax in source, but is emitted as `.build/preload.cjs` to preserve Electron sandbox support.
 
+The root TypeScript project enables `strict: true`. The main process, scripts, and runtime code under `src/` must pass strict type checking without directory-level exemptions.
+
 ## Video publishing pipeline
 
 The Bilibili, Baijiahao, Douyin, and Sohu publishing implementations live directly in their corresponding `src/infra/video/xx-video.ts` files. Module-private `prepare()` performs everything before the final submission, private `publish()` confirms only that last operation, and platforms that retain runtime resources use `dispose()` for cleanup. The complete `dryRun()`, `upload()`, and `fetchPublishedState()` implementations are called through the common `Video` interface.

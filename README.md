@@ -36,6 +36,8 @@ npm run forge:make
 
 Electron 主进程构建为 `.build/main.js` ESM。`preload.ts` 仍在源码层使用 TypeScript 和 ESM 语法，但为了保留 sandbox，构建产物为 `.build/preload.cjs`。
 
+根目录 TypeScript 工程已启用 `strict: true`，主进程、脚本和 `src/` 下的运行时代码必须通过严格类型检查，不保留目录级豁免。
+
 `npm run dev` 会选择空闲端口启动当前项目的 Vite，并通过 `RENDERER_DEV_SERVER_URL` 将准确地址交给 Electron。Electron 不再探测固定端口，因此不会连接其他项目或工作区的开发服务器。`npm start` 和打包后的应用只加载 `app/dist/index.html`。
 
 `app/App.vue` 是正式渲染入口；`app/src/App.vue` 和 `app/src/scripts/sse-register.ts` 是后端联调 Demo，不能作为废弃目录删除。
@@ -115,11 +117,7 @@ Bilibili、百家号、抖音和搜狐的发布逻辑分别位于 `src/infra/vid
 旧目录 `~/.matrix-account` 不再作为账号状态读写路径。
 
 ```json
-{
-  "partition_map_table": {
-    "1001": "persist:rpa-MTAwMQ"
-  }
-}
+{ "partition_map_table": { "1001": "persist:rpa-MTAwMQ" } }
 ```
 
 - 同一个账号 ID 复用同一个 partition，重启后从本地映射恢复。
