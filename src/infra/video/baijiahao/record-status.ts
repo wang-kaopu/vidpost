@@ -2,10 +2,10 @@ import { isAbsolute, resolve } from "node:path";
 
 import axios from "axios";
 
-import { loadBrowserIdentity } from "../../browser-identity.ts";
-import { readBrowserStorageState } from "../../browser-storage-state.ts";
+import { loadBrowserIdentity } from "@/src/infra/browser-identity.ts";
+import { readBrowserStorageState } from "@/src/infra/browser-storage-state.ts";
 
-import type { PublishedStatePayload, PublishedStateResult } from "../video.ts";
+import type { PublishedStatePayload, PublishedStateResult } from "@/src/infra/video/video.ts";
 
 const BAIJIAHAO_ORIGIN = "https://baijiahao.baidu.com";
 

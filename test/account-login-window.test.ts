@@ -3,12 +3,12 @@ import test from "node:test";
 
 import type { BrowserWindow } from "electron";
 
-import type { BrowserIdentity } from "../src/infra/browser-identity.ts";
+import type { BrowserIdentity } from "@/src/infra/browser-identity.ts";
 import {
   buildCloseButtonScript,
   configureAccountLoginWindow,
   wireLoginWindowCloseControls,
-} from "../src/infra/account/account-login-window.ts";
+} from "@/src/infra/account/account-login-window.ts";
 
 const TEST_IDENTITY: BrowserIdentity = {
   acceptLanguage: "zh-CN,zh;q=0.9",

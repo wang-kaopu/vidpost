@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { buildElectronLaunchConfig } from '../scripts/start-electron.ts'
+import { buildElectronLaunchConfig } from '@/scripts/start-electron.ts'
 
 test('start-electron clears ELECTRON_RUN_AS_NODE before launch', () => {
   const { command, args, spawnOptions } = buildElectronLaunchConfig({

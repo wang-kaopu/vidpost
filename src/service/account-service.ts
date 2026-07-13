@@ -4,16 +4,16 @@ import fs from "node:fs";
 import path from "node:path";
 import type { BrowserWindow } from "electron";
 
-import { createPublishAccount, updatePublishAccount } from "../api/account-api.ts";
+import { createPublishAccount, updatePublishAccount } from "@/src/api/account-api.ts";
 import {
   createPartitionStore,
   deletePartitionMapping,
   movePartitionMapping,
   resolvePartitionForAccount,
-} from "../db/partition-store.ts";
-import { createAccountPageModel } from "../page-model/account-page-model.ts";
-import type { Account, PlatformType } from "../infra/account/account.ts";
-import { logger } from "../utils/logger.ts";
+} from "@/src/db/partition-store.ts";
+import { createAccountPageModel } from "@/src/page-model/account-page-model.ts";
+import type { Account, PlatformType } from "@/src/infra/account/account.ts";
+import { logger } from "@/src/utils/logger.ts";
 
 // 拼接账号文件路径，用于正在新增过程中、未获取数据自增ID的账号文件命名
 export function resolveDraftAccountFilePath(platform: PlatformType): string {

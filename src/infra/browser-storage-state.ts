@@ -3,7 +3,7 @@ import path from "node:path";
 
 import type { BrowserWindow } from "electron";
 
-import { logger } from "../utils/logger.ts";
+import { logger } from "@/src/utils/logger.ts";
 
 /** 登录前可注入 Electron Session 的 Cookie。 */
 export interface BrowserCookieInput {

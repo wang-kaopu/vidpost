@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { runAccountPingBatch } from '../app/utils/account-ping-batch.ts'
+import { runAccountPingBatch } from '@/app/utils/account-ping-batch.ts'
 
 test('account ping batch runs three accounts concurrently and continues after failures', async () => {
   const items = Array.from({ length: 7 }, (_, index) => ({ id: String(index + 1) }))

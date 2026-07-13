@@ -4,17 +4,17 @@ import { basename, isAbsolute, resolve } from "node:path";
 import axios, { type AxiosInstance } from "axios";
 import pLimit from "p-limit";
 
-import { loadBrowserIdentity } from "../../browser-identity.ts";
-import { readBrowserStorageState } from "../../browser-storage-state.ts";
-import { logger } from "../../../utils/logger.ts";
+import { loadBrowserIdentity } from "@/src/infra/browser-identity.ts";
+import { readBrowserStorageState } from "@/src/infra/browser-storage-state.ts";
+import { logger } from "@/src/utils/logger.ts";
 
-import type { BaijiahaoVideoUploadPayload, VideoUploadResult } from "../video.ts";
+import type { BaijiahaoVideoUploadPayload, VideoUploadResult } from "@/src/infra/video/video.ts";
 import {
   calculateBaijiahaoVideoMd5,
   generateBaijiahaoCovers,
   inspectBaijiahaoMp4,
   type BaijiahaoVideoMetadata,
-} from "./media.ts";
+} from "@/src/infra/video/baijiahao/media.ts";
 
 interface SerializedAxiosResponse {
   body: unknown;

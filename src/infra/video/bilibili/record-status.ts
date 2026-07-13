@@ -2,10 +2,10 @@ import { isAbsolute, resolve } from "node:path";
 
 import axios from "axios";
 
-import { loadBrowserIdentity } from "../../browser-identity.ts";
-import { readBrowserStorageState, type BrowserStorageCookie } from "../../browser-storage-state.ts";
+import { loadBrowserIdentity } from "@/src/infra/browser-identity.ts";
+import { readBrowserStorageState, type BrowserStorageCookie } from "@/src/infra/browser-storage-state.ts";
 
-import type { PublishedStatePayload, PublishedStateResult } from "../video.ts";
+import type { PublishedStatePayload, PublishedStateResult } from "@/src/infra/video/video.ts";
 
 const BILIBILI_REFERER = "https://member.bilibili.com/platform/upload/video/frame";
 

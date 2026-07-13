@@ -4,7 +4,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import electronModule from 'electron'
 
-import { logger } from '../src/utils/logger.ts'
+import { logger } from '@/src/utils/logger.ts'
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url))
 const electronBinary = electronModule as unknown as string

@@ -6,16 +6,16 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import type { BrowserWindow, Event as ElectronEvent, IpcMainEvent, Session } from "electron";
 
-import { logger, type Logger } from "../../../utils/logger.ts";
-import { loadBrowserIdentity, type BrowserIdentity } from "../../browser-identity.ts";
-import type { DouyinVideoUploadPayload, VideoRuntime, VideoUploadResult } from "../video.ts";
+import { logger, type Logger } from "@/src/utils/logger.ts";
+import { loadBrowserIdentity, type BrowserIdentity } from "@/src/infra/browser-identity.ts";
+import type { DouyinVideoUploadPayload, VideoRuntime, VideoUploadResult } from "@/src/infra/video/video.ts";
 import {
   parseDouyinScheduledAt,
   type DouyinPreparedContext,
   type DouyinPublishResponse,
   type DouyinWorkerOptions,
   type WorkerEnvelope,
-} from "./upload.ts";
+} from "@/src/infra/video/douyin/upload.ts";
 
 const SERVICE_PROTOCOL_VERSION = 1;
 const RUNTIME_ARGUMENT = "--service-douyin-runtime=";

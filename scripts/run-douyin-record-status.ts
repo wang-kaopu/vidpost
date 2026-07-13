@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { createVideo } from "../src/infra/video/video.ts";
-import { logger } from "../src/utils/logger.ts";
+import { createVideo } from "@/src/infra/video/video.ts";
+import { logger } from "@/src/utils/logger.ts";
 
 const COOKIE_DIR = path.join(process.env.HOME || process.env.USERPROFILE || ".", ".agenthunt", "cookie_files");
 

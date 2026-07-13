@@ -5,14 +5,14 @@ import test from "node:test";
 
 import {
   BilibiliVideo,
-} from "../src/infra/video/bilibili-video.ts";
+} from "@/src/infra/video/bilibili-video.ts";
 import {
   BaijiahaoVideo,
-} from "../src/infra/video/baijiahao-video.ts";
-import { DouyinVideo } from "../src/infra/video/douyin-video.ts";
-import { createMachineProfile } from "../src/infra/video/douyin/upload.ts";
-import { SohuVideo } from "../src/infra/video/sohu-video.ts";
-import { loadBrowserIdentity } from "../src/infra/browser-identity.ts";
+} from "@/src/infra/video/baijiahao-video.ts";
+import { DouyinVideo } from "@/src/infra/video/douyin-video.ts";
+import { createMachineProfile } from "@/src/infra/video/douyin/upload.ts";
+import { SohuVideo } from "@/src/infra/video/sohu-video.ts";
+import { loadBrowserIdentity } from "@/src/infra/browser-identity.ts";
 
 const projectRoot = process.cwd();
 const windowsIdentity = JSON.parse(fs.readFileSync(
@@ -38,10 +38,10 @@ test("video implementations expose dry-run and upload instance methods", () => {
 
 test("platform modules expose publishing only through Video instances", async () => {
   for (const module of await Promise.all([
-    import("../src/infra/video/bilibili-video.ts"),
-    import("../src/infra/video/baijiahao-video.ts"),
-    import("../src/infra/video/douyin-video.ts"),
-    import("../src/infra/video/sohu-video.ts"),
+    import("@/src/infra/video/bilibili-video.ts"),
+    import("@/src/infra/video/baijiahao-video.ts"),
+    import("@/src/infra/video/douyin-video.ts"),
+    import("@/src/infra/video/sohu-video.ts"),
   ])) {
     assert.equal("prepare" in module, false);
     assert.equal("publish" in module, false);

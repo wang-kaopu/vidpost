@@ -7,11 +7,11 @@ import axiosRetry from "axios-retry";
 import pLimit from "p-limit";
 import sharp from "sharp";
 
-import { loadBrowserIdentity } from "../../browser-identity.ts";
-import { readBrowserStorageState } from "../../browser-storage-state.ts";
-import { logger } from "../../../utils/logger.ts";
+import { loadBrowserIdentity } from "@/src/infra/browser-identity.ts";
+import { readBrowserStorageState } from "@/src/infra/browser-storage-state.ts";
+import { logger } from "@/src/utils/logger.ts";
 
-import type { SohuVideoUploadPayload, VideoUploadResult } from "../video.ts";
+import type { SohuVideoUploadPayload, VideoUploadResult } from "@/src/infra/video/video.ts";
 
 const SOHU_ORIGIN = "https://mp.sohu.com";
 const SOHU_REFERER = `${SOHU_ORIGIN}/mpfe/v4/contentManagement/news/addvideo`;

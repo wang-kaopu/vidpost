@@ -8,9 +8,9 @@ import CRC32 from "crc-32";
 import pLimit from "p-limit";
 import type { IpcRenderer } from "electron";
 
-import { logger, type Logger } from "../../../utils/logger.ts";
-import type { BrowserIdentity } from "../../browser-identity.ts";
-import type { DouyinVisibility } from "../video.ts";
+import { logger, type Logger } from "@/src/utils/logger.ts";
+import type { BrowserIdentity } from "@/src/infra/browser-identity.ts";
+import type { DouyinVisibility } from "@/src/infra/video/video.ts";
 
 const SERVICE_PROTOCOL_VERSION = 1;
 const CHANNEL_ARGUMENT = "--service-douyin-channel=";

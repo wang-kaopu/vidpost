@@ -4,8 +4,8 @@ import { fileURLToPath } from "node:url";
 
 import electron, { type BrowserWindow } from "electron";
 
-import type { BrowserIdentity } from "../browser-identity.ts";
-import { logger } from "../../utils/logger.ts";
+import type { BrowserIdentity } from "@/src/infra/browser-identity.ts";
+import { logger } from "@/src/utils/logger.ts";
 
 const { BrowserWindow: ElectronBrowserWindow, shell } = electron;
 

@@ -1,11 +1,11 @@
 import axios from "axios";
 
-import { loadBrowserIdentity } from "../browser-identity.ts";
-import { PlatformTimeoutError } from "../platform-errors.ts";
-import type { Account, AccountLoginOptions, AccountLoginResult, AccountPingResult } from "./account.ts";
-import { runAccountLoginFlow } from "./account-login-flow.ts";
-import { buildCloseButtonScript } from "./account-login-window.ts";
-import { readBrowserStorageState } from "../browser-storage-state.ts";
+import { loadBrowserIdentity } from "@/src/infra/browser-identity.ts";
+import { PlatformTimeoutError } from "@/src/infra/platform-errors.ts";
+import type { Account, AccountLoginOptions, AccountLoginResult, AccountPingResult } from "@/src/infra/account/account.ts";
+import { runAccountLoginFlow } from "@/src/infra/account/account-login-flow.ts";
+import { buildCloseButtonScript } from "@/src/infra/account/account-login-window.ts";
+import { readBrowserStorageState } from "@/src/infra/browser-storage-state.ts";
 
 const SOHU_ORIGIN = "https://mp.sohu.com";
 const SOHU_ACCOUNT_AUTH_URL = `${SOHU_ORIGIN}/mpbp/bp/account/check/user`;

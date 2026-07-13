@@ -6,8 +6,8 @@ import test from 'node:test'
 
 import axios from 'axios'
 
-import { DouyinVideo } from '../src/infra/video/douyin-video.ts'
-import { parseDouyinRecordStatus } from '../src/infra/video/douyin/record-status.ts'
+import { DouyinVideo } from '@/src/infra/video/douyin-video.ts'
+import { parseDouyinRecordStatus } from '@/src/infra/video/douyin/record-status.ts'
 
 test('douyin maps XiaoDouYa status_value sets exactly', () => {
   assert.equal(parseDouyinRecordStatus({ aweme_id: '1', status_value: 141 })?.status, 'reviewing')

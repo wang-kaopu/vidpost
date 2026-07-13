@@ -2,11 +2,11 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import path from 'node:path'
 
-import forgeConfig from '../forge.config.ts'
+import forgeConfig from '@/forge.config.ts'
 import {
   isPackagedPathIgnored,
   normalizeRelativeAppPath,
-} from '../scripts/forge-packaging.ts'
+} from '@/scripts/forge-packaging.ts'
 
 const projectRoot = process.cwd()
 

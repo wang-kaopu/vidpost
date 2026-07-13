@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { normalizeScheduledAt, resolvePublishOptions } from '../src/service/task-service.ts'
+import { normalizeScheduledAt, resolvePublishOptions } from '@/src/service/task-service.ts'
 
 test('normalizeScheduledAt should treat only "0" as immediate publish sentinel', () => {
   assert.equal(normalizeScheduledAt(undefined), '0')

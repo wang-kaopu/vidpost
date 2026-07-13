@@ -6,10 +6,10 @@ import test from 'node:test'
 
 import axios from 'axios'
 
-import { BaijiahaoAccount } from '../src/infra/account/baijiahao-account.ts'
-import { BilibiliAccount } from '../src/infra/account/bilibili-account.ts'
-import { DouyinAccount } from '../src/infra/account/douyin-account.ts'
-import { SohuAccount } from '../src/infra/account/sohu-account.ts'
+import { BaijiahaoAccount } from '@/src/infra/account/baijiahao-account.ts'
+import { BilibiliAccount } from '@/src/infra/account/bilibili-account.ts'
+import { DouyinAccount } from '@/src/infra/account/douyin-account.ts'
+import { SohuAccount } from '@/src/infra/account/sohu-account.ts'
 
 const PLATFORM_CASES = [
   {

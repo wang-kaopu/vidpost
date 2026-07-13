@@ -7,7 +7,7 @@ import {
   parseShanghaiScheduledAt,
   supportsScheduledPublish,
   validateScheduledAt,
-} from "../app/utils/publish-schedule.ts";
+} from "@/app/utils/publish-schedule.ts";
 
 const NOW_MS = Date.UTC(2026, 6, 13, 4, 0);
 

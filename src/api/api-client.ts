@@ -1,7 +1,7 @@
 import axios, { AxiosHeaders } from 'axios'
 import type { BrowserWindow } from 'electron'
 
-import { logger } from '../utils/logger.ts'
+import { logger } from '@/src/utils/logger.ts'
 
 const API_BASE_URL = 'https://testai.reelsagent.com/api'
 const DEFAULT_AUTHORIZATION = '6c4ff3a4df0cdeb07ed4d2ea0fd3db69'

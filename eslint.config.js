@@ -30,6 +30,29 @@ export default tseslint.config(
     },
   },
   { files: ["app/**/*.vue"], languageOptions: { parserOptions: { parser: tseslint.parser } } },
+  {
+    files: ["*.ts", "scripts/**/*.ts", "src/**/*.ts", "test/**/*.ts", "types/**/*.d.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["./*", "../*"],
+              message: "后端项目内模块统一使用 @/ 根路径",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ["forge.config.ts"],
+    rules: {
+      // Electron Forge 的 Jiti 配置加载器不解析 tsconfig paths。
+      "no-restricted-imports": "off",
+    },
+  },
   { files: ["src/utils/logger.ts", "app/src/utils/logger.ts", "test/logger.test.ts"], rules: { "no-console": "off" } },
   { files: ["src/infra/video/sohu-video.ts"], rules: { "@typescript-eslint/no-unused-vars": "off", "no-var": "off" } },
 );

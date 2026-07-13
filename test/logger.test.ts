@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { logger as browserLogger } from "../app/src/utils/logger.ts";
-import { logger as nodeLogger } from "../src/utils/logger.ts";
+import { logger as browserLogger } from "@/app/src/utils/logger.ts";
+import { logger as nodeLogger } from "@/src/utils/logger.ts";
 
 const PREFIX_PATTERN = /^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] - \[agenthunt\] - \[(INFO|ERROR)\] - /u;
 

@@ -5,7 +5,7 @@ import {
   parseAgenthuntUrl,
   extractProtocolUrlFromCommandLine,
   resolveProtocolClientRegistration,
-} from '../src/deep-link.ts'
+} from '@/src/deep-link.ts'
 
 test('parseAgenthuntUrl accepts supported pages and rejects unknown paths', () => {
   assert.deepEqual(parseAgenthuntUrl('agenthunt://navigate/accounts'), { page: 'accounts' })

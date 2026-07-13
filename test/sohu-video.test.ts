@@ -13,8 +13,8 @@ import {
   createSohuVideoChunks,
   extractSohuPublishedPostId,
   loadSohuAccountContext,
-} from "../src/infra/video/sohu/publish.ts";
-import { SohuVideo } from "../src/infra/video/sohu-video.ts";
+} from "@/src/infra/video/sohu/publish.ts";
+import { SohuVideo } from "@/src/infra/video/sohu-video.ts";
 
 test("extractSohuPublishedPostId uses the scalar response data as record.id", () => {
   assert.equal(extractSohuPublishedPostId({ code: 2_000_000, data: 1049530557, success: true }), "1049530557");

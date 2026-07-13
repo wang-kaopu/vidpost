@@ -1,12 +1,12 @@
 import fs from "node:fs";
-import { createPublishTask, updatePublishTask } from "../api/task-api.ts";
-import { createPartitionStore, resolvePartitionForAccount } from "../db/partition-store.ts";
-import { createTaskPageModel } from "../page-model/task-page-model.ts";
-import { resolveAccountFilePath } from "./account-service.ts";
-import { PublishAssetCache } from "./publish-asset-cache.ts";
-import type { Video, VideoUploadPayload } from "../infra/video/video.ts";
-import { logger } from "../utils/logger.ts";
-import { startTaskStateMonitor } from "./task-state-service.ts";
+import { createPublishTask, updatePublishTask } from "@/src/api/task-api.ts";
+import { createPartitionStore, resolvePartitionForAccount } from "@/src/db/partition-store.ts";
+import { createTaskPageModel } from "@/src/page-model/task-page-model.ts";
+import { resolveAccountFilePath } from "@/src/service/account-service.ts";
+import { PublishAssetCache } from "@/src/service/publish-asset-cache.ts";
+import type { Video, VideoUploadPayload } from "@/src/infra/video/video.ts";
+import { logger } from "@/src/utils/logger.ts";
+import { startTaskStateMonitor } from "@/src/service/task-state-service.ts";
 const publishAssetCache = new PublishAssetCache();
 
 type AccountTask<T> = () => Promise<T>;

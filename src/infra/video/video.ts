@@ -1,7 +1,7 @@
-import { BaijiahaoVideo } from "./baijiahao-video.ts";
-import { BilibiliVideo } from "./bilibili-video.ts";
-import { configureDouyinVideoRuntime, destroyDouyinVideoWindows, DouyinVideo } from "./douyin-video.ts";
-import { SohuVideo } from "./sohu-video.ts";
+import { BaijiahaoVideo } from "@/src/infra/video/baijiahao-video.ts";
+import { BilibiliVideo } from "@/src/infra/video/bilibili-video.ts";
+import { configureDouyinVideoRuntime, destroyDouyinVideoWindows, DouyinVideo } from "@/src/infra/video/douyin-video.ts";
+import { SohuVideo } from "@/src/infra/video/sohu-video.ts";
 
 /** 当前支持视频发布的平台标识。 */
 export type VideoPlatformType = "baijiahao" | "bilibili" | "douyin" | "sohu";

@@ -2,6 +2,8 @@
 
 Electron + Vue 的多平台视频发布客户端。Electron 主进程、服务层、脚本和测试统一使用 TypeScript 与 ESM；Vue 渲染进程由 Vite 构建。
 
+后端 TypeScript 的 `@/` 指向仓库根目录，项目内模块统一使用 `@/src/...`、`@/scripts/...` 等绝对引用，不使用 `./` 或 `../` 模块路径。唯一例外是 `forge.config.ts`：Electron Forge 的 Jiti 配置加载器不解析 tsconfig paths，因此继续相对引用打包规则。前端是独立工程，`app` 内的 `@/` 仍指向 `app` 根目录。
+
 ## 环境与安装
 
 项目使用 npm workspace，只维护根目录一份 `package-lock.json`。Node 版本由 `.nvmrc` 固定。

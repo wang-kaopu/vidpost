@@ -10,8 +10,8 @@ import {
   collectSohuRecordsFromPayload,
   findSohuRecordInList,
   parseSohuRecordStatus,
-} from '../src/infra/video/sohu/record-status.ts'
-import { SohuVideo } from '../src/infra/video/sohu-video.ts'
+} from '@/src/infra/video/sohu/record-status.ts'
+import { SohuVideo } from '@/src/infra/video/sohu-video.ts'
 
 /** 创建仅供 Axios Mock 状态查询使用的完整搜狐 storage-state。 */
 async function createSohuAccountFile(): Promise<string> {

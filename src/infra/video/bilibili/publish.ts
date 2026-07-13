@@ -6,11 +6,11 @@ import axiosRetry from "axios-retry";
 import { fileTypeFromBuffer } from "file-type";
 import pLimit from "p-limit";
 
-import { loadBrowserIdentity } from "../../browser-identity.ts";
-import { readBrowserStorageState } from "../../browser-storage-state.ts";
-import { logger } from "../../../utils/logger.ts";
+import { loadBrowserIdentity } from "@/src/infra/browser-identity.ts";
+import { readBrowserStorageState } from "@/src/infra/browser-storage-state.ts";
+import { logger } from "@/src/utils/logger.ts";
 
-import type { BilibiliVideoUploadPayload, VideoUploadResult } from "../video.ts";
+import type { BilibiliVideoUploadPayload, VideoUploadResult } from "@/src/infra/video/video.ts";
 
 interface SerializedAxiosResponse {
   body: unknown;

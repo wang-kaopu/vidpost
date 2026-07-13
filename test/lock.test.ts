@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { attachSingletonLock } from '../src/utils/lock.ts'
+import { attachSingletonLock } from '@/src/utils/lock.ts'
 
 test('attachSingletonLock quits and blocks bootstrap when another instance already owns the lock', () => {
   let quitCalled = false

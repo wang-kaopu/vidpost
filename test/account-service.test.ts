@@ -4,13 +4,13 @@ import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 
-import { apiClient } from '../src/api/api-client.ts'
+import { apiClient } from '@/src/api/api-client.ts'
 import {
   loginAndCreateRemoteAccount,
   resolveAccountFilePath,
   resolveDraftAccountFilePath,
   updateRemoteAccount,
-} from '../src/service/account-service.ts'
+} from '@/src/service/account-service.ts'
 
 function useTemporaryHome(t: test.TestContext): void {
   const previousHome = process.env.HOME

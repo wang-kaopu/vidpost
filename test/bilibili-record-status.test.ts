@@ -6,8 +6,8 @@ import test from 'node:test'
 
 import axios from 'axios'
 
-import { BilibiliVideo } from '../src/infra/video/bilibili-video.ts'
-import { parseBilibiliRecordStatus } from '../src/infra/video/bilibili/record-status.ts'
+import { BilibiliVideo } from '@/src/infra/video/bilibili-video.ts'
+import { parseBilibiliRecordStatus } from '@/src/infra/video/bilibili/record-status.ts'
 
 test('bilibili maps XiaoDouYa reviewing and public state sets exactly', () => {
   for (const state of [-30, -1, -6, -7, -8, -10, -13, -60]) {

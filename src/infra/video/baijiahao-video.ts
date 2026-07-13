@@ -4,9 +4,9 @@ import type {
   PublishedStateResult,
   Video,
   VideoUploadResult,
-} from "./video.ts";
-import { commitBaijiahaoPublish, prepareBaijiahaoPublish } from "./baijiahao/publish.ts";
-import { fetchBaijiahaoPublishedState } from "./baijiahao/record-status.ts";
+} from "@/src/infra/video/video.ts";
+import { commitBaijiahaoPublish, prepareBaijiahaoPublish } from "@/src/infra/video/baijiahao/publish.ts";
+import { fetchBaijiahaoPublishedState } from "@/src/infra/video/baijiahao/record-status.ts";
 
 /** 百家号视频发布与审核状态资源。 */
 export class BaijiahaoVideo implements Video<BaijiahaoVideoUploadPayload> {

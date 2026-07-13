@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { createAccount } from '../src/infra/account/account.ts'
-import { createVideo } from '../src/infra/video/video.ts'
+import { createAccount } from '@/src/infra/account/account.ts'
+import { createVideo } from '@/src/infra/video/video.ts'
 
 for (const platform of ['douyin', 'bilibili', 'baijiahao', 'sohu'] as const) {
   test(`resource factories create account and video implementations for ${platform}`, () => {

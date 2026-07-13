@@ -11,7 +11,7 @@ import {
   movePartitionMapping,
   readPartitionMapTable,
   resolvePartitionForAccount,
-} from "../src/db/partition-store.ts";
+} from "@/src/db/partition-store.ts";
 
 /** 创建使用临时 JSON 文件的 partition store。 */
 function createTempStore() {

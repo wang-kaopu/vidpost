@@ -1,16 +1,16 @@
 import { BrowserWindow, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
-import { createAccount, type PlatformType } from "./infra/account/account.ts";
-import { createVideo } from "./infra/video/video.ts";
+import { createAccount, type PlatformType } from "@/src/infra/account/account.ts";
+import { createVideo } from "@/src/infra/video/video.ts";
 import {
   loginAndCreateRemoteAccount,
   resolveAccountFilePath,
   resolveDraftAccountFilePath,
   updateRemoteAccount,
-} from "./service/account-service.ts";
-import { publishAndUpdateRemoteTask } from "./service/task-service.ts";
-import { getBilibiliHumanTypes as queryBilibiliHumanTypes } from "./infra/video/bilibili-video.ts";
-import { getSohuChannels as querySohuChannels } from "./infra/video/sohu-video.ts";
-import { broadcast } from "./sse/sse-server.ts";
+} from "@/src/service/account-service.ts";
+import { publishAndUpdateRemoteTask } from "@/src/service/task-service.ts";
+import { getBilibiliHumanTypes as queryBilibiliHumanTypes } from "@/src/infra/video/bilibili-video.ts";
+import { getSohuChannels as querySohuChannels } from "@/src/infra/video/sohu-video.ts";
+import { broadcast } from "@/src/sse/sse-server.ts";
 
 /** 将 IPC 中的未知值校验为支持的平台标识。 */
 function parsePlatform(value: unknown): PlatformType {

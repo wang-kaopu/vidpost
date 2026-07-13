@@ -1,10 +1,10 @@
 import axios, { AxiosHeaders, type InternalAxiosRequestConfig } from "axios";
 
-import { loadBrowserIdentity } from "../../browser-identity.ts";
-import { readBrowserStorageState } from "../../browser-storage-state.ts";
-import { logger } from "../../../utils/logger.ts";
+import { loadBrowserIdentity } from "@/src/infra/browser-identity.ts";
+import { readBrowserStorageState } from "@/src/infra/browser-storage-state.ts";
+import { logger } from "@/src/utils/logger.ts";
 
-import type { PublishedStatePayload, PublishedStateResult, PublishedTaskStatus } from "../video.ts";
+import type { PublishedStatePayload, PublishedStateResult, PublishedTaskStatus } from "@/src/infra/video/video.ts";
 
 const SOHU_ORIGIN = "https://mp.sohu.com";
 const SOHU_RECORD_STATUS_URL = `${SOHU_ORIGIN}/mpfe/v4/contentManagement/first/page`;

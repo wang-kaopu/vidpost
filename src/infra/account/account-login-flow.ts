@@ -1,18 +1,18 @@
 import type { BrowserWindow } from "electron";
 
-import { createPartitionStore, resolvePartitionForAccount } from "../../db/partition-store.ts";
-import { loadBrowserIdentity, type BrowserIdentity } from "../browser-identity.ts";
-import type { AccountLoginOptions, AccountLoginResult } from "./account.ts";
+import { createPartitionStore, resolvePartitionForAccount } from "@/src/db/partition-store.ts";
+import { loadBrowserIdentity, type BrowserIdentity } from "@/src/infra/browser-identity.ts";
+import type { AccountLoginOptions, AccountLoginResult } from "@/src/infra/account/account.ts";
 import {
   configureAccountLoginWindow,
   createAccountLoginWindow,
   wireLoginWindowCloseControls,
-} from "./account-login-window.ts";
+} from "@/src/infra/account/account-login-window.ts";
 import {
   exportBrowserStorageState,
   injectCookiesIntoBrowserSession,
   type BrowserCookieInput,
-} from "../browser-storage-state.ts";
+} from "@/src/infra/browser-storage-state.ts";
 
 /** 平台登录成功判定所需的最小页面状态。 */
 export interface AccountLoginSuccessContext {

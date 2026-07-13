@@ -4,14 +4,14 @@ import type {
   PublishedStateResult,
   Video,
   VideoUploadResult,
-} from "./video.ts";
+} from "@/src/infra/video/video.ts";
 import {
   commitBilibiliPublish,
   getBilibiliHumanTypes,
   prepareBilibiliPublish,
   type HumanType,
-} from "./bilibili/publish.ts";
-import { fetchBilibiliPublishedState } from "./bilibili/record-status.ts";
+} from "@/src/infra/video/bilibili/publish.ts";
+import { fetchBilibiliPublishedState } from "@/src/infra/video/bilibili/record-status.ts";
 
 export { getBilibiliHumanTypes };
 export type { HumanType };

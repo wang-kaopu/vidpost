@@ -1,8 +1,8 @@
-import { listPublishTasks, updatePublishTask } from "../api/task-api.ts";
-import { createVideo } from "../infra/video/video.ts";
-import type { PublishedStatePayload, PublishedStateResult, VideoPlatformType } from "../infra/video/video.ts";
-import { resolveAccountFilePath } from "./account-service.ts";
-import { logger } from "../utils/logger.ts";
+import { listPublishTasks, updatePublishTask } from "@/src/api/task-api.ts";
+import { createVideo } from "@/src/infra/video/video.ts";
+import type { PublishedStatePayload, PublishedStateResult, VideoPlatformType } from "@/src/infra/video/video.ts";
+import { resolveAccountFilePath } from "@/src/service/account-service.ts";
+import { logger } from "@/src/utils/logger.ts";
 
 const REVIEWING_STATUS = "reviewing";
 const RUNNING_STATUS = "running";

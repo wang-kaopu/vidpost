@@ -9,8 +9,8 @@ import axios from 'axios'
 import {
   findBaijiahaoRecordInList,
   parseBaijiahaoRecordStatus,
-} from '../src/infra/video/baijiahao/record-status.ts'
-import { BaijiahaoVideo } from '../src/infra/video/baijiahao-video.ts'
+} from '@/src/infra/video/baijiahao/record-status.ts'
+import { BaijiahaoVideo } from '@/src/infra/video/baijiahao-video.ts'
 
 test('baijiahao maps XiaoDouYa article states exactly', () => {
   assert.equal(parseBaijiahaoRecordStatus({ status: 'publish' })?.status, 'public')

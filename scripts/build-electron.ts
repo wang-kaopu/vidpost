@@ -6,6 +6,7 @@ import { build } from "esbuild";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const outputDirectory = path.join(projectRoot, ".build");
+const tsconfigPath = path.join(projectRoot, "tsconfig.json");
 
 /**
  * 构建 Electron 主进程 ESM 和 sandbox preload CommonJS 产物。
@@ -24,6 +25,7 @@ export async function buildElectron(): Promise<void> {
       platform: "node",
       sourcemap: true,
       target: "node22",
+      tsconfig: tsconfigPath,
     }),
     build({
       bundle: true,
@@ -35,12 +37,13 @@ export async function buildElectron(): Promise<void> {
       platform: "node",
       sourcemap: true,
       target: "node22",
+      tsconfig: tsconfigPath,
     }),
     build({
       bundle: true,
       stdin: {
         contents:
-          'import { runDouyinUploadRenderer } from "./src/infra/video/douyin/upload.ts"; runDouyinUploadRenderer();',
+          'import { runDouyinUploadRenderer } from "@/src/infra/video/douyin/upload.ts"; runDouyinUploadRenderer();',
         resolveDir: projectRoot,
         sourcefile: "douyin-publish-renderer-entry.ts",
       },
@@ -51,6 +54,7 @@ export async function buildElectron(): Promise<void> {
       platform: "node",
       sourcemap: true,
       target: "node22",
+      tsconfig: tsconfigPath,
     }),
   ]);
 }

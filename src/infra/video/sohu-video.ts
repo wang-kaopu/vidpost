@@ -4,15 +4,15 @@ import type {
   SohuVideoUploadPayload,
   Video,
   VideoUploadResult,
-} from "./video.ts";
+} from "@/src/infra/video/video.ts";
 import {
   commitSohuPublish,
   getSohuChannels,
   prepareSohuPublish,
   type SohuChannel,
   type SohuVideoChannel,
-} from "./sohu/publish.ts";
-import { fetchSohuPublishedState } from "./sohu/record-status.ts";
+} from "@/src/infra/video/sohu/publish.ts";
+import { fetchSohuPublishedState } from "@/src/infra/video/sohu/record-status.ts";
 
 export { getSohuChannels };
 export type { SohuChannel, SohuVideoChannel };

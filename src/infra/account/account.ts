@@ -1,10 +1,10 @@
 import type { BrowserWindow } from "electron";
 
-import type { BrowserCookieInput } from "../browser-storage-state.ts";
-import { BaijiahaoAccount } from "./baijiahao-account.ts";
-import { BilibiliAccount } from "./bilibili-account.ts";
-import { DouyinAccount } from "./douyin-account.ts";
-import { SohuAccount } from "./sohu-account.ts";
+import type { BrowserCookieInput } from "@/src/infra/browser-storage-state.ts";
+import { BaijiahaoAccount } from "@/src/infra/account/baijiahao-account.ts";
+import { BilibiliAccount } from "@/src/infra/account/bilibili-account.ts";
+import { DouyinAccount } from "@/src/infra/account/douyin-account.ts";
+import { SohuAccount } from "@/src/infra/account/sohu-account.ts";
 
 /** 当前支持的平台标识。 */
 export type PlatformType = "baijiahao" | "bilibili" | "douyin" | "sohu";

@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import fs from 'node:fs/promises'
 
-import { PublishAssetCache } from '../src/service/publish-asset-cache.ts'
+import { PublishAssetCache } from '@/src/service/publish-asset-cache.ts'
 
 async function createTempDir(prefix) {
     return fs.mkdtemp(path.join(os.tmpdir(), prefix))

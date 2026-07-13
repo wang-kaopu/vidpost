@@ -3,9 +3,9 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 
-import { parseBaijiahaoScheduledAt } from "../src/infra/video/baijiahao/publish.ts";
-import { parseBilibiliScheduledAt } from "../src/infra/video/bilibili/publish.ts";
-import { parseDouyinScheduledAt } from "../src/infra/video/douyin/upload.ts";
+import { parseBaijiahaoScheduledAt } from "@/src/infra/video/baijiahao/publish.ts";
+import { parseBilibiliScheduledAt } from "@/src/infra/video/bilibili/publish.ts";
+import { parseDouyinScheduledAt } from "@/src/infra/video/douyin/upload.ts";
 
 const EXPECTED_SECONDS = Math.floor(Date.UTC(2026, 6, 20, 10, 0) / 1_000);
 

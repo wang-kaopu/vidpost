@@ -3,8 +3,8 @@ import test from "node:test";
 
 import type { BrowserWindow } from "electron";
 
-import type { BrowserIdentity } from "../src/infra/browser-identity.ts";
-import { runAccountLoginFlow, type AccountLoginFlowRuntime } from "../src/infra/account/account-login-flow.ts";
+import type { BrowserIdentity } from "@/src/infra/browser-identity.ts";
+import { runAccountLoginFlow, type AccountLoginFlowRuntime } from "@/src/infra/account/account-login-flow.ts";
 
 type Listener = (...args: any[]) => void;
 

@@ -1,12 +1,12 @@
 import axios from "axios";
 import type { WebContents } from "electron";
 
-import { loadBrowserIdentity } from "../browser-identity.ts";
-import { PlatformTimeoutError } from "../platform-errors.ts";
-import type { Account, AccountLoginOptions, AccountLoginResult, AccountPingResult } from "./account.ts";
-import { runAccountLoginFlow } from "./account-login-flow.ts";
-import { buildCloseButtonScript } from "./account-login-window.ts";
-import { readBrowserStorageState } from "../browser-storage-state.ts";
+import { loadBrowserIdentity } from "@/src/infra/browser-identity.ts";
+import { PlatformTimeoutError } from "@/src/infra/platform-errors.ts";
+import type { Account, AccountLoginOptions, AccountLoginResult, AccountPingResult } from "@/src/infra/account/account.ts";
+import { runAccountLoginFlow } from "@/src/infra/account/account-login-flow.ts";
+import { buildCloseButtonScript } from "@/src/infra/account/account-login-window.ts";
+import { readBrowserStorageState } from "@/src/infra/browser-storage-state.ts";
 
 const BILIBILI_ACCOUNT_INFO_URL = "https://api.bilibili.com/x/web-interface/nav";
 const BILIBILI_LOGIN_URL = "https://passport.bilibili.com/login";

@@ -5,8 +5,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { createServer } from 'vite'
 
-import { buildElectronLaunchConfig } from './start-electron.ts'
-import { logger } from '../src/utils/logger.ts'
+import { buildElectronLaunchConfig } from '@/scripts/start-electron.ts'
+import { logger } from '@/src/utils/logger.ts'
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url))
 

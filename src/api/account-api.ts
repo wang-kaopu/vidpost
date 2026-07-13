@@ -1,5 +1,5 @@
-import { apiClient } from './api-client.ts'
-import { unwrapApiResponse } from './model/response.ts'
+import { apiClient } from '@/src/api/api-client.ts'
+import { unwrapApiResponse } from '@/src/api/model/response.ts'
 
 // 新增发布账号
 export async function createPublishAccount(input: Record<string, unknown>) {

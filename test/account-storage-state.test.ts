@@ -9,7 +9,7 @@ import type { BrowserWindow } from "electron";
 import {
   exportBrowserStorageState,
   injectCookiesIntoBrowserSession,
-} from "../src/infra/browser-storage-state.ts";
+} from "@/src/infra/browser-storage-state.ts";
 
 /** 创建仅实现 storage-state 所需接口的登录窗口替身。 */
 function createStorageWindow(options: {

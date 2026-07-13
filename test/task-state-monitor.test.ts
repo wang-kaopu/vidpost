@@ -10,7 +10,7 @@ import {
   startTaskStateMonitor,
   TASK_STATE_MAX_WAIT_MS,
   TASK_STATE_POLL_INTERVAL_MS,
-} from "../src/service/task-state-service.ts";
+} from "@/src/service/task-state-service.ts";
 
 interface FakeTimer {
   callback: () => void;

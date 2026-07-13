@@ -5,15 +5,15 @@ import type {
   Video,
   VideoRuntime,
   VideoUploadResult,
-} from "./video.ts";
+} from "@/src/infra/video/video.ts";
 import {
   commitDouyinPublish,
   configureDouyinVideoRuntime,
   destroyDouyinVideoWindows,
   disposeDouyinPublish,
   prepareDouyinPublish,
-} from "./douyin/electron-runtime.ts";
-import { fetchDouyinPublishedState } from "./douyin/record-status.ts";
+} from "@/src/infra/video/douyin/electron-runtime.ts";
+import { fetchDouyinPublishedState } from "@/src/infra/video/douyin/record-status.ts";
 
 export { configureDouyinVideoRuntime, destroyDouyinVideoWindows };
 

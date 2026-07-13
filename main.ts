@@ -6,23 +6,23 @@ import { app, ipcMain, BrowserWindow, session, shell, type IpcMainEvent, type Ip
 import * as electron from "electron";
 import squirrelStartup from "electron-squirrel-startup";
 
-import { getBilibiliHumanTypes, getSohuChannels, login, publish, ping } from "./src/funcs.ts";
+import { getBilibiliHumanTypes, getSohuChannels, login, publish, ping } from "@/src/funcs.ts";
 import {
   AGENTHUNT_PROTOCOL,
   extractProtocolUrlFromCommandLine,
   parseAgenthuntUrl,
   resolveProtocolClientRegistration,
   type LaunchIntent,
-} from "./src/deep-link.ts";
-import { getSingletonLock } from "./src/utils/lock.ts";
-import { setApiClientWindow } from "./src/api/api-client.ts";
+} from "@/src/deep-link.ts";
+import { getSingletonLock } from "@/src/utils/lock.ts";
+import { setApiClientWindow } from "@/src/api/api-client.ts";
 import {
   configureTaskStateServiceRuntime,
   recoverTaskStateMonitors,
   stopTaskStateMonitors,
-} from "./src/service/task-state-service.ts";
-import { configureVideoRuntime, destroyVideoWindows } from "./src/infra/video/video.ts";
-import { logger } from "./src/utils/logger.ts";
+} from "@/src/service/task-state-service.ts";
+import { configureVideoRuntime, destroyVideoWindows } from "@/src/infra/video/video.ts";
+import { logger } from "@/src/utils/logger.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
