@@ -12,6 +12,8 @@ import type { LoginForm, MenuKey, User } from "./types";
 import Work from "./components/Work.vue";
 import NotificationCenter from "./components/NotificationCenter.vue";
 import { createNotificationCenter, notificationCenterKey } from "./notifications";
+import PublishProgressPanel from "./components/PublishProgressPanel.vue";
+import { createPublishProgressCenter, publishProgressCenterKey } from "./publish-progress";
 
 type AppNotificationEventDetail = {
   title: string;
@@ -28,8 +30,10 @@ const pendingLaunchMenu = ref<MenuKey | null>(null);
 let tokenRefreshTimer: number | null = null;
 let removeLaunchIntentListener: (() => void) | null = null;
 let removeNotificationEventListener: (() => void) | null = null;
+let removePublishProgressListener: (() => void) | null = null;
 let tokenRefreshFailureNotified = false;
 const notificationCenter = createNotificationCenter();
+const publishProgressCenter = createPublishProgressCenter();
 
 const pushSystemError = (title: string, message: string): void => {
   notificationCenter.push({
@@ -157,6 +161,7 @@ const handleAppNotificationEvent = (event: Event): void => {
 };
 
 provide(notificationCenterKey, notificationCenter);
+provide(publishProgressCenterKey, publishProgressCenter);
 
 const refreshAccessToken = async () => {
   const refreshTokenValue = getRefreshToken();
@@ -196,6 +201,10 @@ onMounted(async () => {
     window.removeEventListener("app-notification", handleAppNotificationEvent);
   };
 
+  removePublishProgressListener = window.electronAPI?.onPublishTaskProgress((event) => {
+    publishProgressCenter.updatePhase(event.taskId, event.phase);
+  }) ?? null;
+
   removeLaunchIntentListener = window.electronAPI?.onLaunchIntent((intent) => {
     applyLaunchIntent(intent);
   }) ?? null;
@@ -222,6 +231,8 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   removeNotificationEventListener?.();
   removeNotificationEventListener = null;
+  removePublishProgressListener?.();
+  removePublishProgressListener = null;
   removeLaunchIntentListener?.();
   removeLaunchIntentListener = null;
   stopVerificationPolling();
@@ -254,5 +265,14 @@ onBeforeUnmount(() => {
       @clear="clearNotifications"
       @action="handleNotificationAction($event.id)"
     />
+    <transition name="publish-progress-panel">
+      <PublishProgressPanel
+        v-if="publishProgressCenter.visible.value && publishProgressCenter.items.value.length > 0"
+        :items="publishProgressCenter.items.value"
+        :collapsed="publishProgressCenter.collapsed.value"
+        @toggle-collapsed="publishProgressCenter.toggleCollapsed"
+        @close="publishProgressCenter.close"
+      />
+    </transition>
   </main>
 </template>

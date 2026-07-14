@@ -15,6 +15,7 @@ import PlatformPickerDialog from "./PlatformPickerDialog.vue";
 import PublishPlanDialog from "./PublishPlanDialog.vue";
 import type { AccountItem, WorkItem } from "@/types";
 import { useNotificationCenter } from "@/notifications";
+import { usePublishProgressCenter } from "@/publish-progress";
 import { IMMEDIATE_PUBLISH_VALUE, validateScheduledAt } from "@/utils/publish-schedule";
 import { useDialogLayer } from "../composables/useDialogLayer";
 
@@ -127,6 +128,7 @@ const sohuChannelsErrors = ref<Record<string, string>>({});
 const sohuChannelsLoading = ref<Record<string, boolean>>({});
 const publishPlanSubmitting = ref(false);
 const notificationCenter = useNotificationCenter();
+const publishProgressCenter = usePublishProgressCenter();
 
 const pushWorksError = (title: string, messageText: string): void => {
   notificationCenter.push({
@@ -136,6 +138,15 @@ const pushWorksError = (title: string, messageText: string): void => {
     tone: "error",
     unread: true,
   });
+};
+
+/** 将 Electron invoke 异常整理为适合任务条目和系统通知展示的简短原因。 */
+const formatPublishFailureReason = (error: unknown): string => {
+  const rawMessage = error instanceof Error ? error.message : String(error || "未知发布错误");
+  return rawMessage
+    .replace(/^Error invoking remote method 'publish':\s*/u, "")
+    .replace(/^Error:\s*/u, "")
+    .trim() || "未知发布错误";
 };
 
 const selectedCount = computed(() => selectedWorkIds.value.size);
@@ -534,11 +545,39 @@ const handlePublishPlanConfirm = async (): Promise<void> => {
       }
     }
 
-    for (const task of publishTasks) {
-      publishApi(task);
-    }
+    const trackedPublishTasks = publishTasks.map((task) => ({
+      ...task,
+      progressId: crypto.randomUUID(),
+    }));
+
+    publishProgressCenter.openBatch(trackedPublishTasks.map((task) => ({
+      id: task.progressId,
+      platformKey: task.platform,
+      platformLabel: task.platformLabel,
+      accountName: task.accountName,
+      title: task.title,
+      scheduled: task.scheduledAt !== IMMEDIATE_PUBLISH_VALUE,
+    })));
 
     resetPublishPlanState();
+
+    for (const task of trackedPublishTasks) {
+      void publishApi(task)
+        .then(() => {
+          publishProgressCenter.complete(task.progressId);
+        })
+        .catch((error: unknown) => {
+          const failureReason = formatPublishFailureReason(error);
+          publishProgressCenter.fail(task.progressId, failureReason);
+          notificationCenter.push({
+            title: `${task.platformLabel}发布失败`,
+            message: `账号「${task.accountName}」《${task.title}》：${failureReason}`,
+            source: "发布任务",
+            tone: "error",
+            unread: true,
+          });
+        });
+    }
   } catch {
     notificationCenter.push({
       title: "发布计划提交失败",

@@ -21,14 +21,20 @@ type PublishTaskStateChangedEvent = {
   syncError?: string | null;
 };
 
+type PublishTaskProgressEvent = {
+  taskId: string;
+  phase: "preparing" | "queued" | "publishing";
+};
+
 interface ElectronAPI {
   login: (platform: string) => Promise<unknown>;
-  publish: (payload: unknown) => void;
+  publish: (payload: unknown) => Promise<unknown>;
   ping: (payload: unknown) => Promise<unknown>;
   getLaunchIntent: () => Promise<LaunchIntent | null>;
   onLaunchIntent: (handler: (payload: LaunchIntent) => void) => () => void;
   openExternal: (url: string) => Promise<void>;
   onPublishTaskStateChanged: (handler: (payload: PublishTaskStateChangedEvent) => void) => () => void;
+  onPublishTaskProgress: (handler: (payload: PublishTaskProgressEvent) => void) => () => void;
   getBilibiliHumanTypes: (payload: { accountId: string }) => Promise<Array<{ id: number; name: string }>>;
   getSohuChannels: (payload: { accountId: string }) => Promise<Array<{
     id: number;

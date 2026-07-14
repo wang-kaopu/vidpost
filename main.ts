@@ -2,7 +2,7 @@ import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { app, ipcMain, BrowserWindow, session, shell, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
+import { app, ipcMain, BrowserWindow, session, shell, type IpcMainInvokeEvent } from "electron";
 import * as electron from "electron";
 import squirrelStartup from "electron-squirrel-startup";
 
@@ -71,17 +71,6 @@ async function findAvailableCdpPort(startPort = 9222, attempts = 100): Promise<n
   }
 
   throw new Error(`无法找到可用 Electron CDP 端口，起始端口: ${startPort}`);
-}
-
-// 注册 IPC 监听器的通用函数，便于处理可能未catch的异步函数异常
-function registerIpcListener(channel: string, handler: (event: IpcMainEvent, ...args: unknown[]) => unknown): void {
-  ipcMain.on(channel, (event, ...args) => {
-    Promise.resolve()
-      .then(() => handler(event, ...args))
-      .catch((error) => {
-        logger.error(`[ipc:${channel}]`, error);
-      });
-  });
 }
 
 // 注册 IPC 处理器的通用函数，便于处理可能未catch的异步函数异常
@@ -205,7 +194,7 @@ async function startApplication(): Promise<void> {
   app.whenReady().then(() => {
     // 注册 IPC 监听器和处理器
     registerIpcHandler("login", login);
-    registerIpcListener("publish", publish);
+    registerIpcHandler("publish", publish);
     registerIpcHandler("ping", ping);
     registerIpcHandler("video:get-bilibili-human-types", getBilibiliHumanTypes);
     registerIpcHandler("video:get-sohu-channels", getSohuChannels);

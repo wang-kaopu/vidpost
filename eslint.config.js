@@ -54,5 +54,4 @@ export default tseslint.config(
     },
   },
   { files: ["src/utils/logger.ts", "app/src/utils/logger.ts", "test/logger.test.ts"], rules: { "no-console": "off" } },
-  { files: ["src/infra/video/sohu-video.ts"], rules: { "@typescript-eslint/no-unused-vars": "off", "no-var": "off" } },
 );

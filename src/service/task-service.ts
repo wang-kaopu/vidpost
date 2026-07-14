@@ -9,6 +9,10 @@ import { logger } from "@/src/utils/logger.ts";
 import { startTaskStateMonitor } from "@/src/service/task-state-service.ts";
 const publishAssetCache = new PublishAssetCache();
 
+export type PublishExecutionPhase = "preparing" | "queued" | "publishing";
+
+type PublishProgressReporter = (phase: PublishExecutionPhase) => void;
+
 type AccountTask<T> = () => Promise<T>;
 
 interface AccountQueueState {
@@ -138,8 +142,19 @@ function assertMaterializedVideoUploadPayload(
   }
 }
 
-// 发布并更新远程发布记录
-export async function publishAndUpdateRemoteTask(payload: Record<string, any>, video: Video) {
+/**
+ * 发布视频、更新远程任务，并报告可验证的执行阶段。
+ *
+ * @param payload - 发布任务参数
+ * @param video - 对应平台的视频发布实现
+ * @param reportProgress - 发布阶段变化回调
+ * @returns 已进入平台审核或预约状态的远程任务
+ */
+export async function publishAndUpdateRemoteTask(
+  payload: Record<string, any>,
+  video: Video,
+  reportProgress: PublishProgressReporter = () => undefined,
+) {
   // 浅拷贝
   const normalizedPayload = payload ? { ...payload } : {};
   let remoteTaskId = null;
@@ -192,6 +207,7 @@ export async function publishAndUpdateRemoteTask(payload: Record<string, any>, v
     });
 
     remoteTaskId = createResult.remoteTaskId;
+    reportProgress("preparing");
 
     const materializedPayload = await publishAssetCache.materializePublishPayload({
       ...normalizedPayload,
@@ -201,9 +217,11 @@ export async function publishAndUpdateRemoteTask(payload: Record<string, any>, v
 
     // 发布动作
     remoteTaskId = createResult.remoteTaskId;
-    const publishResult = await runInAccountQueue<Record<string, any>>(normalizedPayload.accountId, () =>
-      video.upload(materializedPayload),
-    );
+    reportProgress("queued");
+    const publishResult = await runInAccountQueue<Record<string, any>>(normalizedPayload.accountId, () => {
+      reportProgress("publishing");
+      return video.upload(materializedPayload);
+    });
     if (!publishResult || publishResult.success !== true) {
       const failureMessage =
         publishResult && typeof publishResult.message === "string" && publishResult.message.trim()

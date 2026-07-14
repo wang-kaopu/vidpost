@@ -1,4 +1,4 @@
-import { BrowserWindow, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
+import { BrowserWindow, type IpcMainInvokeEvent } from "electron";
 import { createAccount, type PlatformType } from "@/src/infra/account/account.ts";
 import { createVideo } from "@/src/infra/video/video.ts";
 import {
@@ -7,7 +7,10 @@ import {
   resolveDraftAccountFilePath,
   updateRemoteAccount,
 } from "@/src/service/account-service.ts";
-import { publishAndUpdateRemoteTask } from "@/src/service/task-service.ts";
+import {
+  publishAndUpdateRemoteTask,
+  type PublishExecutionPhase,
+} from "@/src/service/task-service.ts";
 import { getBilibiliHumanTypes as queryBilibiliHumanTypes } from "@/src/infra/video/bilibili-video.ts";
 import { getSohuChannels as querySohuChannels } from "@/src/infra/video/sohu-video.ts";
 import { broadcast } from "@/src/sse/sse-server.ts";
@@ -54,11 +57,28 @@ export async function ping(_event: IpcMainInvokeEvent, accountValue: unknown) {
   return updateRemoteAccount(account, createAccount(platform));
 }
 
-// 3. 发布入口
-export async function publish(_event: IpcMainEvent, payloadValue: unknown) {
+/**
+ * 执行单个发布任务，并把真实阶段变化回传给发起任务的渲染进程。
+ *
+ * @param event - Electron IPC 调用事件
+ * @param payloadValue - 带前端跟踪 ID 的发布任务参数
+ * @returns 已提交到平台的远程任务
+ */
+export async function publish(event: IpcMainInvokeEvent, payloadValue: unknown) {
   const payload = requirePayload(payloadValue, "publish");
   const platform = parsePlatform(payload.platform);
-  return publishAndUpdateRemoteTask(payload, createVideo(platform));
+  const progressId = String(payload.progressId ?? "").trim();
+  if (!progressId) {
+    throw new Error("publish task requires a progressId");
+  }
+  return publishAndUpdateRemoteTask(payload, createVideo(platform), (phase: PublishExecutionPhase) => {
+    if (event.sender.isDestroyed()) return;
+    try {
+      event.sender.send("publish-task-progress", { taskId: progressId, phase });
+    } catch {
+      // 渲染进程退出只会丢失轻提示，不应中断实际投稿。
+    }
+  });
 }
 
 /** 查询指定 Bilibili 账号当前可用的投稿分区。 */
