@@ -9,7 +9,8 @@
     "noEmit": true,
     "resolveJsonModule": true,
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@shared/*": ["./shared/*"]
     },
     "skipLibCheck": true,
     "strict": true,
@@ -17,6 +18,6 @@
     "types": ["node", "electron"],
     "verbatimModuleSyntax": true
   },
-  "include": ["forge.config.ts", "main.ts", "preload.ts", "scripts/**/*.ts", "src/**/*.ts", "types/**/*.d.ts"],
+  "include": ["forge.config.ts", "main.ts", "preload.ts", "scripts/**/*.ts", "shared/**/*.ts", "src/**/*.ts", "types/**/*.d.ts"],
   "exclude": [".build", "app", "node_modules"]
 }

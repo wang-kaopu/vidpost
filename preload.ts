@@ -1,52 +1,49 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron/renderer";
 
-export interface ElectronApi {
-  login(platform: string): Promise<unknown>;
-  publish(payload: unknown): Promise<unknown>;
-  ping(payload: unknown): Promise<unknown>;
-  openAccountBackend(payload: { id: string; nickname: string; platform: string }): Promise<{ saveError?: string }>;
-  getLaunchIntent(): Promise<unknown>;
-  onLaunchIntent(handler: (payload: unknown) => void): () => void;
-  openExternal(url: string): Promise<void>;
-  onPublishTaskStateChanged(handler: (payload: unknown) => void): () => void;
-  onPublishTaskProgress(handler: (payload: unknown) => void): () => void;
-  getBilibiliHumanTypes(payload: { accountId: string }): Promise<Array<{ id: number; name: string }>>;
-  getSohuChannels(payload: {
-    accountId: string;
-  }): Promise<Array<{ id: number; name: string; videoChannels: Array<{ id: number; name: string }> }>>;
-}
+import {
+  IPC_CHANNELS,
+  type ElectronAPI,
+  type LaunchIntent,
+  type PublishTaskProgressEvent,
+  type PublishTaskStateChangedEvent,
+} from "@shared/electron-api.ts";
 
 // 将需要暴露给渲染进程的 API 通过 contextBridge 暴露出来
-const electronApi: ElectronApi = {
-  login: (platform) => ipcRenderer.invoke("login", platform),
-  publish: (payload) => ipcRenderer.invoke("publish", payload),
-  ping: (payload) => ipcRenderer.invoke("ping", payload),
-  openAccountBackend: (payload) => ipcRenderer.invoke("account:open-backend", payload),
-  getLaunchIntent: () => ipcRenderer.invoke("agenthunt:get-launch-intent"),
+const electronApi: ElectronAPI = {
+  login: async (platform) => {
+    await ipcRenderer.invoke(IPC_CHANNELS.login, platform);
+  },
+  publish: async (payload) => {
+    await ipcRenderer.invoke(IPC_CHANNELS.publish, payload);
+  },
+  ping: async (payload) => {
+    await ipcRenderer.invoke(IPC_CHANNELS.ping, payload);
+  },
+  openAccountBackend: (payload) => ipcRenderer.invoke(IPC_CHANNELS.openAccountBackend, payload),
+  getLaunchIntent: () => ipcRenderer.invoke(IPC_CHANNELS.getLaunchIntent),
   onLaunchIntent: (handler) => {
-    const listener = (_event: IpcRendererEvent, payload: unknown) => handler(payload);
-    ipcRenderer.on("agenthunt:launch-intent", listener);
+    const listener = (_event: IpcRendererEvent, payload: LaunchIntent): void => handler(payload);
+    ipcRenderer.on(IPC_CHANNELS.launchIntent, listener);
     return () => {
-      ipcRenderer.removeListener("agenthunt:launch-intent", listener);
+      ipcRenderer.removeListener(IPC_CHANNELS.launchIntent, listener);
     };
   },
-  openExternal: (url) => ipcRenderer.invoke("agenthunt:open-external", url),
   onPublishTaskStateChanged: (handler) => {
-    const listener = (_event: IpcRendererEvent, payload: unknown) => handler(payload);
-    ipcRenderer.on("publish-task-state-changed", listener);
+    const listener = (_event: IpcRendererEvent, payload: PublishTaskStateChangedEvent): void => handler(payload);
+    ipcRenderer.on(IPC_CHANNELS.publishTaskStateChanged, listener);
     return () => {
-      ipcRenderer.removeListener("publish-task-state-changed", listener);
+      ipcRenderer.removeListener(IPC_CHANNELS.publishTaskStateChanged, listener);
     };
   },
   onPublishTaskProgress: (handler) => {
-    const listener = (_event: IpcRendererEvent, payload: unknown) => handler(payload);
-    ipcRenderer.on("publish-task-progress", listener);
+    const listener = (_event: IpcRendererEvent, payload: PublishTaskProgressEvent): void => handler(payload);
+    ipcRenderer.on(IPC_CHANNELS.publishTaskProgress, listener);
     return () => {
-      ipcRenderer.removeListener("publish-task-progress", listener);
+      ipcRenderer.removeListener(IPC_CHANNELS.publishTaskProgress, listener);
     };
   },
-  getBilibiliHumanTypes: (payload) => ipcRenderer.invoke("video:get-bilibili-human-types", payload),
-  getSohuChannels: (payload) => ipcRenderer.invoke("video:get-sohu-channels", payload),
+  getBilibiliHumanTypes: (payload) => ipcRenderer.invoke(IPC_CHANNELS.getBilibiliHumanTypes, payload),
+  getSohuChannels: (payload) => ipcRenderer.invoke(IPC_CHANNELS.getSohuChannels, payload),
 };
 
 contextBridge.exposeInMainWorld("electronAPI", electronApi);

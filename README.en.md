@@ -25,6 +25,8 @@ npm run forge:package
 
 The Electron main process is emitted as `.build/main.js` in ESM format. `preload.ts` uses TypeScript and ESM syntax in source, but is emitted as `.build/preload.cjs` to preserve Electron sandbox support.
 
+`shared/electron-api.ts` is the single Electron IPC contract shared by the main process, preload, and production renderer. It owns the DTOs, platform union, and channel constants. Preload and renderer APIs no longer expose business parameters or results as `unknown`; only main-process IPC entry points treat cross-process input as unknown before validating and projecting it into the shared DTOs. Account inputs use `accountId`, publishing inputs use camelCase fields, and the previous `id`, `account_id`, and snake_case platform-option aliases are unsupported.
+
 The root TypeScript project enables `strict: true`. The main process, scripts, and runtime code under `src/` must pass strict type checking without directory-level exemptions.
 
 ## Video publishing pipeline

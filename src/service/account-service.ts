@@ -4,6 +4,12 @@ import fs from "node:fs";
 import path from "node:path";
 import type { BrowserWindow } from "electron";
 
+import type {
+  OpenAccountBackendInput,
+  OpenAccountBackendResult,
+  PingInput,
+  Platform,
+} from "@shared/electron-api.ts";
 import { createPublishAccount, updatePublishAccount } from "@/src/api/account-api.ts";
 import {
   createPartitionStore,
@@ -12,11 +18,10 @@ import {
   resolvePartitionForAccount,
 } from "@/src/db/partition-store.ts";
 import { createAccountPageModel } from "@/src/page-model/account-page-model.ts";
-import type { Account, PlatformType } from "@/src/infra/account/account.ts";
+import type { Account } from "@/src/infra/account/account.ts";
 import {
   resolveAccountBackendPlatformConfig,
   runAccountBackendFlow,
-  type AccountBackendFlowResult,
 } from "@/src/infra/account/account-backend-flow.ts";
 import { runWithAccountBackendWindow } from "@/src/infra/account/account-backend-window.ts";
 import {
@@ -27,7 +32,7 @@ import {
 import { logger } from "@/src/utils/logger.ts";
 
 // 拼接账号文件路径，用于正在新增过程中、未获取数据自增ID的账号文件命名
-export function resolveDraftAccountFilePath(platform: PlatformType): string {
+export function resolveDraftAccountFilePath(platform: Platform): string {
   const homeDir = process.env.HOME || process.env.USERPROFILE || ".";
   return path.join(homeDir, ".agenthunt", "cookie_files", `${randomUUID()}_${platform}.json`);
 }
@@ -52,7 +57,7 @@ function finalizeAccountFile(accountFile: string, accountId: string | number, pl
 
 // 登录并创建远程账号
 export async function loginAndCreateRemoteAccount(
-  platform: PlatformType,
+  platform: Platform,
   accountFile: string,
   parentWindow: BrowserWindow | null,
   account: Account,
@@ -111,16 +116,8 @@ export async function loginAndCreateRemoteAccount(
 }
 
 // 探活账号并更新远程账号状态
-export async function updateRemoteAccount(account: Record<string, any>, accountResource: Account) {
-  const platform = String(account?.platformKey || account?.platform || "")
-    .trim()
-    .toLowerCase();
-  const accountId = String(account?.id || account?.account_id || account?.accountId || "").trim();
-
-  if (!accountId || !platform) {
-    throw new Error("ping account requires a valid account_id and platform");
-  }
-
+export async function updateRemoteAccount(input: PingInput, accountResource: Account) {
+  const { accountId, platform } = input;
   const accountFile = resolveAccountFilePath(accountId, platform);
   resolvePartitionForAccount(createPartitionStore(), accountId);
   logger.info("账号文件存在:", accountFile);
@@ -138,12 +135,12 @@ export async function updateRemoteAccount(account: Record<string, any>, accountR
   return createAccountPageModel({
     id: accountId,
     platform,
-    nickname: latestNickname || account?.nickname || null,
+    nickname: latestNickname || null,
     status: nextStatus,
-    phoneNumber: account.phoneNumber ?? null,
-    tags: account.tags ?? [],
-    createdAt: account.createdAt ?? null,
-    updatedAt: account.updatedAt ?? null,
+    phoneNumber: null,
+    tags: [],
+    createdAt: null,
+    updatedAt: null,
   });
 }
 
@@ -164,7 +161,7 @@ export async function updateRemoteAccount(account: Record<string, any>, accountR
 async function persistAccountBackendState(
   backendWindow: BrowserWindow,
   accountId: string,
-  platform: PlatformType,
+  platform: Platform,
   nickname: string,
   accountFile: string,
   accountResource: Account,
@@ -211,10 +208,10 @@ async function persistAccountBackendState(
  * @returns 窗口关闭后的保存结果
  */
 export async function openExistingAccountBackend(
-  input: { accountId: string; nickname: string; platform: PlatformType },
+  input: OpenAccountBackendInput,
   parentWindow: BrowserWindow | null,
   accountResource: Account,
-): Promise<AccountBackendFlowResult> {
+): Promise<OpenAccountBackendResult> {
   const accountFile = resolveAccountFilePath(input.accountId, input.platform);
   const partition = resolvePartitionForAccount(createPartitionStore(), input.accountId);
   let storageState: BrowserStorageState | undefined;

@@ -14,6 +14,7 @@ import NotificationCenter from "./components/NotificationCenter.vue";
 import { createNotificationCenter, notificationCenterKey } from "./notifications";
 import PublishProgressPanel from "./components/PublishProgressPanel.vue";
 import { createPublishProgressCenter, publishProgressCenterKey } from "./publish-progress";
+import type { LaunchIntent } from "@shared/electron-api";
 
 type AppNotificationEventDetail = {
   title: string;

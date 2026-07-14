@@ -1,11 +1,7 @@
+import type { LaunchIntent } from "@shared/electron-api.ts";
+
 export const AGENTHUNT_PROTOCOL = "agenthunt";
 export const AGENTHUNT_NAVIGATE_HOST = "navigate";
-export const AGENTHUNT_LAUNCH_INTENT_EVENT = "agenthunt:launch-intent";
-export const AGENTHUNT_GET_LAUNCH_INTENT_CHANNEL = "agenthunt:get-launch-intent";
-
-export type LaunchIntent = {
-  page: "accounts" | "works";
-};
 
 export type ProtocolClientRegistration = {
   path?: string;

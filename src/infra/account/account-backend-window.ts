@@ -1,6 +1,6 @@
 import electron, { type BrowserWindow } from "electron";
 
-import type { PlatformType } from "@/src/infra/account/account.ts";
+import type { Platform } from "@shared/electron-api.ts";
 import { logger } from "@/src/utils/logger.ts";
 
 const { BrowserWindow: ElectronBrowserWindow, shell } = electron;
@@ -8,7 +8,7 @@ const { BrowserWindow: ElectronBrowserWindow, shell } = electron;
 export interface AccountBackendWindowOptions {
   parentWindow: BrowserWindow | null;
   partition: string;
-  platform: PlatformType;
+  platform: Platform;
   title: string;
 }
 

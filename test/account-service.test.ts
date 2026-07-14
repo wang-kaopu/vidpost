@@ -165,7 +165,7 @@ test('account service updates online status and platform nickname together', asy
   })
 
   const model = await updateRemoteAccount(
-    { id: '101', nickname: '旧昵称', platform: 'douyin', tags: [] },
+    { accountId: '101', platform: 'douyin' },
     createAccountResource({ online: true, nickname: '新昵称' }),
   )
 
@@ -183,7 +183,7 @@ test('account service updates only offline status when credentials are rejected'
   })
 
   await updateRemoteAccount(
-    { id: '102', nickname: '保留昵称', platform: 'bilibili', tags: [] },
+    { accountId: '102', platform: 'bilibili' },
     createAccountResource({ online: false }),
   )
 
@@ -200,7 +200,7 @@ test('account service preserves remote state when account detection throws', asy
 
   await assert.rejects(
     updateRemoteAccount(
-      { id: '103', nickname: '保留昵称', platform: 'baijiahao', tags: [] },
+      { accountId: '103', platform: 'baijiahao' },
       createAccountResource(new Error('network unavailable')),
     ),
     /network unavailable/,

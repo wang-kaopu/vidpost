@@ -6,14 +6,6 @@ import { getPublishPlatforms, getPublishTasks, deletePublishTask, exportPublishT
 import type { PublishTask, BackendPlatform } from "@/api/publish";
 import { useNotificationCenter } from "@/notifications";
 
-// declare global {
-//   interface Window {
-//     electronAPI?: {
-//       openExternal: (url: string) => Promise<void>;
-//     };
-//   }
-// }
-
 const loading = ref(false);
 const exporting = ref(false);
 const errorMessage = ref("");

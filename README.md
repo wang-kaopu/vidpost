@@ -38,6 +38,8 @@ npm run forge:make
 
 Electron 主进程构建为 `.build/main.js` ESM。`preload.ts` 仍在源码层使用 TypeScript 和 ESM 语法，但为了保留 sandbox，构建产物为 `.build/preload.cjs`。
 
+`shared/electron-api.ts` 是主进程、preload 和正式 renderer 共用的唯一 Electron IPC 契约，同时提供 DTO、平台联合和 channel 常量。preload 与 renderer 不再用 `unknown` 表示业务参数或结果；只有主进程 IPC 入口把跨进程输入视为 `unknown`，完成必要的结构校验并投影为共享 DTO。账号相关输入统一使用 `accountId`，发布输入统一使用 camelCase 字段，不兼容旧 `id`、`account_id` 和平台选项 snake_case 别名。
+
 根目录 TypeScript 工程已启用 `strict: true`，主进程、脚本和 `src/` 下的运行时代码必须通过严格类型检查，不保留目录级豁免。
 
 `npm run dev` 会选择空闲端口启动当前项目的 Vite，并通过 `RENDERER_DEV_SERVER_URL` 将准确地址交给 Electron。Electron 不再探测固定端口，因此不会连接其他项目或工作区的开发服务器。`npm start` 和打包后的应用只加载 `app/dist/index.html`。

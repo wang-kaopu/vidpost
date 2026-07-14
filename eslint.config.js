@@ -31,7 +31,7 @@ export default tseslint.config(
   },
   { files: ["app/**/*.vue"], languageOptions: { parserOptions: { parser: tseslint.parser } } },
   {
-    files: ["*.ts", "scripts/**/*.ts", "src/**/*.ts", "test/**/*.ts", "types/**/*.d.ts"],
+    files: ["*.ts", "scripts/**/*.ts", "shared/**/*.ts", "src/**/*.ts", "test/**/*.ts", "types/**/*.d.ts"],
     rules: {
       "no-restricted-imports": [
         "error",

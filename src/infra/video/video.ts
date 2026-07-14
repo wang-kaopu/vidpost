@@ -1,10 +1,8 @@
+import type { Platform } from "@shared/electron-api.ts";
 import { BaijiahaoVideo } from "@/src/infra/video/baijiahao-video.ts";
 import { BilibiliVideo } from "@/src/infra/video/bilibili-video.ts";
 import { configureDouyinVideoRuntime, destroyDouyinVideoWindows, DouyinVideo } from "@/src/infra/video/douyin-video.ts";
 import { SohuVideo } from "@/src/infra/video/sohu-video.ts";
-
-/** 当前支持视频发布的平台标识。 */
-export type VideoPlatformType = "baijiahao" | "bilibili" | "douyin" | "sohu";
 
 /** 平台发布入口能够接收的公共字段。 */
 export interface VideoUploadPayload {
@@ -54,8 +52,11 @@ export interface VideoPayloadMap {
 
 /** 视频发布结果。 */
 export interface VideoUploadResult {
+  articleId?: string | number;
+  link?: string;
   success: boolean;
   message?: string;
+  postId?: string | number;
   [key: string]: unknown;
 }
 
@@ -127,7 +128,7 @@ export function destroyVideoWindows(): void {
   destroyDouyinVideoWindows();
 }
 
-type VideoFactoryMap = { [Platform in VideoPlatformType]: () => Video<VideoPayloadMap[Platform]> };
+type VideoFactoryMap = { [PlatformName in Platform]: () => Video<VideoPayloadMap[PlatformName]> };
 
 const VIDEO_FACTORIES: VideoFactoryMap = {
   baijiahao: () => new BaijiahaoVideo(),
@@ -142,7 +143,9 @@ const VIDEO_FACTORIES: VideoFactoryMap = {
  * @param platform - 平台标识
  * @returns 对应平台视频实现
  */
-export function createVideo<Platform extends VideoPlatformType>(platform: Platform): Video<VideoPayloadMap[Platform]> {
+export function createVideo<PlatformName extends Platform>(
+  platform: PlatformName,
+): Video<VideoPayloadMap[PlatformName]> {
   const factory = VIDEO_FACTORIES[platform];
   if (!factory) throw new Error(`不支持的视频平台: ${String(platform)}`);
   return factory();

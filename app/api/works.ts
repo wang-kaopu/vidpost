@@ -1,5 +1,6 @@
 import { apiClient, normalizeQueryParams, requestEnvelope } from "./request";
 import type { ApiEnvelope, ListResponse } from "./types";
+import type { WorkVideoType } from "@shared/electron-api";
 import type { WorkItem, WorkStatus } from "@/types";
 
 interface BackendWork {
@@ -32,7 +33,7 @@ export interface WorkPublishPayload {
   workId: string;
   title: string;
   coverPath: string;
-  videoType: string;
+  videoType: WorkVideoType;
   videoPath: string;
 }
 
@@ -107,10 +108,6 @@ function normalizeWork(work: BackendWork): WorkItem {
   };
 }
 
-function resolveVideoTypeLabel(type: string | null | undefined): string {
-  return mapWorkType(type).platform;
-}
-
 // 获取作品列表
 export async function fetchWorksPage(options?: {
   lastId?: number;
@@ -154,12 +151,23 @@ export async function fetchWorkPublishPayload(workId: string): Promise<WorkPubli
   if (!videoPath) {
     throw new Error(`作品 ${workId} 缺少可发布视频地址`);
   }
+  let videoType: WorkVideoType;
+  switch (data.type) {
+    case "talking_head_video":
+    case "ai_ad_video":
+    case "ai_sora_video":
+    case "social_commerce_video":
+      videoType = data.type;
+      break;
+    default:
+      throw new Error(`作品 ${workId} 的视频类型不受支持`);
+  }
 
   return {
     workId: String(data.work_id),
     title: String(data.name || "").trim() || `作品 #${data.work_id}`,
     coverPath: String(data.edited_cover_url || data.video_cover_url || "").trim(),
-    videoType: resolveVideoTypeLabel(data.type),
+    videoType,
     videoPath,
   };
 }

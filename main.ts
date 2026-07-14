@@ -2,17 +2,17 @@ import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { app, ipcMain, BrowserWindow, session, shell, type IpcMainInvokeEvent } from "electron";
+import { app, ipcMain, BrowserWindow, session, type IpcMainInvokeEvent } from "electron";
 import * as electron from "electron";
 import squirrelStartup from "electron-squirrel-startup";
 
+import { IPC_CHANNELS, type LaunchIntent } from "@shared/electron-api.ts";
 import { getBilibiliHumanTypes, getSohuChannels, login, openAccountBackend, publish, ping } from "@/src/funcs.ts";
 import {
   AGENTHUNT_PROTOCOL,
   extractProtocolUrlFromCommandLine,
   parseAgenthuntUrl,
   resolveProtocolClientRegistration,
-  type LaunchIntent,
 } from "@/src/deep-link.ts";
 import { getSingletonLock } from "@/src/utils/lock.ts";
 import { setApiClientWindow } from "@/src/api/api-client.ts";
@@ -106,12 +106,12 @@ function handleProtocolUrl(rawUrl: string): void {
   if (targetWindow.webContents.isLoading()) {
     targetWindow.webContents.once("did-finish-load", () => {
       if (!targetWindow.isDestroyed()) {
-        targetWindow.webContents.send("agenthunt:launch-intent", launchIntent);
+        targetWindow.webContents.send(IPC_CHANNELS.launchIntent, launchIntent);
       }
     });
     return;
   }
-  targetWindow.webContents.send("agenthunt:launch-intent", launchIntent);
+  targetWindow.webContents.send(IPC_CHANNELS.launchIntent, launchIntent);
 }
 
 // 单例锁，确保把 URL 交给现有窗口，而不是打开新窗口
@@ -187,21 +187,20 @@ async function startApplication(): Promise<void> {
   configureTaskStateServiceRuntime({
     onTaskChanged: (payload) => {
       if (!mainWindow || mainWindow.isDestroyed()) return;
-      mainWindow.webContents.send("publish-task-state-changed", payload);
+      mainWindow.webContents.send(IPC_CHANNELS.publishTaskStateChanged, payload);
     },
   });
 
   // 应用准备就绪后注册 IPC 监听器并创建窗口
   app.whenReady().then(() => {
     // 注册 IPC 监听器和处理器
-    registerIpcHandler("login", login);
-    registerIpcHandler("publish", publish);
-    registerIpcHandler("ping", ping);
-    registerIpcHandler("account:open-backend", openAccountBackend);
-    registerIpcHandler("video:get-bilibili-human-types", getBilibiliHumanTypes);
-    registerIpcHandler("video:get-sohu-channels", getSohuChannels);
-    registerIpcHandler("agenthunt:get-launch-intent", () => pendingLaunchIntent);
-    registerIpcHandler("agenthunt:open-external", (_event, url) => shell.openExternal(String(url || "")));
+    registerIpcHandler(IPC_CHANNELS.login, login);
+    registerIpcHandler(IPC_CHANNELS.publish, publish);
+    registerIpcHandler(IPC_CHANNELS.ping, ping);
+    registerIpcHandler(IPC_CHANNELS.openAccountBackend, openAccountBackend);
+    registerIpcHandler(IPC_CHANNELS.getBilibiliHumanTypes, getBilibiliHumanTypes);
+    registerIpcHandler(IPC_CHANNELS.getSohuChannels, getSohuChannels);
+    registerIpcHandler(IPC_CHANNELS.getLaunchIntent, () => pendingLaunchIntent);
 
     // 注册自定义协议，优先使用 Electron 内置的注册方式
     const registration = resolveProtocolClientRegistration(process.argv, process.defaultApp);

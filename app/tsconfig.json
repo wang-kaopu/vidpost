@@ -9,7 +9,8 @@
     "noEmit": true,
     "resolveJsonModule": true,
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@shared/*": ["../shared/*"]
     },
     "skipLibCheck": true,
     "strict": true,

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { PLATFORMS, type Platform } from "@shared/electron-api";
 import AppIcon from "./AppIcon.vue";
 import PlatformLogo from "./PlatformLogo.vue";
 import PlatformPickerDialog from "./PlatformPickerDialog.vue";
@@ -57,7 +58,7 @@ const backendOpeningAccountId = ref("");
 const backendWindowVisible = ref(false);
 const notificationCenter = useNotificationCenter();
 const publishProgressCenter = usePublishProgressCenter();
-const accountBackendPlatforms = new Set(["baijiahao", "bilibili", "douyin", "sohu"]);
+const accountBackendPlatforms = new Set<string>(PLATFORMS);
 
 const pushAccountError = (title: string, message: string): void => {
   notificationCenter.push({ title, message, source: "账号管理", tone: "error", unread: true });
@@ -278,7 +279,7 @@ const pingAccount = async (item: Pick<PublishAccountItem, "id" | "platformKey">)
   pingingAccountId.value = item.id;
   errorMessage.value = "";
   try {
-    await window.electronAPI?.ping({ id: item.id, platform: item.platformKey });
+    await window.electronAPI?.ping({ accountId: item.id, platform: item.platformKey as Platform });
     await loadAccounts({ preservePage: true });
   } catch {
     errorMessage.value = "";
@@ -315,7 +316,11 @@ const handleOpenAccountBackend = async (item: PublishAccountItem): Promise<void>
   backendOpeningAccountId.value = item.id;
   backendWindowVisible.value = true;
   try {
-    const result = await openAccountBackend({ id: item.id, nickname: item.nickname, platform: item.platformKey });
+    const result = await openAccountBackend({
+      accountId: item.id,
+      nickname: item.nickname,
+      platform: item.platformKey as Platform,
+    });
     if (result.saveError) {
       pushAccountError("账号状态保存失败", "请重新打开账号后台重试");
     }
@@ -341,7 +346,7 @@ const handlePingAllAccounts = async () => {
       queue,
       async (item) => {
         if (!window.electronAPI?.ping) throw new Error("账号检测 IPC 未初始化");
-        await window.electronAPI.ping({ id: item.id, platform: item.platformKey });
+        await window.electronAPI.ping({ accountId: item.id, platform: item.platformKey as Platform });
       },
       {
         batchSize: 3,
@@ -397,9 +402,9 @@ const openPlatformDialog = async () => {
     const res = await getPublishPlatforms();
     const list = (res.list || []) as BackendPlatform[];
     platforms.value = list
-      .filter((p: BackendPlatform) => p.name)
+      .filter((p: BackendPlatform) => p.name && accountBackendPlatforms.has(p.name.trim().toLowerCase()))
       .map((p: BackendPlatform) => {
-        const key = p.name.trim().toLowerCase();
+        const key = p.name.trim().toLowerCase() as Platform;
         return { id: String(p.name), key, label: platformLabelMap[key] || key };
       });
   } catch {
@@ -422,10 +427,11 @@ const createPlatformAccount = async (platform: PlatformOption) => {
   creatingPlatformKey.value = platform.key;
   platformErrorMessage.value = "";
   try {
+    if (!accountBackendPlatforms.has(platform.key)) throw new Error("当前平台不支持 Electron 登录");
     // if (!window.electronAPI?.login(platform.key)) {
     //   throw new Error("当前环境未注入 Electron 平台登录能力");
     // }
-    await window.electronAPI?.login(platform.key);
+    await window.electronAPI?.login(platform.key as Platform);
     await loadAccounts();
     platformDialogVisible.value = false;
   } catch {

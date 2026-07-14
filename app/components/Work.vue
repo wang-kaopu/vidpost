@@ -4,6 +4,14 @@ defineOptions({ name: "WorkView" });
 import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from "vue";
 import { message } from "ant-design-vue";
 import {
+  PLATFORMS,
+  type BasePublishInput,
+  type DouyinVisibility,
+  type Platform,
+  type PublishInput,
+  type SohuChannel,
+} from "@shared/electron-api";
+import {
   PlayCircleOutlined,
 } from "@ant-design/icons-vue";
 import AppIcon from "./AppIcon.vue";
@@ -29,7 +37,7 @@ type PublishPlanRow = {
   id: string;
   workId: string;
   accountId: string;
-  platformKey: string;
+  platformKey: Platform;
   coverUrl: string;
   coverAlt: string;
   title: string;
@@ -46,13 +54,7 @@ type PublishPlanRow = {
   sohuChannels: SohuChannel[];
   sohuChannelsError: string;
   sohuChannelsLoading: boolean;
-  visibility: "public" | "friends" | "self";
-};
-
-type SohuChannel = {
-  id: number;
-  name: string;
-  videoChannels: Array<{ id: number; name: string }>;
+  visibility: DouyinVisibility;
 };
 
 type PublishPlanGroup = {
@@ -67,7 +69,7 @@ type PublishPlanDraft = {
   humanTypeId: number | null;
   channelId: number | null;
   videoChannelId: number | null;
-  visibility: "public" | "friends" | "self";
+  visibility: DouyinVisibility;
 };
 
 const works = ref<WorkItem[]>([]);
@@ -162,7 +164,10 @@ const selectedWorks = computed<SelectedWorkRow[]>(() =>
 const selectedWorkMap = computed(() => new Map(worksList.value.map((item) => [item.id, item])));
 const selectedLoginSuccessPublishAccounts = computed(() =>
   publishPlatformAccounts.value.filter((account) =>
-    (account.rawStatus === "login_success" || account.rawStatus === "online") && !account.disabledReason
+    (account.rawStatus === "login_success" || account.rawStatus === "online")
+    && !account.disabledReason
+    && typeof account.platformKey === "string"
+    && PLATFORMS.includes(account.platformKey as Platform)
   ),
 );
 const publishPlanGroups = computed<PublishPlanGroup[]>(() => {
@@ -175,7 +180,12 @@ const publishPlanGroups = computed<PublishPlanGroup[]>(() => {
     const accountIds = publishWorkAccountSelections.value[work.id] || [];
     for (const accountId of accountIds) {
       const account = selectedAccountMap.get(accountId);
-      if (!account) continue;
+      if (
+        !account
+        || typeof account.platformKey !== "string"
+        || !PLATFORMS.includes(account.platformKey as Platform)
+      ) continue;
+      const platformKey = account.platformKey as Platform;
 
       if (!groupMap.has(account.platform)) {
         groupMap.set(account.platform, {
@@ -192,7 +202,7 @@ const publishPlanGroups = computed<PublishPlanGroup[]>(() => {
         id: rowId,
         workId: work.id,
         accountId: account.id,
-        platformKey: account.platformKey || "",
+        platformKey,
         coverUrl: sourceWork?.cover || "",
         coverAlt: work.title,
         title: draft?.title || work.title,
@@ -455,7 +465,7 @@ const handlePublishPlanApplyAll = (payload: { title: string; summary: string }):
 };
 
 const buildPublishTaskScheduleValidationError = (task: {
-  platform: string;
+  platform: Platform;
   platformLabel: string;
   accountName: string;
   title: string;
@@ -497,60 +507,79 @@ const handlePublishPlanConfirm = async (): Promise<void> => {
     );
     const workPayloadMap = new Map(workPayloadEntries);
 
-    const publishTasks = publishPlanGroups.value.flatMap((group) =>
+    const publishTasks: Array<PublishInput & { platformLabel: string }> = publishPlanGroups.value.flatMap((group) =>
       group.rows.map((row) => {
         const workPayload = workPayloadMap.get(row.workId);
         if (!workPayload) {
           throw new Error(`作品 ${row.workId} 缺少发布详情`);
         }
 
-        return {
+        if (!row.coverUrl) {
+          throw new Error(`${group.platform}账号「${row.accountName}」的任务缺少封面`);
+        }
+        const baseInput: BasePublishInput = {
           accountId: row.accountId,
-          platform: row.platformKey,
-          platformLabel: group.platform,
-          title: row.title,
-          workId: row.workId,
-          introduction: row.summary,
-          coverUrl: row.coverUrl,
-          videoUrl: workPayload.videoPath,
-          scheduledAt: row.scheduledAt,
-          videoType: workPayload.videoType,
           accountName: row.accountName,
-          humanTypeId: row.humanTypeId,
-          channelId: row.channelId,
-          videoChannelId: row.videoChannelId,
-          visibility: row.visibility,
+          coverUrl: row.coverUrl,
+          introduction: row.summary,
+          progressId: crypto.randomUUID(),
+          scheduledAt: row.scheduledAt,
+          title: row.title,
+          videoType: workPayload.videoType,
+          videoUrl: workPayload.videoPath,
+          workId: row.workId,
         };
+
+        switch (row.platformKey) {
+          case "baijiahao":
+            return { ...baseInput, platform: row.platformKey, platformLabel: group.platform };
+          case "bilibili":
+            if (typeof row.humanTypeId !== "number" || !Number.isSafeInteger(row.humanTypeId) || row.humanTypeId <= 0) {
+              throw new Error(`Bilibili 账号「${row.accountName}」必须选择投稿分区`);
+            }
+            return {
+              ...baseInput,
+              humanTypeId: row.humanTypeId,
+              platform: row.platformKey,
+              platformLabel: group.platform,
+            };
+          case "douyin":
+            return {
+              ...baseInput,
+              platform: row.platformKey,
+              platformLabel: group.platform,
+              visibility: row.visibility,
+            };
+          case "sohu":
+            if (
+              typeof row.channelId !== "number"
+              || !Number.isSafeInteger(row.channelId)
+              || row.channelId <= 0
+              || typeof row.videoChannelId !== "number"
+              || !Number.isSafeInteger(row.videoChannelId)
+              || row.videoChannelId <= 0
+            ) {
+              throw new Error(`搜狐账号「${row.accountName}」必须选择一级频道和二级频道`);
+            }
+            return {
+              ...baseInput,
+              channelId: row.channelId,
+              platform: row.platformKey,
+              platformLabel: group.platform,
+              videoChannelId: row.videoChannelId,
+            };
+        }
       }),
     );
 
     for (const task of publishTasks) {
-      if ((task.platform === "bilibili" || task.platform === "baijiahao" || task.platform === "douyin" || task.platform === "sohu") && !task.coverUrl) {
-        throw new Error(`${task.platformLabel}账号「${task.accountName}」的任务缺少封面`);
-      }
-      if (task.platform === "bilibili" && (!Number.isSafeInteger(task.humanTypeId) || Number(task.humanTypeId) <= 0)) {
-        throw new Error(`Bilibili 账号「${task.accountName}」必须选择投稿分区`);
-      }
-      if (task.platform === "sohu" && (
-        !Number.isSafeInteger(task.channelId)
-        || Number(task.channelId) <= 0
-        || !Number.isSafeInteger(task.videoChannelId)
-        || Number(task.videoChannelId) <= 0
-      )) {
-        throw new Error(`搜狐账号「${task.accountName}」必须选择一级频道和二级频道`);
-      }
       const validationError = buildPublishTaskScheduleValidationError(task);
       if (validationError) {
         throw new Error(validationError);
       }
     }
 
-    const trackedPublishTasks = publishTasks.map((task) => ({
-      ...task,
-      progressId: crypto.randomUUID(),
-    }));
-
-    publishProgressCenter.openBatch(trackedPublishTasks.map((task) => ({
+    publishProgressCenter.openBatch(publishTasks.map((task) => ({
       id: task.progressId,
       platformKey: task.platform,
       platformLabel: task.platformLabel,
@@ -561,7 +590,7 @@ const handlePublishPlanConfirm = async (): Promise<void> => {
 
     resetPublishPlanState();
 
-    for (const task of trackedPublishTasks) {
+    for (const task of publishTasks) {
       void publishApi(task)
         .then(() => {
           publishProgressCenter.complete(task.progressId);

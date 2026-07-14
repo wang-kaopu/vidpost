@@ -1,6 +1,7 @@
+import type { Platform, PublishTaskStateChangedEvent } from "@shared/electron-api.ts";
 import { listPublishTasks, updatePublishTask } from "@/src/api/task-api.ts";
 import { createVideo } from "@/src/infra/video/video.ts";
-import type { PublishedStatePayload, PublishedStateResult, VideoPlatformType } from "@/src/infra/video/video.ts";
+import type { PublishedStatePayload, PublishedStateResult } from "@/src/infra/video/video.ts";
 import { resolveAccountFilePath } from "@/src/service/account-service.ts";
 import { logger } from "@/src/utils/logger.ts";
 
@@ -11,7 +12,7 @@ const DEFAULT_LIST_LIMIT = 99;
 export const TASK_STATE_POLL_INTERVAL_MS = 30_000;
 export const TASK_STATE_MAX_WAIT_MS = 2 * 60 * 60 * 1_000;
 
-const MONITORED_PLATFORMS = new Set<VideoPlatformType>(["douyin", "baijiahao", "bilibili", "sohu"]);
+const MONITORED_PLATFORMS = new Set<Platform>(["douyin", "baijiahao", "bilibili", "sohu"]);
 
 type PublishTask = Record<string, any>;
 type TerminalStatus = "public" | "non_public" | typeof FAILED_STATUS;
@@ -31,19 +32,12 @@ interface TaskMonitor {
   timer: ReturnType<typeof setTimeout> | null;
 }
 
-interface TaskStateChangedEvent {
-  reason?: string | null;
-  status: string;
-  syncError?: string | null;
-  taskId: number;
-}
-
 interface TaskStateServiceRuntime {
   clearTimeout: typeof clearTimeout;
   createVideo: typeof createVideo;
   listPublishTasks: typeof listPublishTasks;
   now: () => number;
-  onTaskChanged: (event: TaskStateChangedEvent) => void;
+  onTaskChanged: (event: PublishTaskStateChangedEvent) => void;
   resolveAccountFilePath: typeof resolveAccountFilePath;
   setTimeout: typeof setTimeout;
   updatePublishTask: typeof updatePublishTask;
@@ -204,7 +198,7 @@ function buildFetchPayload(task: PublishTask, abortSignal?: AbortSignal): Publis
 }
 
 /** 通知渲染进程刷新指定任务；通知失败不影响监控。 */
-function notifyTaskChanged(event: TaskStateChangedEvent): void {
+function notifyTaskChanged(event: PublishTaskStateChangedEvent): void {
   try {
     runtime.onTaskChanged(event);
   } catch (error) {
@@ -219,7 +213,11 @@ async function saveTaskSyncError(monitor: TaskMonitor, message: string): Promise
   try {
     await runtime.updatePublishTask(monitor.task.id, { attributes });
     monitor.task = { ...monitor.task, attributes };
-    notifyTaskChanged({ taskId: monitor.task.id, status: monitor.task.status, syncError: message });
+    notifyTaskChanged({
+      taskId: monitor.task.id,
+      status: monitor.task.status === RUNNING_STATUS ? RUNNING_STATUS : REVIEWING_STATUS,
+      syncError: message,
+    });
   } catch (error) {
     logger.error(`[task-state-monitor] taskId=${monitor.task.id} 查询错误证据写回失败:`, error);
   }
@@ -317,7 +315,7 @@ async function runTaskMonitor(monitor: TaskMonitor): Promise<void> {
     return;
   }
 
-  const platform = normalizeString(monitor.task.platform) as VideoPlatformType | null;
+  const platform = normalizeString(monitor.task.platform) as Platform | null;
   if (!platform || !MONITORED_PLATFORMS.has(platform)) {
     removeTaskMonitor(monitor.task.id);
     return;
@@ -358,7 +356,7 @@ export function configureTaskStateServiceRuntime(overrides: Partial<TaskStateSer
 /** 为投稿成功或启动恢复的任务注册独立监控。 */
 export function startTaskStateMonitor(task: PublishTask): boolean {
   const taskId = task?.id;
-  const platform = normalizeString(task?.platform) as VideoPlatformType | null;
+  const platform = normalizeString(task?.platform) as Platform | null;
   if (!Number.isInteger(taskId) || !platform || !MONITORED_PLATFORMS.has(platform) || !getPlatformWorkId(task))
     return false;
   if (taskMonitors.has(taskId)) return true;
@@ -427,7 +425,7 @@ export async function recoverTaskStateMonitors(options: { limit?: number } = {})
   ]);
   for (const originalTask of [...reviewingTasks, ...runningTasks]) {
     let task = originalTask;
-    const platform = normalizeString(task.platform) as VideoPlatformType | null;
+    const platform = normalizeString(task.platform) as Platform | null;
     if (!platform || !MONITORED_PLATFORMS.has(platform)) continue;
     if (platform === "sohu" && !getPlatformWorkId(task)) {
       const recoveredWorkId = getSohuHistoricalWorkId(task);

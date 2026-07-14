@@ -6,6 +6,8 @@ import { pipeline } from "node:stream/promises";
 
 import axios from "axios";
 
+import type { PublishInput } from "@shared/electron-api.ts";
+
 /** 判断未知输入是否为 HTTP(S) 远端资源地址。 */
 export function isRemoteUrl(value: unknown): boolean {
   const normalized = String(value || "")
@@ -35,17 +37,8 @@ export function guessAssetFilename(url: string, fallbackName: string): string {
 }
 
 /** 从发布参数中提取用于命名素材的作品 ID。 */
-function resolveWorkIdValue(payload: Record<string, unknown>): string {
-  const candidates = [payload?.workId, payload?.work_id];
-
-  for (const candidate of candidates) {
-    const normalized = String(candidate || "").trim();
-    if (normalized) {
-      return normalized;
-    }
-  }
-
-  return "";
+function resolveWorkIdValue(payload: PublishInput): string {
+  return payload.workId.trim();
 }
 
 /** 使用作品 ID 和远端扩展名构建首选素材文件名。 */
@@ -66,12 +59,8 @@ export function resolveDefaultPublishAssetCacheRoot(): string {
 }
 
 /** 从发布参数中提取稳定的素材缓存键。 */
-function resolveCacheKey(payload: Record<string, unknown>): string {
-  const accountPlatformKey =
-    payload.accountId != null && payload.platform != null
-      ? `${String(payload.accountId)}_${String(payload.platform)}`
-      : "";
-  const candidates = [payload?.workId, payload?.remoteTaskId, payload?.taskId, accountPlatformKey];
+function resolveCacheKey(payload: PublishInput & { remoteTaskId?: string | number }): string {
+  const candidates = [payload.workId, payload.remoteTaskId, `${payload.accountId}_${payload.platform}`];
 
   for (const candidate of candidates) {
     const normalized = String(candidate || "").trim();
@@ -135,17 +124,17 @@ export class PublishAssetCache {
       typeof options.timeoutMs === "number" && Number.isFinite(options.timeoutMs) ? options.timeoutMs : 120000;
   }
 
-  /** 将发布参数中的远端视频和封面转换为本地缓存文件。 */
-  async materializePublishPayload(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
-    const normalizedPayload = payload ? { ...payload } : {};
-    const cacheKey = resolveCacheKey(normalizedPayload);
-    const preferredBaseName = resolveWorkIdValue(normalizedPayload);
+  /** 将发布参数中的素材引用转换为主进程可读取的本地文件。 */
+  async materializePublishPayload<TPayload extends PublishInput & { remoteTaskId?: string | number }>(
+    payload: TPayload,
+  ): Promise<TPayload & { coverPath: string; videoPath: string }> {
+    const cacheKey = resolveCacheKey(payload);
+    const preferredBaseName = resolveWorkIdValue(payload);
 
     const videoPath = await this.materializeAsset({
       cacheKey,
       assetKind: "video",
-      localPath: normalizedPayload.videoPath || normalizedPayload.filePath,
-      remoteUrl: normalizedPayload.videoUrl,
+      source: payload.videoUrl,
       fallbackName: "video.bin",
       preferredBaseName,
     });
@@ -153,49 +142,40 @@ export class PublishAssetCache {
     const coverPath = await this.materializeAsset({
       cacheKey,
       assetKind: "cover",
-      localPath: normalizedPayload.coverPath || normalizedPayload.thumbnailPath,
-      remoteUrl: normalizedPayload.coverUrl,
+      source: payload.coverUrl,
       fallbackName: "cover.bin",
       preferredBaseName,
     });
 
-    return { ...normalizedPayload, videoPath, coverPath };
+    return { ...payload, videoPath, coverPath };
   }
 
+  /** 按素材来源返回本地路径，HTTP(S) 来源会先下载到账号任务缓存。 */
   async materializeAsset({
     cacheKey,
     assetKind,
-    localPath,
-    remoteUrl,
+    source,
     fallbackName,
     preferredBaseName,
   }: {
     cacheKey: string;
     assetKind: string;
-    localPath?: unknown;
-    remoteUrl?: unknown;
+    source: string;
     fallbackName: string;
-    preferredBaseName?: unknown;
+    preferredBaseName?: string;
   }): Promise<string> {
-    const normalizedLocalPath = String(localPath || "").trim();
-    if (normalizedLocalPath && !isRemoteUrl(normalizedLocalPath)) {
-      return normalizedLocalPath;
+    const normalizedSource = source.trim();
+    if (!isRemoteUrl(normalizedSource)) {
+      return normalizedSource;
     }
 
-    const sourceUrl =
-      normalizedLocalPath && isRemoteUrl(normalizedLocalPath) ? normalizedLocalPath : String(remoteUrl || "").trim();
-
-    if (!isRemoteUrl(sourceUrl)) {
-      return normalizedLocalPath;
-    }
-
-    const fileName = buildPreferredAssetFilename(sourceUrl, fallbackName, preferredBaseName);
+    const fileName = buildPreferredAssetFilename(normalizedSource, fallbackName, preferredBaseName);
     const destination = path.join(this.cacheRootDir, cacheKey, assetKind, fileName);
 
     if (await fileExists(destination)) {
       return destination;
     }
 
-    return downloadRemoteAsset(sourceUrl, destination, this.timeoutMs);
+    return downloadRemoteAsset(normalizedSource, destination, this.timeoutMs);
   }
 }

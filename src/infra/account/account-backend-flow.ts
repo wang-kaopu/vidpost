@@ -1,6 +1,6 @@
 import type { BrowserWindow } from "electron";
 
-import type { PlatformType } from "@/src/infra/account/account.ts";
+import type { OpenAccountBackendResult, Platform } from "@shared/electron-api.ts";
 import { configureAccountBrowserWindow } from "@/src/infra/account/account-browser-window.ts";
 import { loadBrowserIdentity, type BrowserIdentity } from "@/src/infra/browser-identity.ts";
 import {
@@ -18,21 +18,16 @@ export interface AccountBackendPlatformConfig {
   label: string;
 }
 
-const ACCOUNT_BACKEND_PLATFORM_CONFIGS: Record<PlatformType, AccountBackendPlatformConfig> = {
+const ACCOUNT_BACKEND_PLATFORM_CONFIGS: Record<Platform, AccountBackendPlatformConfig> = {
   baijiahao: { homeUrl: "https://baijiahao.baidu.com/builder/rc/home", label: "百家号" },
   bilibili: { homeUrl: "https://member.bilibili.com/platform/home", label: "Bilibili" },
   douyin: { homeUrl: "https://creator.douyin.com/creator-micro/home", label: "抖音" },
   sohu: { homeUrl: "https://mp.sohu.com/mpfe/v4/contentManagement/first/page", label: "搜狐号" },
 };
 
-/** 账号后台窗口关闭后的状态保存结果。 */
-export interface AccountBackendFlowResult {
-  saveError?: string;
-}
-
 /** 账号后台生命周期所需的账号状态与保存操作。 */
 export interface AccountBackendFlowOptions {
-  platform: PlatformType;
+  platform: Platform;
   storageState?: BrowserStorageState;
   persistState(window: BrowserWindow, final: boolean): Promise<boolean>;
 }
@@ -98,7 +93,7 @@ function isAccountBackendPageUrl(url: string): boolean {
  * @param platform - 平台标识
  * @returns 平台后台配置
  */
-export function resolveAccountBackendPlatformConfig(platform: PlatformType): AccountBackendPlatformConfig {
+export function resolveAccountBackendPlatformConfig(platform: Platform): AccountBackendPlatformConfig {
   return ACCOUNT_BACKEND_PLATFORM_CONFIGS[platform];
 }
 
@@ -114,7 +109,7 @@ export async function runAccountBackendFlow(
   backendWindow: BrowserWindow,
   options: AccountBackendFlowOptions,
   runtime: AccountBackendFlowRuntime = DEFAULT_BACKEND_RUNTIME,
-): Promise<AccountBackendFlowResult> {
+): Promise<OpenAccountBackendResult> {
   const { homeUrl, label } = resolveAccountBackendPlatformConfig(options.platform);
   const backendErrorPrefix = label === "Bilibili" ? `${label} 账号后台` : `${label}账号后台`;
   let closing = false;
@@ -217,7 +212,7 @@ export async function runAccountBackendFlow(
     runLoginStateProbe();
   };
 
-  const closedResult = new Promise<AccountBackendFlowResult>((resolve) => {
+  const closedResult = new Promise<OpenAccountBackendResult>((resolve) => {
     backendWindow.once("closed", () => {
       clearProbeTimer();
       finishStartup("closed");

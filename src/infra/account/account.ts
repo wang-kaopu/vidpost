@@ -1,13 +1,11 @@
 import type { BrowserWindow } from "electron";
 
+import type { Platform } from "@shared/electron-api.ts";
 import type { BrowserCookieInput } from "@/src/infra/browser-storage-state.ts";
 import { BaijiahaoAccount } from "@/src/infra/account/baijiahao-account.ts";
 import { BilibiliAccount } from "@/src/infra/account/bilibili-account.ts";
 import { DouyinAccount } from "@/src/infra/account/douyin-account.ts";
 import { SohuAccount } from "@/src/infra/account/sohu-account.ts";
-
-/** 当前支持的平台标识。 */
-export type PlatformType = "baijiahao" | "bilibili" | "douyin" | "sohu";
 
 /** 平台账号登录参数。 */
 export interface AccountLoginOptions {
@@ -49,7 +47,7 @@ export interface Account {
  * @param platform - 平台标识
  * @returns 对应平台账号实现
  */
-export function createAccount(platform: PlatformType): Account {
+export function createAccount(platform: Platform): Account {
   switch (platform) {
     case "baijiahao":
       return new BaijiahaoAccount();

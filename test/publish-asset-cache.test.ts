@@ -7,6 +7,17 @@ import fs from 'node:fs/promises'
 
 import { PublishAssetCache } from '@/src/service/publish-asset-cache.ts'
 
+const BASE_PUBLISH_INPUT = {
+    accountId: '101',
+    accountName: '测试账号',
+    introduction: '简介',
+    platform: 'baijiahao' as const,
+    progressId: 'progress-1',
+    scheduledAt: '0',
+    title: '标题',
+    videoType: 'talking_head_video' as const,
+}
+
 async function createTempDir(prefix) {
     return fs.mkdtemp(path.join(os.tmpdir(), prefix))
 }
@@ -14,15 +25,16 @@ async function createTempDir(prefix) {
 test('publish asset cache should keep local paths untouched', async () => {
     const cache = new PublishAssetCache(await createTempDir('rm-server-cache-local-'))
     const payload = {
+        ...BASE_PUBLISH_INPUT,
         workId: 'work-local',
-        videoPath: '/tmp/demo-video.mp4',
-        coverPath: '/tmp/demo-cover.png',
+        videoUrl: '/tmp/demo-video.mp4',
+        coverUrl: '/tmp/demo-cover.png',
     }
 
     const materialized = await cache.materializePublishPayload(payload)
 
-    assert.equal(materialized.videoPath, payload.videoPath)
-    assert.equal(materialized.coverPath, payload.coverPath)
+    assert.equal(materialized.videoPath, payload.videoUrl)
+    assert.equal(materialized.coverPath, payload.coverUrl)
 })
 
 test('publish asset cache should download remote assets and reuse cache', async () => {
@@ -49,12 +61,14 @@ test('publish asset cache should download remote assets and reuse cache', async 
 
     try {
         const firstPayload = await cache.materializePublishPayload({
+            ...BASE_PUBLISH_INPUT,
             workId: 'work-remote',
             videoUrl: `${baseUrl}/video.mp4`,
             coverUrl: `${baseUrl}/cover.png`,
         })
 
         const secondPayload = await cache.materializePublishPayload({
+            ...BASE_PUBLISH_INPUT,
             workId: 'work-remote',
             videoUrl: `${baseUrl}/video.mp4`,
             coverUrl: `${baseUrl}/cover.png`,
@@ -80,8 +94,8 @@ test('publish asset cache should download remote assets and reuse cache', async 
     }
 })
 
-test('publish asset cache should support snake_case work_id for downloaded asset naming', async () => {
-    const cacheRoot = await createTempDir('rm-server-cache-remote-snake-')
+test('publish asset cache should use canonical workId for downloaded asset naming', async () => {
+    const cacheRoot = await createTempDir('rm-server-cache-canonical-work-id-')
     const cache = new PublishAssetCache(cacheRoot)
     let requestCount = 0
 
@@ -104,13 +118,14 @@ test('publish asset cache should support snake_case work_id for downloaded asset
 
     try {
         const payload = await cache.materializePublishPayload({
-            work_id: 'snake-work-id',
+            ...BASE_PUBLISH_INPUT,
+            workId: 'canonical-work-id',
             videoUrl: `${baseUrl}/video.mov`,
             coverUrl: `${baseUrl}/cover.jpeg`,
         })
 
-        assert.equal(path.basename(payload.videoPath), 'snake-work-id.mov')
-        assert.equal(path.basename(payload.coverPath), 'snake-work-id.jpeg')
+        assert.equal(path.basename(payload.videoPath), 'canonical-work-id.mov')
+        assert.equal(path.basename(payload.coverPath), 'canonical-work-id.jpeg')
         assert.equal(requestCount, 2)
     } finally {
         await new Promise((resolve, reject) => {
