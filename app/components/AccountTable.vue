@@ -14,6 +14,7 @@ import {
 import { removeAccount, updateAccount } from "@/api/accounts";
 import type { PublishAccountItem, PlatformOption, BackendPlatform } from "@/api/publish";
 import { useNotificationCenter } from "@/notifications";
+import { usePublishProgressCenter } from "@/publish-progress";
 import { runAccountPingBatch } from "@/utils/account-ping-batch";
 import { useDialogLayer } from "../composables/useDialogLayer";
 
@@ -52,16 +53,14 @@ const pingingAccountId = ref("");
 const pingingAll = ref(false);
 const pendingPingAccountIds = ref<string[]>([]);
 const activePingAccountIds = ref<string[]>([]);
+const backendOpeningAccountId = ref("");
+const backendWindowVisible = ref(false);
 const notificationCenter = useNotificationCenter();
+const publishProgressCenter = usePublishProgressCenter();
+const accountBackendPlatforms = new Set(["baijiahao", "bilibili", "douyin", "sohu"]);
 
 const pushAccountError = (title: string, message: string): void => {
-  notificationCenter.push({
-    title,
-    message,
-    source: "账号管理",
-    tone: "error",
-    unread: true,
-  });
+  notificationCenter.push({ title, message, source: "账号管理", tone: "error", unread: true });
 };
 
 const pushAccountBatchSummary = (succeeded: number, failed: number, pending: number): void => {
@@ -76,17 +75,9 @@ const pushAccountBatchSummary = (succeeded: number, failed: number, pending: num
   });
 };
 
-const statusLabelMap: Record<string, string> = {
-  online: "在线",
-  success: "成功",
-  offline: "离线",
-};
+const statusLabelMap: Record<string, string> = { online: "在线", success: "成功", offline: "离线" };
 
-const statusClassMap: Record<string, string> = {
-  online: "success",
-  success: "success",
-  offline: "danger",
-};
+const statusClassMap: Record<string, string> = { online: "success", success: "success", offline: "danger" };
 
 const filteredAccounts = computed(() => {
   let result = [...allAccounts.value];
@@ -125,11 +116,7 @@ const loadPlatforms = async () => {
       .filter((p: BackendPlatform) => p.name)
       .map((p: BackendPlatform) => {
         const key = p.name.trim().toLowerCase();
-        return {
-          id: String(p.name),
-          key,
-          label: platformLabelMap[key] || key,
-        };
+        return { id: String(p.name), key, label: platformLabelMap[key] || key };
       });
   } catch {
     platformOptions.value = [];
@@ -193,7 +180,9 @@ const renameDialogTarget = ref<PublishAccountItem | null>(null);
 const renameDialogDraft = ref("");
 const renameDialogLoading = ref(false);
 const renameDialogError = ref("");
-const accountDialogVisible = computed(() => tagDialogVisible.value || renameDialogVisible.value);
+const accountDialogVisible = computed(
+  () => tagDialogVisible.value || renameDialogVisible.value || backendWindowVisible.value,
+);
 
 const openRenameDialog = (item: PublishAccountItem) => {
   renameDialogTarget.value = item;
@@ -302,6 +291,41 @@ const pingAccount = async (item: Pick<PublishAccountItem, "id" | "platformKey">)
 const handlePingAccount = async (item: PublishAccountItem) => {
   if (renameDialogLoading.value || deletingAccountId.value || pingingAccountId.value || pingingAll.value) return;
   await pingAccount(item);
+};
+
+/** 打开账号专属平台后台，并在窗口关闭后刷新账号状态。 */
+const handleOpenAccountBackend = async (item: PublishAccountItem): Promise<void> => {
+  if (backendWindowVisible.value) return;
+  if (publishProgressCenter.hasActiveTasks.value) {
+    notificationCenter.push({
+      title: "暂时无法打开账号后台",
+      message: "发布视频中, 完成后再打开",
+      source: "账号管理",
+      tone: "warning",
+      unread: true,
+    });
+    return;
+  }
+  const openAccountBackend = window.electronAPI?.openAccountBackend;
+  if (!openAccountBackend) {
+    pushAccountError("账号后台打开失败", "当前环境未注入账号后台能力");
+    return;
+  }
+
+  backendOpeningAccountId.value = item.id;
+  backendWindowVisible.value = true;
+  try {
+    const result = await openAccountBackend({ id: item.id, nickname: item.nickname, platform: item.platformKey });
+    if (result.saveError) {
+      pushAccountError("账号状态保存失败", "请重新打开账号后台重试");
+    }
+  } catch {
+    pushAccountError("账号后台打开失败", "平台后台没有成功打开，请稍后重试");
+  } finally {
+    backendWindowVisible.value = false;
+    backendOpeningAccountId.value = "";
+    await loadAccounts({ preservePage: true });
+  }
 };
 
 const handlePingAllAccounts = async () => {
@@ -481,9 +505,7 @@ useDialogLayer(() => accountDialogVisible.value);
         <button class="search-btn" type="button" @click="handleSearch">
           <AppIcon name="search" :size="14" /> 搜索
         </button>
-        <button class="reset-btn" type="button" @click="handleReset">
-          <AppIcon name="refresh" :size="14" /> 重置
-        </button>
+        <button class="reset-btn" type="button" @click="handleReset"><AppIcon name="refresh" :size="14" /> 重置</button>
       </div>
     </div>
 
@@ -547,7 +569,9 @@ useDialogLayer(() => accountDialogVisible.value);
                   class="account-tag-remove"
                   :disabled="deletingAccountId === item.id"
                   @click="handleDeleteTag(item, tag)"
-                >×</button>
+                >
+                  ×
+                </button>
               </span>
               <button type="button" class="account-tag-add" @click="openTagDialog(item)">+ 添加</button>
             </div>
@@ -559,6 +583,18 @@ useDialogLayer(() => accountDialogVisible.value);
           </td>
           <td>
             <div class="table-links">
+              <button
+                v-if="accountBackendPlatforms.has(item.platformKey)"
+                type="button"
+                :disabled="
+                  Boolean(
+                    renameDialogLoading || deletingAccountId || pingingAccountId || pingingAll || backendWindowVisible,
+                  )
+                "
+                @click="handleOpenAccountBackend(item)"
+              >
+                {{ backendOpeningAccountId === item.id ? "打开中..." : "账号后台" }}
+              </button>
               <button
                 type="button"
                 :disabled="Boolean(renameDialogLoading || deletingAccountId || pingingAccountId || pingingAll)"
@@ -623,6 +659,14 @@ useDialogLayer(() => accountDialogVisible.value);
       </div>
     </footer>
 
+    <teleport to="body">
+      <transition name="dialog-layer" appear>
+        <div v-if="backendWindowVisible" class="platform-dialog-mask account-backend-mask">
+          <div class="account-backend-mask-status" role="status">正在同步账号状态…</div>
+        </div>
+      </transition>
+    </teleport>
+
     <PlatformPickerDialog
       :visible="platformDialogVisible"
       title="选择发布平台"
@@ -662,7 +706,9 @@ useDialogLayer(() => accountDialogVisible.value);
               <div v-if="tagDialogError" class="tag--error">{{ tagDialogError }}</div>
             </div>
             <div class="tag-dialog-footer">
-              <button type="button" class="ghost-button" :disabled="tagDialogLoading" @click="closeTagDialog">取消</button>
+              <button type="button" class="ghost-button" :disabled="tagDialogLoading" @click="closeTagDialog">
+                取消
+              </button>
               <button
                 type="button"
                 class="blue-button"
@@ -700,7 +746,9 @@ useDialogLayer(() => accountDialogVisible.value);
               <div v-if="renameDialogError" class="tag-dialog-error">{{ renameDialogError }}</div>
             </div>
             <div class="tag-dialog-footer">
-              <button type="button" class="ghost-button" :disabled="renameDialogLoading" @click="closeRenameDialog">取消</button>
+              <button type="button" class="ghost-button" :disabled="renameDialogLoading" @click="closeRenameDialog">
+                取消
+              </button>
               <button
                 type="button"
                 class="blue-button"

@@ -40,6 +40,7 @@ The Bilibili, Baijiahao, Douyin, and Sohu publishing implementations live direct
 - Every Douyin task selects `public`, `friends`, or `self`; the default is `public`.
 - Douyin reuses the current Electron account partition instead of opening the same profile in a second Electron process. Douyin publishing is available on macOS and Windows only.
 - All four platforms use one loader to select the host-specific fixed Chrome 138 identity under `assets/browser-identity`. Login windows share its UA, platform, language, Client Hints, and timezone behavior, while each HTTP protocol consumes only the fields it needs. Environment and runtime identity overrides are unsupported. GPU, CPU, memory, and screen information still comes from the host Chromium runtime.
+- Login windows do not inject a floating close button into platform pages. They close through the native title bar or `Cmd/Ctrl+W` and do not consume `Esc`.
 - When Douyin's security gateway requires identity verification for the final submission, the task fails directly and reports the account nickname, verification reason, scene, and available methods. Complete verification in the same account partition before publishing again.
 - `dryRun()` executes the complete pre-publish flow without making the final submission and does not return the internal prepared context. All four platforms may upload temporary remote assets during a dry run. Douyin closes its hidden windows, IPC, and session resources afterward. Cleanup failures are logged and never thrown.
 - Final publish requests and complete workflows are never retried automatically. Only safe probes and media chunks have bounded retries.
@@ -47,6 +48,12 @@ The Bilibili, Baijiahao, Douyin, and Sohu publishing implementations live direct
 - Remote task records store platform IDs, public links, and non-sensitive publishing options. Sohu also keeps the final publish response under `publish_result.response` for diagnostics and later ID parsing.
 
 The migrated services use `axios-retry`, `crc-32`, `file-type`, `mp4box`, `p-limit`, and `sharp`. `npm run build:electron` emits the Douyin hidden-window bundle at `.build/douyin-publish-renderer.js`.
+
+## Account management windows
+
+The account table exposes an **Account backend** action for Douyin, Bilibili, Baijiahao, and Sohu. It opens the platform management home in the account's persistent Electron partition. The window is modal, the renderer adds a full-page mask, and only one account backend can exist globally. Existing cookies and local storage are restored before navigation. Missing or expired state does not block the window, so users can sign in again; a valid replacement login is saved immediately, and the current state is saved and checked again when the window closes. Signing in as another account on the same platform rebinds the existing local account record while retaining its local ID, tags, and history.
+
+Account backend windows always start from the platform management home and let an expired session follow the platform's own login or cross-domain synchronization redirects. The first main-frame page must load within 30 seconds; expected `ERR_ABORTED` navigation replacements remain in the flow, while real main-frame failures and startup timeouts release the mask and report an error. Once a page is visible, the window has no usage timeout. It closes through the native title bar or `Cmd/Ctrl+W`, does not consume `Esc`, and sends every requested popup to the system browser. Closing before the first page loads does not save an incomplete state, and later save failures never trap the user in the modal window. Manual actions performed in platform pages do not create local publishing records. The renderer prevents this window from opening while any automatic task is still waiting, preparing, queued, or publishing; platform review after a successful submission does not keep the window blocked.
 
 `app/App.vue` is the production renderer entry. `app/src/App.vue` and `app/src/scripts/sse-register.ts` are the backend integration demo and must be retained.
 

@@ -6,7 +6,7 @@ import { app, ipcMain, BrowserWindow, session, shell, type IpcMainInvokeEvent } 
 import * as electron from "electron";
 import squirrelStartup from "electron-squirrel-startup";
 
-import { getBilibiliHumanTypes, getSohuChannels, login, publish, ping } from "@/src/funcs.ts";
+import { getBilibiliHumanTypes, getSohuChannels, login, openAccountBackend, publish, ping } from "@/src/funcs.ts";
 import {
   AGENTHUNT_PROTOCOL,
   extractProtocolUrlFromCommandLine,
@@ -22,6 +22,7 @@ import {
   stopTaskStateMonitors,
 } from "@/src/service/task-state-service.ts";
 import { configureVideoRuntime, destroyVideoWindows } from "@/src/infra/video/video.ts";
+import { destroyAccountBackendWindow } from "@/src/infra/account/account-backend-window.ts";
 import { logger } from "@/src/utils/logger.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -196,6 +197,7 @@ async function startApplication(): Promise<void> {
     registerIpcHandler("login", login);
     registerIpcHandler("publish", publish);
     registerIpcHandler("ping", ping);
+    registerIpcHandler("account:open-backend", openAccountBackend);
     registerIpcHandler("video:get-bilibili-human-types", getBilibiliHumanTypes);
     registerIpcHandler("video:get-sohu-channels", getSohuChannels);
     registerIpcHandler("agenthunt:get-launch-intent", () => pendingLaunchIntent);
@@ -232,6 +234,7 @@ if (hasSingletonLock) {
   app.on("before-quit", () => {
     willQuitApp = true;
     stopTaskStateMonitors();
+    destroyAccountBackendWindow();
     destroyVideoWindows();
   });
 

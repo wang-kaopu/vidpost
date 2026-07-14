@@ -4,7 +4,6 @@ import { loadBrowserIdentity } from "@/src/infra/browser-identity.ts";
 import { PlatformTimeoutError } from "@/src/infra/platform-errors.ts";
 import type { Account, AccountLoginOptions, AccountLoginResult, AccountPingResult } from "@/src/infra/account/account.ts";
 import { runAccountLoginFlow } from "@/src/infra/account/account-login-flow.ts";
-import { buildCloseButtonScript } from "@/src/infra/account/account-login-window.ts";
 import { readBrowserStorageState } from "@/src/infra/browser-storage-state.ts";
 
 const SOHU_ORIGIN = "https://mp.sohu.com";
@@ -15,7 +14,6 @@ const SOHU_LOGIN_URL = "https://mp.sohu.com/mpfe/v4/login";
 const SOHU_LOGIN_SUCCESS_URL = "https://mp.sohu.com/mpfe/v4/contentManagement/first/page";
 const ACCOUNT_PING_ATTEMPTS = 3;
 const ACCOUNT_PING_TIMEOUT_MS = 20_000;
-const SOHU_CLOSE_BUTTON_SCRIPT = buildCloseButtonScript("matrix-sohu-login-close", "matrix-sohu-login");
 
 /**
  * 通过搜狐账号鉴权与账号信息接口检测登录状态。
@@ -174,7 +172,6 @@ export class SohuAccount implements Account {
         title: "搜狐号",
         partitionPrefix: "sohu-login",
         loginUrl: SOHU_LOGIN_URL,
-        closeButtonScript: SOHU_CLOSE_BUTTON_SCRIPT,
         consolePrefix: "sohu",
         isSuccess: async ({ url }) => isSohuLoginSuccessUrl(url),
       },

@@ -5,7 +5,6 @@ import { loadBrowserIdentity } from "@/src/infra/browser-identity.ts";
 import { PlatformTimeoutError } from "@/src/infra/platform-errors.ts";
 import type { Account, AccountLoginOptions, AccountLoginResult, AccountPingResult } from "@/src/infra/account/account.ts";
 import { runAccountLoginFlow } from "@/src/infra/account/account-login-flow.ts";
-import { buildCloseButtonScript } from "@/src/infra/account/account-login-window.ts";
 import { readBrowserStorageState } from "@/src/infra/browser-storage-state.ts";
 
 const BILIBILI_ACCOUNT_INFO_URL = "https://api.bilibili.com/x/web-interface/nav";
@@ -13,7 +12,6 @@ const BILIBILI_LOGIN_URL = "https://passport.bilibili.com/login";
 const BILIBILI_LOGIN_SUCCESS_URL = "https://member.bilibili.com/platform/home";
 const ACCOUNT_PING_ATTEMPTS = 3;
 const ACCOUNT_PING_TIMEOUT_MS = 20_000;
-const BILIBILI_CLOSE_BUTTON_SCRIPT = buildCloseButtonScript("matrix-bilibili-login-close", "matrix-bilibili-login");
 
 /**
  * 从 Bilibili 账号文件读取有效 Cookie 和当前宿主系统 UA。
@@ -224,7 +222,6 @@ export class BilibiliAccount implements Account {
         title: "Bilibili",
         partitionPrefix: "bilibili-login",
         loginUrl: BILIBILI_LOGIN_URL,
-        closeButtonScript: BILIBILI_CLOSE_BUTTON_SCRIPT,
         consolePrefix: "bilibili",
         pollIntervalMs: 1_000,
         isSuccess: async ({ url }) => isBilibiliPersistReadyUrl(url),

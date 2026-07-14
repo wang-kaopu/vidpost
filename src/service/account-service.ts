@@ -13,6 +13,17 @@ import {
 } from "@/src/db/partition-store.ts";
 import { createAccountPageModel } from "@/src/page-model/account-page-model.ts";
 import type { Account, PlatformType } from "@/src/infra/account/account.ts";
+import {
+  resolveAccountBackendPlatformConfig,
+  runAccountBackendFlow,
+  type AccountBackendFlowResult,
+} from "@/src/infra/account/account-backend-flow.ts";
+import { runWithAccountBackendWindow } from "@/src/infra/account/account-backend-window.ts";
+import {
+  exportBrowserStorageState,
+  readBrowserStorageState,
+  type BrowserStorageState,
+} from "@/src/infra/browser-storage-state.ts";
 import { logger } from "@/src/utils/logger.ts";
 
 // 拼接账号文件路径，用于正在新增过程中、未获取数据自增ID的账号文件命名
@@ -134,4 +145,108 @@ export async function updateRemoteAccount(account: Record<string, any>, accountR
     createdAt: account.createdAt ?? null,
     updatedAt: account.updatedAt ?? null,
   });
+}
+
+/**
+ * 将账号后台窗口的当前 Session 保存为账号文件，并同步远程账号状态。
+ *
+ * 非最终探测只有在登录态有效时才替换正式账号文件；关闭窗口时始终保存当前状态，确保主动退出登录也会生效。
+ *
+ * @param backendWindow - 当前账号后台窗口
+ * @param accountId - 系统内账号 ID
+ * @param platform - 平台标识
+ * @param nickname - 列表中的当前昵称
+ * @param accountFile - 正式账号文件路径
+ * @param accountResource - 平台账号实现
+ * @param final - 是否为窗口关闭前的最终保存
+ * @returns 当前快照是否通过平台在线校验
+ */
+async function persistAccountBackendState(
+  backendWindow: BrowserWindow,
+  accountId: string,
+  platform: PlatformType,
+  nickname: string,
+  accountFile: string,
+  accountResource: Account,
+  final: boolean,
+): Promise<boolean> {
+  const snapshotFile = `${accountFile}.${randomUUID()}.tmp`;
+  try {
+    await exportBrowserStorageState(backendWindow, snapshotFile, `${platform}-backend`);
+
+    let pingResult;
+    let finalPingError: Error | undefined;
+    try {
+      pingResult = await accountResource.ping(snapshotFile);
+    } catch (error) {
+      if (!final) throw error;
+      pingResult = { online: false };
+      finalPingError = error instanceof Error ? error : new Error(String(error));
+    }
+
+    if (!final && !pingResult.online) {
+      return false;
+    }
+
+    await fs.promises.mkdir(path.dirname(accountFile), { recursive: true });
+    await fs.promises.copyFile(snapshotFile, accountFile);
+    const latestNickname = pingResult.online ? pingResult.nickname?.trim() : undefined;
+    await updatePublishAccount(accountId, {
+      status: pingResult.online ? "online" : "offline",
+      ...(latestNickname && latestNickname !== nickname ? { nickname: latestNickname } : {}),
+    });
+    if (finalPingError) throw finalPingError;
+    return pingResult.online;
+  } finally {
+    await fs.promises.rm(snapshotFile, { force: true }).catch(() => undefined);
+  }
+}
+
+/**
+ * 打开已有账号的后台管理窗口，并在重新登录或关闭时保存最新账号状态。
+ *
+ * @param input - 账号 ID、昵称和平台
+ * @param parentWindow - Electron 主窗口
+ * @param accountResource - 平台账号实现
+ * @returns 窗口关闭后的保存结果
+ */
+export async function openExistingAccountBackend(
+  input: { accountId: string; nickname: string; platform: PlatformType },
+  parentWindow: BrowserWindow | null,
+  accountResource: Account,
+): Promise<AccountBackendFlowResult> {
+  const accountFile = resolveAccountFilePath(input.accountId, input.platform);
+  const partition = resolvePartitionForAccount(createPartitionStore(), input.accountId);
+  let storageState: BrowserStorageState | undefined;
+  try {
+    storageState = await readBrowserStorageState(accountFile, "账号文件格式无效");
+  } catch (error) {
+    // 失效或缺失的账号文件不阻止打开，平台会在同一窗口引导用户重新登录。
+    logger.info(`[account-backend:${input.platform}] account state unavailable: ${String(error)}`);
+  }
+
+  const platformConfig = resolveAccountBackendPlatformConfig(input.platform);
+  return runWithAccountBackendWindow(
+    {
+      title: `${platformConfig.label} · ${input.nickname} · 账号后台`,
+      parentWindow,
+      partition,
+      platform: input.platform,
+    },
+    (backendWindow) =>
+      runAccountBackendFlow(backendWindow, {
+        platform: input.platform,
+        storageState,
+        persistState: (window, final) =>
+          persistAccountBackendState(
+            window,
+            input.accountId,
+            input.platform,
+            input.nickname,
+            accountFile,
+            accountResource,
+            final,
+          ),
+      }),
+  );
 }

@@ -89,7 +89,6 @@ function createRuntime(
     exportStorageState,
     injectCookies: async () => undefined,
     loadIdentity: async () => TEST_IDENTITY,
-    wireCloseControls: () => undefined,
   };
 }
 
@@ -103,7 +102,6 @@ test("runAccountLoginFlow saves state once after a successful navigation", async
   let exportCalls = 0;
   const resultPromise = runAccountLoginFlow(
     {
-      closeButtonScript: "close",
       isSuccess: async ({ url }) => url.endsWith("/home"),
       loginUrl: "https://creator.example.com/login",
       partitionPrefix: "test-login",
@@ -127,7 +125,6 @@ test("runAccountLoginFlow rejects a user-closed login window", async () => {
   const harness = createLoginWindowHarness();
   const resultPromise = runAccountLoginFlow(
     {
-      closeButtonScript: "close",
       isSuccess: async () => false,
       loginUrl: "https://creator.example.com/login",
       partitionPrefix: "test-login",
@@ -147,7 +144,6 @@ test("runAccountLoginFlow reports storage export failures", async () => {
   const harness = createLoginWindowHarness();
   const resultPromise = runAccountLoginFlow(
     {
-      closeButtonScript: "close",
       isSuccess: async () => true,
       loginUrl: "https://creator.example.com/login",
       partitionPrefix: "test-login",
@@ -171,7 +167,6 @@ test("runAccountLoginFlow rejects after the configured timeout", async () => {
   await assert.rejects(
     runAccountLoginFlow(
       {
-        closeButtonScript: "close",
         isSuccess: async () => false,
         loginUrl: "https://creator.example.com/login",
         partitionPrefix: "test-login",

@@ -3,16 +3,14 @@ import type { BrowserWindow } from "electron";
 import { createPartitionStore, resolvePartitionForAccount } from "@/src/db/partition-store.ts";
 import { loadBrowserIdentity, type BrowserIdentity } from "@/src/infra/browser-identity.ts";
 import type { AccountLoginOptions, AccountLoginResult } from "@/src/infra/account/account.ts";
-import {
-  configureAccountLoginWindow,
-  createAccountLoginWindow,
-  wireLoginWindowCloseControls,
-} from "@/src/infra/account/account-login-window.ts";
+import { configureAccountBrowserWindow } from "@/src/infra/account/account-browser-window.ts";
+import { createAccountLoginWindow } from "@/src/infra/account/account-login-window.ts";
 import {
   exportBrowserStorageState,
   injectCookiesIntoBrowserSession,
   type BrowserCookieInput,
 } from "@/src/infra/browser-storage-state.ts";
+import { logger } from "@/src/utils/logger.ts";
 
 /** 平台登录成功判定所需的最小页面状态。 */
 export interface AccountLoginSuccessContext {
@@ -23,7 +21,6 @@ export interface AccountLoginSuccessContext {
 /** 平台向共享登录状态机提供的差异化配置。 */
 export interface AccountLoginHooks {
   beforePersist?(loginWindow: BrowserWindow): Promise<void>;
-  closeButtonScript: string;
   consolePrefix?: string;
   isSuccess(context: AccountLoginSuccessContext): Promise<boolean>;
   loginUrl: string;
@@ -49,16 +46,14 @@ export interface AccountLoginFlowRuntime {
     cookies: readonly BrowserCookieInput[] | undefined,
   ): Promise<void>;
   loadIdentity(): Promise<BrowserIdentity>;
-  wireCloseControls(loginWindow: BrowserWindow, closeButtonScript: string, consolePrefix?: string): void;
 }
 
 const DEFAULT_LOGIN_RUNTIME: AccountLoginFlowRuntime = {
-  configureLoginWindow: configureAccountLoginWindow,
+  configureLoginWindow: configureAccountBrowserWindow,
   createLoginWindow: createAccountLoginWindow,
   exportStorageState: exportBrowserStorageState,
   injectCookies: injectCookiesIntoBrowserSession,
   loadIdentity: loadBrowserIdentity,
-  wireCloseControls: wireLoginWindowCloseControls,
 };
 
 /**
@@ -165,7 +160,16 @@ export async function runAccountLoginFlow(
       }
     };
 
-    runtime.wireCloseControls(loginWindow, hooks.closeButtonScript, hooks.consolePrefix);
+    loginWindow.webContents.on("console-message", (_event, level, message) => {
+      if (!hooks.consolePrefix) {
+        return;
+      }
+      if (level === 3) {
+        logger.error(`[${hooks.consolePrefix}][page-console] ${message}`);
+      } else {
+        logger.info(`[${hooks.consolePrefix}][page-console] ${message}`);
+      }
+    });
     loginWindow.webContents.on("dom-ready", () => {
       void maybePersistCurrentState();
     });

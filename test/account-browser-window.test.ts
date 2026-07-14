@@ -3,12 +3,8 @@ import test from "node:test";
 
 import type { BrowserWindow } from "electron";
 
+import { configureAccountBrowserWindow } from "@/src/infra/account/account-browser-window.ts";
 import type { BrowserIdentity } from "@/src/infra/browser-identity.ts";
-import {
-  buildCloseButtonScript,
-  configureAccountLoginWindow,
-  wireLoginWindowCloseControls,
-} from "@/src/infra/account/account-login-window.ts";
 
 const TEST_IDENTITY: BrowserIdentity = {
   acceptLanguage: "zh-CN,zh;q=0.9",
@@ -19,19 +15,11 @@ const TEST_IDENTITY: BrowserIdentity = {
   userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/138.0.0.0 Safari/537.36",
 };
 
-test("buildCloseButtonScript keeps platform-specific button identifiers", () => {
-  const script = buildCloseButtonScript("test-close", "test-login");
-
-  assert.match(script, /test-close/u);
-  assert.match(script, /test-login/u);
-  assert.match(script, /__matrix_login_close__/u);
-});
-
-test("configureAccountLoginWindow applies the shared browser identity", async () => {
+test("configureAccountBrowserWindow applies the shared browser identity", async () => {
   const commands: Array<{ method: string; params?: Record<string, unknown> }> = [];
   const userAgents: string[] = [];
   let requestHeaders: Record<string, string> | undefined;
-  const loginWindow = {
+  const accountWindow = {
     loadURL: async () => undefined,
     webContents: {
       debugger: {
@@ -61,7 +49,7 @@ test("configureAccountLoginWindow applies the shared browser identity", async ()
     },
   } as unknown as BrowserWindow;
 
-  await configureAccountLoginWindow(loginWindow, TEST_IDENTITY);
+  await configureAccountBrowserWindow(accountWindow, TEST_IDENTITY);
 
   assert.deepEqual(userAgents, [TEST_IDENTITY.userAgent]);
   assert.deepEqual(requestHeaders, {
@@ -85,39 +73,4 @@ test("configureAccountLoginWindow applies the shared browser identity", async ()
         String(command.params?.source).includes(TEST_IDENTITY.userAgent),
     ),
   );
-});
-
-test("wireLoginWindowCloseControls handles shortcuts and page messages", async () => {
-  const listeners = new Map<string, (...args: any[]) => void>();
-  const executedScripts: string[] = [];
-  let closeCalls = 0;
-  let prevented = false;
-  const loginWindow = {
-    close: () => {
-      closeCalls += 1;
-    },
-    webContents: {
-      executeJavaScript: async (script: string) => {
-        executedScripts.push(script);
-      },
-      insertCSS: async () => "css-key",
-      on: (event: string, listener: (...args: any[]) => void) => {
-        listeners.set(event, listener);
-      },
-    },
-  } as unknown as BrowserWindow;
-
-  wireLoginWindowCloseControls(loginWindow, "close-script", "test");
-  listeners.get("dom-ready")?.();
-  await Promise.resolve();
-  await Promise.resolve();
-  listeners.get("before-input-event")?.(
-    { preventDefault: () => (prevented = true) },
-    { control: false, key: "Escape", meta: false, type: "keyDown" },
-  );
-  listeners.get("console-message")?.({}, 1, "__matrix_login_close__");
-
-  assert.deepEqual(executedScripts, ["close-script"]);
-  assert.equal(prevented, true);
-  assert.equal(closeCalls, 2);
 });

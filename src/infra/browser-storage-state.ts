@@ -158,18 +158,75 @@ export async function injectCookiesIntoBrowserSession(
       continue;
     }
     const sameSite = normalizeElectronCookieSameSite(cookie.sameSite);
+    const expirationDate = typeof cookie.expirationDate === "number" ? cookie.expirationDate : cookie.expires;
     await loginWindow.webContents.session.cookies.set({
       url: resolveCookieUrl(cookie, targetUrl),
       name: cookie.name,
       value: cookie.value,
       domain: cookie.domain,
       path: cookie.path || "/",
-      expirationDate: typeof cookie.expirationDate === "number" ? cookie.expirationDate : cookie.expires,
       secure: cookie.secure,
       httpOnly: cookie.httpOnly,
+      ...(typeof expirationDate === "number" && expirationDate > 0 ? { expirationDate } : {}),
       ...(sameSite ? { sameSite } : {}),
     });
   }
+}
+
+/**
+ * 生成按页面来源恢复 localStorage 的初始化脚本。
+ *
+ * @param state - 待恢复的浏览器 storage-state
+ * @returns 注入每个新文档的 localStorage 恢复脚本
+ */
+export function buildBrowserLocalStorageRestoreScript(state: BrowserStorageState): string {
+  const entriesByOrigin = Object.fromEntries(
+    (state.origins ?? []).flatMap((origin) => {
+      const originValue = String(origin.origin ?? "").trim();
+      if (!originValue) {
+        return [];
+      }
+      const entries = (origin.localStorage ?? []).flatMap((entry) => {
+        const name = String(entry.name ?? "").trim();
+        return name && typeof entry.value === "string" ? [[name, entry.value] as const] : [];
+      });
+      return entries.length > 0 ? [[originValue, entries] as const] : [];
+    }),
+  );
+
+  return `
+(() => {
+  const entriesByOrigin = ${JSON.stringify(entriesByOrigin)};
+  const entries = entriesByOrigin[window.location.origin];
+  if (!Array.isArray(entries)) return;
+  for (const [name, value] of entries) {
+    window.localStorage.setItem(name, value);
+  }
+})();
+`;
+}
+
+/**
+ * 清理账号窗口当前状态，并在导航前恢复 Cookie 和 localStorage。
+ *
+ * @param accountWindow - 使用账号专属 partition 的 Electron 窗口
+ * @param targetUrl - 即将打开的平台页面
+ * @param state - 待恢复的浏览器 storage-state
+ */
+export async function restoreBrowserStorageState(
+  accountWindow: BrowserWindow,
+  targetUrl: string,
+  state: BrowserStorageState,
+): Promise<void> {
+  await accountWindow.webContents.session.clearStorageData({ storages: ["cookies", "localstorage"] });
+  const cookies = state.cookies.flatMap((cookie) => {
+    const name = String(cookie.name ?? "").trim();
+    return name && typeof cookie.value === "string" ? [{ ...cookie, name, value: cookie.value }] : [];
+  });
+  await injectCookiesIntoBrowserSession(accountWindow, targetUrl, cookies);
+  await accountWindow.webContents.debugger.sendCommand("Page.addScriptToEvaluateOnNewDocument", {
+    source: buildBrowserLocalStorageRestoreScript(state),
+  });
 }
 
 /**

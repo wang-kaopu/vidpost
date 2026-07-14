@@ -3,14 +3,12 @@ import { createAccount, type PlatformType } from "@/src/infra/account/account.ts
 import { createVideo } from "@/src/infra/video/video.ts";
 import {
   loginAndCreateRemoteAccount,
+  openExistingAccountBackend,
   resolveAccountFilePath,
   resolveDraftAccountFilePath,
   updateRemoteAccount,
 } from "@/src/service/account-service.ts";
-import {
-  publishAndUpdateRemoteTask,
-  type PublishExecutionPhase,
-} from "@/src/service/task-service.ts";
+import { publishAndUpdateRemoteTask, type PublishExecutionPhase } from "@/src/service/task-service.ts";
 import { getBilibiliHumanTypes as queryBilibiliHumanTypes } from "@/src/infra/video/bilibili-video.ts";
 import { getSohuChannels as querySohuChannels } from "@/src/infra/video/sohu-video.ts";
 import { broadcast } from "@/src/sse/sse-server.ts";
@@ -55,6 +53,25 @@ export async function ping(_event: IpcMainInvokeEvent, accountValue: unknown) {
   const account = requirePayload(accountValue, "ping account");
   const platform = parsePlatform(account.platformKey ?? account.platform);
   return updateRemoteAccount(account, createAccount(platform));
+}
+
+/**
+ * 打开已有账号的平台后台管理窗口。
+ *
+ * @param event - Electron IPC 调用事件
+ * @param accountValue - 账号 ID、平台和昵称
+ * @returns 窗口关闭后的账号状态保存结果
+ */
+export async function openAccountBackend(event: IpcMainInvokeEvent, accountValue: unknown) {
+  const account = requirePayload(accountValue, "open account backend");
+  const platform = parsePlatform(account.platformKey ?? account.platform);
+  const accountId = String(account.id ?? account.accountId ?? account.account_id ?? "").trim();
+  if (!accountId) {
+    throw new Error("open account backend requires a valid accountId");
+  }
+  const nickname = String(account.nickname ?? accountId).trim() || accountId;
+  const parentWindow = BrowserWindow.fromWebContents(event.sender);
+  return openExistingAccountBackend({ accountId, nickname, platform }, parentWindow, createAccount(platform));
 }
 
 /**

@@ -4,7 +4,6 @@ import { loadBrowserIdentity } from "@/src/infra/browser-identity.ts";
 import { PlatformTimeoutError } from "@/src/infra/platform-errors.ts";
 import type { Account, AccountLoginOptions, AccountLoginResult, AccountPingResult } from "@/src/infra/account/account.ts";
 import { runAccountLoginFlow } from "@/src/infra/account/account-login-flow.ts";
-import { buildCloseButtonScript } from "@/src/infra/account/account-login-window.ts";
 import { readBrowserStorageState } from "@/src/infra/browser-storage-state.ts";
 
 const DOUYIN_ACCOUNT_INFO_URL = "https://creator.douyin.com/web/api/media/user/info/";
@@ -18,7 +17,6 @@ const DOUYIN_LOGIN_SUCCESS_URLS = [
 ];
 const ACCOUNT_PING_ATTEMPTS = 3;
 const ACCOUNT_PING_TIMEOUT_MS = 20_000;
-const DOUYIN_CLOSE_BUTTON_SCRIPT = buildCloseButtonScript("matrix-douyin-login-close", "matrix-douyin-login");
 
 /**
  * 从抖音账号文件读取有效 Cookie、msToken 和当前宿主系统 UA。
@@ -141,7 +139,6 @@ export class DouyinAccount implements Account {
         title: "抖音登录",
         partitionPrefix: "douyin-login",
         loginUrl: DOUYIN_LOGIN_URL,
-        closeButtonScript: DOUYIN_CLOSE_BUTTON_SCRIPT,
         pollIntervalMs: 1_000,
         isSuccess: async ({ url }) => isDouyinLoginSuccessUrl(url),
       },

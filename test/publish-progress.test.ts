@@ -24,23 +24,37 @@ test("publish progress keeps confirmation order while phases change", () => {
     },
   ]);
 
+  assert.equal(center.hasActiveTasks.value, true);
+
   center.updatePhase("task-b", "publishing");
   center.updatePhase("task-a", "preparing");
 
-  assert.deepEqual(center.items.value.map((item) => item.id), ["task-a", "task-b"]);
-  assert.deepEqual(center.items.value.map((item) => item.phase), ["preparing", "publishing"]);
+  assert.deepEqual(
+    center.items.value.map((item) => item.id),
+    ["task-a", "task-b"],
+  );
+  assert.deepEqual(
+    center.items.value.map((item) => item.phase),
+    ["preparing", "publishing"],
+  );
+
+  center.complete("task-a");
+  center.fail("task-b", "network failed");
+  assert.equal(center.hasActiveTasks.value, false);
 });
 
 test("closing progress panel does not stop later task updates", () => {
   const center = createPublishProgressCenter();
-  center.openBatch([{
-    id: "task-a",
-    platformKey: "douyin",
-    platformLabel: "抖音",
-    accountName: "账号 A",
-    title: "标题 A",
-    scheduled: false,
-  }]);
+  center.openBatch([
+    {
+      id: "task-a",
+      platformKey: "douyin",
+      platformLabel: "抖音",
+      accountName: "账号 A",
+      title: "标题 A",
+      scheduled: false,
+    },
+  ]);
 
   center.close();
   center.complete("task-a");
@@ -72,18 +86,26 @@ test("opening a new batch retains active tasks and drops terminal tasks", () => 
   center.updatePhase("active-old", "queued");
   center.complete("done-old");
 
-  center.openBatch([{
-    id: "new-task",
-    platformKey: "sohu",
-    platformLabel: "搜狐号",
-    accountName: "账号 C",
-    title: "新任务",
-    scheduled: false,
-  }]);
+  center.openBatch([
+    {
+      id: "new-task",
+      platformKey: "sohu",
+      platformLabel: "搜狐号",
+      accountName: "账号 C",
+      title: "新任务",
+      scheduled: false,
+    },
+  ]);
 
   assert.equal(center.visible.value, true);
-  assert.deepEqual(center.items.value.map((item) => item.id), ["active-old", "new-task"]);
-  assert.deepEqual(center.items.value.map((item) => item.phase), ["queued", "waiting"]);
+  assert.deepEqual(
+    center.items.value.map((item) => item.id),
+    ["active-old", "new-task"],
+  );
+  assert.deepEqual(
+    center.items.value.map((item) => item.phase),
+    ["queued", "waiting"],
+  );
 });
 
 test("completion distinguishes immediate and scheduled publishing", () => {
@@ -110,19 +132,24 @@ test("completion distinguishes immediate and scheduled publishing", () => {
   center.complete("immediate");
   center.complete("scheduled");
 
-  assert.deepEqual(center.items.value.map((item) => item.phase), ["completed", "scheduled"]);
+  assert.deepEqual(
+    center.items.value.map((item) => item.phase),
+    ["completed", "scheduled"],
+  );
 });
 
 test("failed tasks retain their reason without reopening a closed panel", () => {
   const center = createPublishProgressCenter();
-  center.openBatch([{
-    id: "failed-task",
-    platformKey: "baijiahao",
-    platformLabel: "百家号",
-    accountName: "账号 A",
-    title: "失败任务",
-    scheduled: false,
-  }]);
+  center.openBatch([
+    {
+      id: "failed-task",
+      platformKey: "baijiahao",
+      platformLabel: "百家号",
+      accountName: "账号 A",
+      title: "失败任务",
+      scheduled: false,
+    },
+  ]);
   center.close();
 
   center.fail("failed-task", "账号登录状态失效");
@@ -134,14 +161,16 @@ test("failed tasks retain their reason without reopening a closed panel", () => 
 
 test("progress collapse persists through updates and resets for a new batch", () => {
   const center = createPublishProgressCenter();
-  center.openBatch([{
-    id: "active-task",
-    platformKey: "douyin",
-    platformLabel: "抖音",
-    accountName: "账号 A",
-    title: "进行中的任务",
-    scheduled: false,
-  }]);
+  center.openBatch([
+    {
+      id: "active-task",
+      platformKey: "douyin",
+      platformLabel: "抖音",
+      accountName: "账号 A",
+      title: "进行中的任务",
+      scheduled: false,
+    },
+  ]);
 
   center.toggleCollapsed();
   center.updatePhase("active-task", "publishing");
@@ -149,15 +178,20 @@ test("progress collapse persists through updates and resets for a new batch", ()
   assert.equal(center.collapsed.value, true);
   assert.equal(center.items.value[0]?.phase, "publishing");
 
-  center.openBatch([{
-    id: "new-task",
-    platformKey: "bilibili",
-    platformLabel: "哔哩哔哩",
-    accountName: "账号 B",
-    title: "新任务",
-    scheduled: false,
-  }]);
+  center.openBatch([
+    {
+      id: "new-task",
+      platformKey: "bilibili",
+      platformLabel: "哔哩哔哩",
+      accountName: "账号 B",
+      title: "新任务",
+      scheduled: false,
+    },
+  ]);
 
   assert.equal(center.collapsed.value, false);
-  assert.deepEqual(center.items.value.map((item) => item.id), ["active-task", "new-task"]);
+  assert.deepEqual(
+    center.items.value.map((item) => item.id),
+    ["active-task", "new-task"],
+  );
 });

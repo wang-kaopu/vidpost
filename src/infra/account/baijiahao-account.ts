@@ -5,14 +5,12 @@ import { loadBrowserIdentity } from "@/src/infra/browser-identity.ts";
 import { PlatformTimeoutError } from "@/src/infra/platform-errors.ts";
 import type { Account, AccountLoginOptions, AccountLoginResult, AccountPingResult } from "@/src/infra/account/account.ts";
 import { runAccountLoginFlow } from "@/src/infra/account/account-login-flow.ts";
-import { buildCloseButtonScript } from "@/src/infra/account/account-login-window.ts";
 import { readBrowserStorageState, type BrowserStorageCookie } from "@/src/infra/browser-storage-state.ts";
 
 const BAIJIAHAO_ACCOUNT_INFO_URL = "https://baijiahao.baidu.com/builder/app/appinfo";
 const BAIJIAHAO_LOGIN_URL = "https://baijiahao.baidu.com/builder/theme/bjh/login";
 const ACCOUNT_PING_ATTEMPTS = 3;
 const ACCOUNT_PING_TIMEOUT_MS = 20_000;
-const BAIJIAHAO_CLOSE_BUTTON_SCRIPT = buildCloseButtonScript("matrix-baijiahao-login-close", "matrix-baijiahao-login");
 
 /**
  * 从百家号账号文件读取有效 Cookie 和当前宿主系统 UA。
@@ -153,7 +151,6 @@ export class BaijiahaoAccount implements Account {
         title: "百家号登录",
         partitionPrefix: "baijiahao-login",
         loginUrl: BAIJIAHAO_LOGIN_URL,
-        closeButtonScript: BAIJIAHAO_CLOSE_BUTTON_SCRIPT,
         isSuccess: async ({ url }) => isBaijiahaoLoginSuccessUrl(url),
         beforePersist: async (loginWindow) => {
           await waitForWebContentsIdle(loginWindow.webContents, 1_500, 10_000);

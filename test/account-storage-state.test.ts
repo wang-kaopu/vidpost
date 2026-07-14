@@ -7,8 +7,10 @@ import test from "node:test";
 import type { BrowserWindow } from "electron";
 
 import {
+  buildBrowserLocalStorageRestoreScript,
   exportBrowserStorageState,
   injectCookiesIntoBrowserSession,
+  restoreBrowserStorageState,
 } from "@/src/infra/browser-storage-state.ts";
 
 /** 创建仅实现 storage-state 所需接口的登录窗口替身。 */
@@ -16,10 +18,17 @@ function createStorageWindow(options: {
   cookies?: Array<Record<string, unknown>>;
   executeResult?: unknown;
   executeError?: Error;
+  debuggerCommands?: Array<{ method: string; params?: Record<string, unknown> }>;
+  clearCalls?: Array<Record<string, unknown>>;
   setCalls?: Array<Record<string, unknown>>;
 }): BrowserWindow {
   return {
     webContents: {
+      debugger: {
+        sendCommand: async (method: string, params?: Record<string, unknown>) => {
+          options.debuggerCommands?.push({ method, params });
+        },
+      },
       executeJavaScript: async () => {
         if (options.executeError) {
           throw options.executeError;
@@ -28,6 +37,9 @@ function createStorageWindow(options: {
       },
       getURL: () => "https://creator.example.com/home",
       session: {
+        clearStorageData: async (details: Record<string, unknown>) => {
+          options.clearCalls?.push(details);
+        },
         cookies: {
           get: async () => options.cookies ?? [],
           set: async (details: Record<string, unknown>) => {
@@ -69,6 +81,50 @@ test("injectCookiesIntoBrowserSession converts Cookie fields for Electron", asyn
       value: "token",
     },
   ]);
+});
+
+test("injectCookiesIntoBrowserSession keeps session cookies without an invalid expiration", async () => {
+  const setCalls: Array<Record<string, unknown>> = [];
+  const loginWindow = createStorageWindow({ setCalls });
+
+  await injectCookiesIntoBrowserSession(loginWindow, "https://creator.example.com/login", [
+    { domain: ".example.com", expires: -1, name: "session", value: "token" },
+  ]);
+
+  assert.equal("expirationDate" in setCalls[0]!, false);
+});
+
+test("restoreBrowserStorageState clears the partition and restores valid browser state", async () => {
+  const clearCalls: Array<Record<string, unknown>> = [];
+  const debuggerCommands: Array<{ method: string; params?: Record<string, unknown> }> = [];
+  const setCalls: Array<Record<string, unknown>> = [];
+  const accountWindow = createStorageWindow({ clearCalls, debuggerCommands, setCalls });
+  const state = {
+    cookies: [
+      { domain: ".example.com", name: "session", value: "token" },
+      { domain: ".example.com", name: "", value: "ignored" },
+    ],
+    origins: [
+      {
+        origin: "https://creator.example.com",
+        localStorage: [
+          { name: "vuex", value: "stored-vuex" },
+          { name: "", value: "ignored" },
+        ],
+      },
+    ],
+  };
+
+  await restoreBrowserStorageState(accountWindow, "https://creator.example.com/home", state);
+
+  assert.deepEqual(clearCalls, [{ storages: ["cookies", "localstorage"] }]);
+  assert.equal(setCalls.length, 1);
+  assert.equal(debuggerCommands[0]?.method, "Page.addScriptToEvaluateOnNewDocument");
+  const script = String(debuggerCommands[0]?.params?.source);
+  assert.match(script, /window\.location\.origin/u);
+  assert.match(script, /stored-vuex/u);
+  assert.doesNotMatch(script, /ignored/u);
+  assert.equal(script, buildBrowserLocalStorageRestoreScript(state));
 });
 
 test("exportBrowserStorageState writes Cookie and localStorage data", async () => {
