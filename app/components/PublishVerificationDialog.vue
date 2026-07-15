@@ -72,28 +72,28 @@ watch(
     @close="emit('cancel')"
   >
     <div v-if="request" class="space-y-5">
-      <dl class="divide-y divide-base-300 rounded-box bg-base-200 px-5">
+      <dl class="card space-y-1 bg-base-100 px-5 py-2 card-border">
         <div class="flex min-h-11 items-center justify-between gap-5 py-2">
           <dt class="text-sm text-base-content/60">平台</dt>
-          <dd class="text-right font-semibold">{{ request.platform }}</dd>
+          <dd class="text-right font-medium">{{ request.platform }}</dd>
         </div>
         <div class="flex min-h-11 items-center justify-between gap-5 py-2">
           <dt class="text-sm text-base-content/60">账号</dt>
-          <dd class="text-right font-semibold">{{ accountName }}</dd>
+          <dd class="text-right font-medium">{{ accountName }}</dd>
         </div>
         <div class="flex min-h-11 items-center justify-between gap-5 py-2">
           <dt class="text-sm text-base-content/60">标题</dt>
-          <dd class="text-right font-semibold">{{ title }}</dd>
+          <dd class="text-right font-medium">{{ title }}</dd>
         </div>
         <div class="flex min-h-11 items-center justify-between gap-5 py-2">
           <dt class="text-sm text-base-content/60">剩余时间</dt>
-          <dd class="text-right font-semibold">{{ expiresText }}</dd>
+          <dd class="text-right font-medium">{{ expiresText }}</dd>
         </div>
       </dl>
 
       <input
         v-model="code"
-        class="input-bordered input w-full text-center text-2xl font-bold tracking-[0.28em] input-lg"
+        class="input w-full text-center text-2xl font-bold input-lg"
         type="text"
         inputmode="numeric"
         maxlength="8"
@@ -101,7 +101,7 @@ watch(
         @keyup.enter="handleSubmit"
       />
 
-      <div v-if="errorMessage" role="alert" class="alert text-sm alert-error">
+      <div v-if="errorMessage" role="alert" class="alert alert-soft text-sm alert-error">
         <span>{{ errorMessage }}</span>
       </div>
     </div>
@@ -111,12 +111,7 @@ watch(
         <button type="button" class="btn btn-ghost max-md:w-full" :disabled="submitting" @click="emit('cancel')">
           取消
         </button>
-        <button
-          type="button"
-          class="btn min-w-36 btn-primary max-md:w-full"
-          :disabled="!canSubmit"
-          @click="handleSubmit"
-        >
+        <button type="button" class="btn min-w-36 btn-info max-md:w-full" :disabled="!canSubmit" @click="handleSubmit">
           <span v-if="submitting" class="loading loading-sm loading-spinner"></span>
           {{ submitting ? "提交中..." : "提交验证码" }}
         </button>

@@ -1,49 +1,40 @@
 @import "tailwindcss";
 
 @plugin "daisyui" {
-  themes: light --default;
+  themes: false;
 }
 
-@theme {
-  --font-sans: "PingFang SC", "SF Pro Display", "Microsoft YaHei", sans-serif;
-  --animate-publish-shimmer: publish-progress-shimmer 1.35s linear infinite;
-}
-
-@layer base {
-  :root {
-    color-scheme: light;
-    font-family: var(--font-sans);
-  }
-
-  html,
-  body,
-  #app {
-    min-height: 100%;
-  }
-
-  body {
-    min-height: 100vh;
-    overflow: hidden;
-    color: var(--color-base-content);
-    background: var(--color-base-200);
-  }
-
-  button,
-  input {
-    font: inherit;
-  }
-
-  button {
-    cursor: pointer;
-  }
-}
-
-@keyframes publish-progress-shimmer {
-  from {
-    transform: translateX(-100%);
-  }
-
-  to {
-    transform: translateX(100%);
-  }
+@plugin "daisyui/theme" {
+  name: "maybeghost";
+  default: true;
+  prefersdark: false;
+  color-scheme: "light";
+  --color-base-100: oklch(98% 0 0);
+  --color-base-200: oklch(97% 0 0);
+  --color-base-300: oklch(92% 0 0);
+  --color-base-content: oklch(20% 0 0);
+  --color-primary: oklch(62% 0.214 259.815);
+  --color-primary-content: oklch(96% 0.018 272.314);
+  --color-secondary: oklch(66% 0.179 58.318);
+  --color-secondary-content: oklch(98% 0.022 95.277);
+  --color-accent: oklch(62% 0.214 259.815);
+  --color-accent-content: oklch(97% 0.014 254.604);
+  --color-neutral: oklch(37% 0 0);
+  --color-neutral-content: oklch(98% 0 0);
+  --color-info: oklch(62% 0.214 259.815);
+  --color-info-content: oklch(97% 0.013 236.62);
+  --color-success: oklch(59% 0.145 163.225);
+  --color-success-content: oklch(97% 0.021 166.113);
+  --color-warning: oklch(66% 0.179 58.318);
+  --color-warning-content: oklch(98% 0.022 95.277);
+  --color-error: oklch(58% 0.253 17.585);
+  --color-error-content: oklch(96% 0.015 12.422);
+  --radius-selector: 0.5rem;
+  --radius-field: 0.5rem;
+  --radius-box: 0.5rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 0.5px;
+  --depth: 0;
+  --noise: 0;
 }

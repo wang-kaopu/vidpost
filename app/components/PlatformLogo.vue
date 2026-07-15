@@ -22,12 +22,6 @@ const fallbackText = computed(() => props.platform.trim().slice(0, 1) || "?");
 </script>
 
 <template>
-  <span
-    class="inline-flex h-9 w-9 items-center justify-center overflow-hidden rounded-box border border-base-300 bg-base-100"
-    :title="platform"
-    :aria-label="platform"
-  >
-    <img v-if="src" class="h-6 w-6 object-contain" :src="src" :alt="platform" />
-    <span v-else class="font-bold text-base-content/60">{{ fallbackText }}</span>
-  </span>
+  <img v-if="src" class="h-8 w-8 object-contain" :src="src" :alt="platform" :title="platform" />
+  <span v-else class="badge badge-neutral" :title="platform" :aria-label="platform">{{ fallbackText }}</span>
 </template>

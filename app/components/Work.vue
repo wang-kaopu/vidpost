@@ -725,10 +725,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="card overflow-hidden bg-base-100 shadow-sm">
+  <section class="min-w-0">
     <header class="px-8 pt-8 pb-5 max-lg:px-5 max-lg:pt-5">
       <h2 class="text-2xl font-bold">预定发布作品</h2>
-      <p class="mt-2 text-sm text-base-content/60">勾选作品右下角方框，创建发布计划</p>
+      <p class="mt-2 text-sm opacity-60">勾选作品右下角方框，创建发布计划</p>
     </header>
 
     <WorkFilters
@@ -740,7 +740,7 @@ onBeforeUnmount(() => {
       @reset="handleReset"
     />
 
-    <div v-if="worksList.length > 0" class="columns-5 gap-4 px-6 max-xl:columns-4 max-lg:columns-3 max-md:columns-2">
+    <div v-if="worksList.length > 0" class="columns-4 gap-4 px-6 max-lg:columns-3 max-md:columns-2">
       <WorkCard
         v-for="item in worksList"
         :key="item.id"
@@ -763,7 +763,7 @@ onBeforeUnmount(() => {
     <div
       v-else-if="loadError && worksList.length === 0 && !appConfig.isMockMode"
       role="alert"
-      class="mx-6 mb-6 alert alert-error"
+      class="mx-6 mb-6 alert alert-soft alert-error"
     >
       <span>{{ loadError }}</span>
       <button type="button" class="btn btn-sm" @click="reloadWorks">重新加载</button>

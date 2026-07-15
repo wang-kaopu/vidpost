@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, reactive } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
+import { X } from "lucide-vue-next";
 import AppDialog from "./AppDialog.vue";
 import PlatformLogo from "./PlatformLogo.vue";
 import type { AccountItem, PlatformItem } from "@/types";
@@ -12,7 +13,7 @@ type PlatformDialogTableAccount = Pick<
   AccountItem,
   "id" | "platform" | "nickname" | "status" | "rawStatus" | "disabledReason"
 >;
-type DropdownPlacement = { vertical: "up" | "down"; horizontal: "left" | "right" };
+type DropdownPosition = { top: string; left: string; width: string };
 
 const props = withDefaults(
   defineProps<{
@@ -59,7 +60,8 @@ const emit = defineEmits<{
   "update:activeTableRowId": [value: string];
 }>();
 
-const dropdownPlacements = reactive<Record<string, DropdownPlacement>>({});
+const dropdownPositions = reactive<Record<string, DropdownPosition>>({});
+const dropdownRef = ref<HTMLElement | null>(null);
 const selectedSet = computed(() => new Set(props.selectedPlatformKeys));
 const isTableLayout = computed(() => props.layout === "table");
 const hasTableContent = computed(() => props.tableRows.length > 0);
@@ -86,10 +88,9 @@ const getSelectedAccounts = (rowId: string) => {
     (account) => selectedIds.has(account.id) && !account.disabledReason,
   );
 };
-const isTableDropdownOpen = (rowId: string) => props.activeTableRowId === rowId;
 const isAccountSelected = (rowId: string, accountId: string) => getSelectedAccountIds(rowId).includes(accountId);
-const getDropdownPlacement = (rowId: string): DropdownPlacement =>
-  dropdownPlacements[rowId] || { vertical: "down", horizontal: "left" };
+const getDropdownPosition = (rowId: string): DropdownPosition =>
+  dropdownPositions[rowId] || { top: "0", left: "0", width: "20rem" };
 
 const togglePlatform = (platform: PlatformItem) => {
   if (props.selectionMode === "single") {
@@ -107,7 +108,8 @@ const togglePlatform = (platform: PlatformItem) => {
   emit("update:selectedPlatformKeys", Array.from(nextKeys));
 };
 
-const toggleTableDropdown = (rowId: string, event: MouseEvent) => {
+/** 在视口内计算账号浮层位置，避免受到表格和弹窗滚动容器裁剪。 */
+const toggleTableDropdown = (rowId: string, event: MouseEvent): void => {
   if (props.activeTableRowId === rowId) {
     emit("update:activeTableRowId", "");
     return;
@@ -115,26 +117,43 @@ const toggleTableDropdown = (rowId: string, event: MouseEvent) => {
 
   const trigger = event.currentTarget;
   if (!(trigger instanceof HTMLElement)) {
-    emit("update:activeTableRowId", rowId);
     return;
   }
 
   const rect = trigger.getBoundingClientRect();
-  const dropdownWidth = 320;
-  const dropdownHeight = 248;
   const gutter = 16;
+  const gap = 8;
+  const dropdownWidth = Math.min(320, window.innerWidth - gutter * 2);
+  const dropdownHeight = 248;
   const viewportWidth = window.innerWidth;
   const viewportHeight = window.innerHeight;
   const spaceBelow = viewportHeight - rect.bottom - gutter;
   const spaceAbove = rect.top - gutter;
-  const spaceRight = viewportWidth - rect.left - gutter;
-  const spaceLeft = rect.right - gutter;
+  const openUp = spaceBelow < dropdownHeight && spaceAbove > spaceBelow;
+  const top = openUp ? Math.max(gutter, rect.top - dropdownHeight - gap) : rect.bottom + gap;
+  const preferredLeft = rect.left + dropdownWidth <= viewportWidth - gutter ? rect.left : rect.right - dropdownWidth;
 
-  dropdownPlacements[rowId] = {
-    vertical: spaceBelow < dropdownHeight && spaceAbove > spaceBelow ? "up" : "down",
-    horizontal: spaceRight < dropdownWidth && spaceLeft > spaceRight ? "right" : "left",
+  dropdownPositions[rowId] = {
+    top: `${top}px`,
+    left: `${Math.max(gutter, Math.min(preferredLeft, viewportWidth - dropdownWidth - gutter))}px`,
+    width: `${dropdownWidth}px`,
   };
   emit("update:activeTableRowId", rowId);
+};
+
+/** 滚动或调整窗口尺寸后关闭浮层，避免它与触发按钮的位置脱节。 */
+const closeTableDropdown = (): void => {
+  if (props.activeTableRowId) {
+    emit("update:activeTableRowId", "");
+  }
+};
+
+/** 账号列表自身滚动时保持浮层打开，其他滚动或窗口变化则关闭。 */
+const handleViewportChange = (event: Event): void => {
+  if (event.type === "scroll" && event.target instanceof Node && dropdownRef.value?.contains(event.target)) {
+    return;
+  }
+  closeTableDropdown();
 };
 
 const toggleTableAccount = (rowId: string, accountId: string) => {
@@ -182,6 +201,16 @@ const handleConfirm = () => {
     props.platforms.filter((platform) => props.selectedPlatformKeys.includes(platform.key)),
   );
 };
+
+onMounted(() => {
+  window.addEventListener("resize", handleViewportChange);
+  window.addEventListener("scroll", handleViewportChange, true);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("resize", handleViewportChange);
+  window.removeEventListener("scroll", handleViewportChange, true);
+});
 </script>
 
 <template>
@@ -196,7 +225,7 @@ const handleConfirm = () => {
       <span class="loading loading-md loading-spinner"></span>
       正在加载平台列表...
     </div>
-    <div v-else-if="errorMessage" role="alert" class="alert alert-error">
+    <div v-else-if="errorMessage" role="alert" class="alert alert-soft alert-error">
       <span>{{ errorMessage }}</span>
     </div>
     <div
@@ -212,11 +241,8 @@ const handleConfirm = () => {
           v-for="platform in platforms"
           :key="platform.id"
           type="button"
-          class="card relative min-h-40 items-center justify-center gap-3 bg-base-100 p-5 transition card-border hover:-translate-y-0.5 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60"
-          :class="{
-            'border-primary bg-primary/5 ring-1 ring-primary': selectionMode === 'multiple' && isSelected(platform.key),
-            'cursor-wait': busyPlatformKey === platform.key,
-          }"
+          class="card relative min-h-40 items-center justify-center gap-3 bg-base-100 p-5 card-border"
+          :class="{ 'cursor-wait': busyPlatformKey === platform.key }"
           :disabled="Boolean(loading || (selectionMode === 'single' && busyPlatformKey))"
           @click="togglePlatform(platform)"
         >
@@ -228,7 +254,9 @@ const handleConfirm = () => {
             tabindex="-1"
           />
           <PlatformLogo class="h-16 w-16 [&_img]:h-11 [&_img]:w-11" :platform="platform.label" />
-          <strong class="text-lg">{{ busyPlatformKey === platform.key ? busyLabel : platform.label }}</strong>
+          <strong class="text-base font-semibold">{{
+            busyPlatformKey === platform.key ? busyLabel : platform.label
+          }}</strong>
         </button>
       </div>
 
@@ -239,7 +267,7 @@ const handleConfirm = () => {
         <p class="text-sm text-base-content/70">
           已选择 <strong>{{ selectedPlatformKeys.length }}</strong> 个平台
         </p>
-        <button type="button" class="btn min-w-36 btn-primary" :disabled="!canConfirm" @click="handleConfirm">
+        <button type="button" class="btn min-w-36 btn-info" :disabled="!canConfirm" @click="handleConfirm">
           {{ confirmLabel }}
         </button>
       </div>
@@ -247,7 +275,7 @@ const handleConfirm = () => {
 
     <div v-else class="space-y-4">
       <p class="text-sm text-base-content/60">全局设置（为每一条视频设置一批账号）</p>
-      <div class="overflow-x-auto">
+      <div class="card overflow-x-auto bg-base-100 card-border">
         <table class="table w-full table-fixed table-zebra">
           <thead>
             <tr>
@@ -267,48 +295,17 @@ const handleConfirm = () => {
                     v-for="account in getSelectedAccounts(row.id)"
                     :key="account.id"
                     type="button"
-                    class="badge h-9 max-w-44 gap-2 badge-outline badge-primary"
+                    class="badge h-9 max-w-44 gap-2 badge-soft badge-primary"
                     :title="`${account.platform} · ${account.nickname}`"
                     @click="removeTableAccount(row.id, account.id)"
                   >
                     <PlatformLogo class="h-5 w-5 shrink-0 [&_img]:h-3.5 [&_img]:w-3.5" :platform="account.platform" />
                     <span class="truncate">{{ account.nickname }}</span>
-                    ×
+                    <X class="shrink-0" :size="12" :stroke-width="1.75" aria-hidden="true" />
                   </button>
-                  <button type="button" class="btn btn-primary btn-sm" @click="toggleTableDropdown(row.id, $event)">
+                  <button type="button" class="btn btn-sm" @click="toggleTableDropdown(row.id, $event)">
                     添加账号
                   </button>
-
-                  <div
-                    v-if="isTableDropdownOpen(row.id)"
-                    class="absolute top-[calc(100%+0.5rem)] left-0 z-20 max-h-60 min-w-60 overflow-auto rounded-box border border-base-300 bg-base-100 p-2 shadow-xl"
-                    :class="{
-                      'top-auto bottom-[calc(100%+0.5rem)]': getDropdownPlacement(row.id).vertical === 'up',
-                      'right-0 left-auto': getDropdownPlacement(row.id).horizontal === 'right',
-                    }"
-                  >
-                    <button
-                      v-for="account in loginSuccessTableAccountOptions"
-                      :key="account.id"
-                      type="button"
-                      class="btn h-auto min-h-12 w-full justify-start gap-3 btn-ghost px-3 py-2 text-left"
-                      :class="{ 'btn-active': isAccountSelected(row.id, account.id) }"
-                      :disabled="Boolean(account.disabledReason)"
-                      :title="account.disabledReason || `${account.platform} · ${account.nickname}`"
-                      @click="toggleTableAccount(row.id, account.id)"
-                    >
-                      <PlatformLogo class="h-6 w-6 shrink-0 [&_img]:h-4 [&_img]:w-4" :platform="account.platform" />
-                      <span class="flex min-w-0 flex-col items-start">
-                        <strong class="max-w-44 truncate text-sm">{{ account.nickname }}</strong>
-                        <small class="max-w-44 truncate text-xs opacity-60">{{
-                          account.disabledReason || account.platform
-                        }}</small>
-                      </span>
-                    </button>
-                    <p v-if="!loginSuccessTableAccountOptions.length" class="px-3 py-2 text-sm text-base-content/60">
-                      暂无可用发布账号
-                    </p>
-                  </div>
                 </div>
               </td>
               <td>
@@ -321,16 +318,43 @@ const handleConfirm = () => {
         </table>
       </div>
 
-      <div
-        class="flex items-center justify-between gap-4 border-t border-base-300 pt-4 max-md:flex-col max-md:items-stretch"
-      >
+      <div class="flex items-center justify-between gap-4 pt-2 max-md:flex-col max-md:items-stretch">
         <p class="text-sm text-base-content/70">
           已选择 <strong>{{ selectedTableAccountCount }}</strong> 个账号
         </p>
-        <button type="button" class="btn min-w-36 btn-primary" :disabled="!canConfirm" @click="handleConfirm">
+        <button type="button" class="btn min-w-36 btn-info" :disabled="!canConfirm" @click="handleConfirm">
           {{ confirmLabel }}
         </button>
       </div>
     </div>
+
+    <template #overlay>
+      <ul
+        v-if="isTableLayout && activeTableRowId"
+        ref="dropdownRef"
+        class="dropdown-content menu fixed z-50 max-h-60 overflow-auto rounded-box bg-base-100"
+        :style="getDropdownPosition(activeTableRowId)"
+        @click.stop
+      >
+        <li v-for="account in loginSuccessTableAccountOptions" :key="account.id">
+          <button
+            type="button"
+            :class="{ 'menu-active': isAccountSelected(activeTableRowId, account.id) }"
+            :disabled="Boolean(account.disabledReason)"
+            :title="account.disabledReason || `${account.platform} · ${account.nickname}`"
+            @click="toggleTableAccount(activeTableRowId, account.id)"
+          >
+            <PlatformLogo class="h-6 w-6 shrink-0 [&_img]:h-4 [&_img]:w-4" :platform="account.platform" />
+            <span class="flex min-w-0 flex-col items-start">
+              <strong class="max-w-44 truncate text-sm">{{ account.nickname }}</strong>
+              <small class="max-w-44 truncate text-xs opacity-60">{{
+                account.disabledReason || account.platform
+              }}</small>
+            </span>
+          </button>
+        </li>
+        <li v-if="!loginSuccessTableAccountOptions.length" class="disabled"><span>暂无可用发布账号</span></li>
+      </ul>
+    </template>
   </AppDialog>
 </template>

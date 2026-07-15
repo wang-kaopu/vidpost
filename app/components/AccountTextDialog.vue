@@ -31,7 +31,7 @@ defineEmits<{ close: []; confirm: [] }>();
   >
     <fieldset class="fieldset">
       <legend class="fieldset-legend">{{ title }}</legend>
-      <label class="input-bordered input flex w-full items-center">
+      <label class="input w-full">
         <input
           v-model="model"
           class="grow"

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
+import { X } from "lucide-vue-next";
 
 defineOptions({ name: "AppDialog" });
 
@@ -70,43 +71,36 @@ onBeforeUnmount(() => {
 
 <template>
   <Teleport to="body">
-    <dialog
-      ref="dialogRef"
-      class="modal p-4 backdrop:bg-neutral/40"
-      @cancel="handleCancel"
-      @click="handleBackdropClick"
-    >
-      <section
-        class="modal-box max-h-[calc(100vh-2rem)] w-full overflow-hidden bg-base-100 p-0 shadow-xl"
-        :class="sizeClass[size]"
-        @click.stop
-      >
-        <header v-if="title || description || $slots.header" class="border-b border-base-300 px-6 py-5 pr-16">
+    <dialog ref="dialogRef" class="modal" @cancel="handleCancel" @click="handleBackdropClick">
+      <section class="modal-box max-h-[calc(100vh-2rem)] w-full overflow-hidden" :class="sizeClass[size]" @click.stop>
+        <header v-if="title || description || $slots.header" class="pr-10">
           <slot name="header">
-            <h2 class="m-0 text-xl font-bold text-base-content">{{ title }}</h2>
-            <p v-if="description" class="mt-1 text-sm text-base-content/60">{{ description }}</p>
+            <h2 class="text-lg font-bold">{{ title }}</h2>
+            <p v-if="description" class="py-2 text-sm opacity-60">{{ description }}</p>
           </slot>
         </header>
 
         <button
           v-if="showClose"
           type="button"
-          class="btn absolute top-4 right-4 btn-circle btn-ghost btn-sm"
+          class="btn absolute top-2 right-2 btn-circle btn-ghost btn-sm"
           aria-label="关闭"
           :disabled="!dismissible"
           @click="emit('close')"
         >
-          ×
+          <X :size="18" :stroke-width="1.75" aria-hidden="true" />
         </button>
 
-        <div class="max-h-[calc(100vh-8rem)] overflow-auto p-6">
+        <div class="max-h-[calc(100vh-8rem)] overflow-auto py-4">
           <slot />
         </div>
 
-        <footer v-if="$slots.actions" class="m-0 modal-action border-t border-base-300 px-6 py-4">
+        <footer v-if="$slots.actions" class="modal-action">
           <slot name="actions" />
         </footer>
       </section>
+
+      <slot name="overlay" />
     </dialog>
   </Teleport>
 </template>

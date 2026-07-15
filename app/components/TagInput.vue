@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from "vue";
+import { X } from "lucide-vue-next";
 
 defineOptions({ name: "TagInput" });
 
@@ -136,15 +137,12 @@ watch(
 </script>
 
 <template>
-  <div
-    class="input-bordered input flex h-auto min-h-10 w-full flex-wrap items-center gap-2 py-1"
-    :class="{ 'opacity-60': disabled }"
-  >
+  <div class="input h-auto min-h-10 w-full flex-wrap py-1" :class="{ 'opacity-60': disabled }">
     <div
       v-for="(tag, index) in modelValue"
       :key="`${tag}-${index}`"
       :ref="(element) => syncChipRefs(element as HTMLDivElement | null, index)"
-      class="badge h-8 gap-1 badge-outline focus:ring-2 focus:ring-primary"
+      class="badge h-8 gap-1 badge-soft badge-primary"
       :tabindex="disabled ? -1 : 0"
       @keydown="onChipKeydown(index, $event)"
     >
@@ -156,14 +154,14 @@ watch(
         :aria-label="`删除标签 ${tag}`"
         @click.stop="removeTag(index)"
       >
-        ×
+        <X :size="12" :stroke-width="1.75" aria-hidden="true" />
       </button>
     </div>
 
     <input
       ref="inputRef"
       v-model="draft"
-      class="min-h-8 min-w-30 flex-1 border-0 bg-transparent outline-none"
+      class="min-h-8 min-w-30 flex-1 outline-none"
       type="text"
       :disabled="disabled"
       :placeholder="placeholder"

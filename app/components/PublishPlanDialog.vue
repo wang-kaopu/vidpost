@@ -164,19 +164,19 @@ onBeforeUnmount(() => {
   >
     <div v-if="!groups.length" class="py-20 text-center text-base-content/60">暂无可生成的发布计划</div>
     <div v-else class="space-y-5">
-      <div v-if="errorMessage" role="alert" class="alert alert-error">
+      <div v-if="errorMessage" role="alert" class="alert alert-soft alert-error">
         <span>{{ errorMessage }}</span>
       </div>
 
-      <section class="card gap-4 bg-base-200 p-5 card-border">
-        <strong>全局设置</strong>
+      <section class="card space-y-4 bg-base-100 p-4 card-border">
+        <strong class="text-base font-semibold">全局设置</strong>
 
         <div class="grid grid-cols-2 gap-6 max-lg:grid-cols-1">
           <fieldset class="fieldset">
             <legend class="fieldset-legend">标题</legend>
             <input
               :value="globalTitle"
-              class="input-bordered input w-full"
+              class="input w-full"
               type="text"
               placeholder="标题"
               @input="globalTitle = ($event.target as HTMLInputElement).value"
@@ -186,7 +186,7 @@ onBeforeUnmount(() => {
             <legend class="fieldset-legend">简介</legend>
             <textarea
               :value="globalSummary"
-              class="textarea-bordered textarea min-h-24 w-full resize-y"
+              class="textarea min-h-24 w-full resize-y"
               placeholder="简介"
               @input="globalSummary = ($event.target as HTMLTextAreaElement).value"
             />
@@ -194,13 +194,13 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="flex justify-end">
-          <button class="btn btn-primary max-lg:w-full" type="button" @click="applyAll">应用到全部</button>
+          <button class="btn max-lg:w-full" type="button" @click="applyAll">应用到全部</button>
         </div>
       </section>
 
       <section v-for="group in groups" :key="group.platform" class="space-y-3">
         <div class="flex items-center justify-between gap-3 max-md:flex-col max-md:items-start">
-          <h3 class="m-0 badge badge-outline badge-lg">{{ group.platform }}</h3>
+          <h3 class="m-0 badge badge-soft badge-lg badge-primary">{{ group.platform }}</h3>
           <span class="text-sm text-base-content/60">{{ group.rows.length }} 条</span>
         </div>
 
@@ -229,7 +229,7 @@ onBeforeUnmount(() => {
               </td>
               <td>
                 <input
-                  class="input-bordered input w-full input-sm"
+                  class="input w-full input-sm"
                   :value="row.title"
                   type="text"
                   placeholder="输入标题"
@@ -255,7 +255,7 @@ onBeforeUnmount(() => {
               <td>
                 <label v-if="row.platformKey === 'bilibili'" class="grid gap-2">
                   <select
-                    class="select-bordered select w-full select-sm"
+                    class="select w-full select-sm"
                     :value="row.humanTypeId ?? ''"
                     :disabled="row.humanTypesLoading || Boolean(row.humanTypesError) || !row.humanTypes.length"
                     @change="
@@ -278,7 +278,7 @@ onBeforeUnmount(() => {
                 </label>
                 <label v-else-if="row.platformKey === 'sohu'" class="grid gap-2">
                   <select
-                    class="select-bordered select w-full select-sm"
+                    class="select w-full select-sm"
                     :value="row.channelId ?? ''"
                     :disabled="row.sohuChannelsLoading || Boolean(row.sohuChannelsError) || !row.sohuChannels.length"
                     @change="
@@ -295,7 +295,7 @@ onBeforeUnmount(() => {
                     </option>
                   </select>
                   <select
-                    class="select-bordered select w-full select-sm"
+                    class="select w-full select-sm"
                     :value="row.videoChannelId ?? ''"
                     :disabled="row.sohuChannelsLoading || Boolean(row.sohuChannelsError) || !row.channelId"
                     @change="
@@ -323,7 +323,7 @@ onBeforeUnmount(() => {
                 </label>
                 <label v-else-if="row.platformKey === 'douyin'" class="grid gap-2">
                   <select
-                    class="select-bordered select w-full select-sm"
+                    class="select w-full select-sm"
                     :value="row.visibility"
                     @change="
                       emit('update-row-field', {
@@ -342,7 +342,7 @@ onBeforeUnmount(() => {
               </td>
               <td>
                 <input
-                  class="input-bordered input w-full input-sm"
+                  class="input w-full input-sm"
                   :value="row.summary"
                   type="text"
                   placeholder="输入简介"
@@ -357,9 +357,9 @@ onBeforeUnmount(() => {
               </td>
               <td>
                 <div
-                  class="flex w-full flex-col items-stretch gap-2 rounded-box border border-base-300 bg-base-200 p-2"
+                  class="flex w-full flex-col items-stretch gap-2 p-2"
                   :class="{
-                    'border-primary/30 bg-primary/5': isRowTimedPublishEnabled(row.scheduledAt),
+                    'text-primary': isRowTimedPublishEnabled(row.scheduledAt),
                     'opacity-60': !getRowScheduleState(row).supported,
                   }"
                 >
@@ -372,7 +372,7 @@ onBeforeUnmount(() => {
                       @change="toggleRowTimedPublish(row)"
                     />
                     <span
-                      class="text-xs font-semibold whitespace-nowrap text-base-content/60"
+                      class="text-xs font-medium whitespace-nowrap text-base-content/60"
                       :class="{ 'text-primary': isRowTimedPublishEnabled(row.scheduledAt) }"
                     >
                       {{ isRowTimedPublishEnabled(row.scheduledAt) ? "定时发布" : "立即发布" }}
@@ -384,7 +384,7 @@ onBeforeUnmount(() => {
                   >
                     <input
                       :value="toDatetimeLocalValue(row.scheduledAt)"
-                      class="input-bordered input w-full text-xs input-sm"
+                      class="input w-full text-xs input-sm"
                       type="datetime-local"
                       :min="getRowScheduleState(row).bounds?.min"
                       :max="getRowScheduleState(row).bounds?.max"
@@ -421,14 +421,12 @@ onBeforeUnmount(() => {
         </table>
       </section>
 
-      <footer
-        class="flex items-center justify-between gap-4 border-t border-base-300 pt-5 max-md:flex-col max-md:items-stretch"
-      >
+      <footer class="flex items-center justify-between gap-4 pt-2 max-md:flex-col max-md:items-stretch">
         <p class="m-0 text-sm text-base-content/70">
           共 <strong>{{ totalPlanCount }}</strong> 条发布计划
         </p>
         <button
-          class="btn min-w-36 btn-primary max-md:w-full"
+          class="btn min-w-36 btn-info max-md:w-full"
           type="button"
           :disabled="!canConfirm || submitting"
           @click="emit('confirm')"

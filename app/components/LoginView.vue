@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from "vue";
-import AppIcon from "./AppIcon.vue";
+import { Phone, ShieldCheck, Video } from "lucide-vue-next";
 import { sendCode } from "@/api/auth";
 import type { LoginForm } from "@/types";
 
@@ -61,31 +61,37 @@ const submit = () => {
 </script>
 
 <template>
-  <div class="grid min-h-screen place-items-center p-6">
-    <section class="card w-full max-w-md bg-base-100 shadow-xl">
-      <div class="card-body gap-5 p-10 max-md:p-6">
+  <div class="grid min-h-screen place-items-center bg-base-200 p-6">
+    <section class="card w-full max-w-md bg-base-100 card-border">
+      <div class="card-body gap-4">
         <header class="mb-2 text-center">
-          <h1 class="text-4xl font-bold">欢迎登录</h1>
-          <p class="mt-2 text-base-content/60">使用手机号快速登录</p>
+          <div class="placeholder avatar mx-auto mb-4">
+            <div class="w-12 rounded-full bg-info text-info-content">
+              <Video :size="24" :stroke-width="1.75" aria-hidden="true" />
+            </div>
+          </div>
+          <p class="mb-1 text-sm font-bold">矩阵特工队</p>
+          <h1 class="text-2xl font-bold">欢迎登录</h1>
+          <p class="mt-2 text-sm opacity-60">使用手机号快速登录</p>
         </header>
 
-        <label class="input-bordered input flex w-full items-center gap-3">
-          <AppIcon class="opacity-40" name="phone" :size="22" />
+        <label class="input w-full">
+          <Phone class="opacity-40" :size="20" :stroke-width="1.75" aria-hidden="true" />
           <input v-model="form.phone" class="grow" type="tel" maxlength="11" placeholder="请输入手机号" />
         </label>
 
         <div class="grid grid-cols-[1fr_auto] gap-3 max-md:grid-cols-1">
-          <label class="input-bordered input flex w-full items-center gap-3">
-            <AppIcon class="opacity-40" name="shield" :size="22" />
+          <label class="input w-full">
+            <ShieldCheck class="opacity-40" :size="20" :stroke-width="1.75" aria-hidden="true" />
             <input v-model="form.code" class="grow" type="text" maxlength="6" placeholder="请输入验证码" />
           </label>
-          <button class="btn btn-outline" type="button" :disabled="!canSend" @click="handleSendCode">
+          <button class="btn" type="button" :disabled="!canSend" @click="handleSendCode">
             <span v-if="sending" class="loading loading-sm loading-spinner"></span>
             {{ sendButtonText }}
           </button>
         </div>
 
-        <div v-if="errorMessage" role="alert" class="alert py-3 text-sm alert-error">
+        <div v-if="errorMessage" role="alert" class="alert alert-soft py-3 text-sm alert-error">
           <span>{{ errorMessage }}</span>
         </div>
 
@@ -94,7 +100,7 @@ const submit = () => {
           <span class="label-text">我已阅读并同意《用户协议》和《隐私政策》</span>
         </label>
 
-        <button class="btn w-full btn-lg btn-primary" type="button" :disabled="!canLogin" @click="submit">登录</button>
+        <button class="btn w-full btn-primary" type="button" :disabled="!canLogin" @click="submit">登录</button>
       </div>
     </section>
   </div>

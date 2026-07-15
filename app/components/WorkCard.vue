@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { WorkItem } from "@/types";
-import AppIcon from "./AppIcon.vue";
+import { CirclePlay } from "lucide-vue-next";
 
 defineOptions({ name: "WorkCard" });
 
@@ -34,29 +34,23 @@ const formatTime = (value: string): string => {
 </script>
 
 <template>
-  <article
-    class="card cursor-pointer bg-base-100 p-4 shadow-sm transition card-border hover:-translate-y-0.5 hover:shadow-md"
-    :class="{ 'border-primary ring-1 ring-primary': selected }"
-  >
+  <article class="card bg-base-100 card-border">
     <button
       type="button"
-      class="group relative block overflow-hidden rounded-box bg-base-300"
+      class="relative block overflow-hidden"
       :class="item.orientation === 'portrait' ? 'aspect-9/16' : 'aspect-video'"
       :aria-label="`预览 ${item.title}`"
       @click="emit('preview', item)"
     >
       <img v-if="item.status === '已完成'" class="h-full w-full object-cover" :src="item.cover" :alt="item.title" />
       <span v-else class="grid h-full min-h-32 place-items-center text-sm text-base-content/50">{{ item.status }}</span>
-      <span
-        v-if="item.status === '已完成'"
-        class="absolute inset-0 grid place-items-center bg-neutral/20 text-white opacity-0 transition group-hover:opacity-100"
-      >
-        <AppIcon name="play" :size="48" />
+      <span v-if="item.status === '已完成'" class="btn absolute inset-1/2 btn-circle -translate-1/2">
+        <CirclePlay :size="24" aria-hidden="true" />
       </span>
     </button>
 
-    <div class="card-body gap-2 px-1 pt-3 pb-1">
-      <span class="badge badge-sm" :class="statusClassMap[item.status]">{{ item.status }}</span>
+    <div class="card-body gap-2">
+      <span class="badge badge-soft badge-sm" :class="statusClassMap[item.status]">{{ item.status }}</span>
       <h3 class="line-clamp-2 text-base font-semibold" :title="item.title">{{ item.title }}</h3>
       <div class="flex items-center justify-between gap-2 text-xs text-base-content/60">
         <time>{{ formatTime(item.updatedAt) }}</time>

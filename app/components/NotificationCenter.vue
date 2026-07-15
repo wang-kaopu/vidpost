@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { Bell, X } from "lucide-vue-next";
 
 defineOptions({ name: "NotificationCenter" });
 
@@ -73,11 +74,11 @@ const toneLabelMap: Record<NotificationTone, string> = {
   error: "异常",
 };
 
-const toneAccentClassMap: Record<NotificationTone, string> = {
-  info: "bg-info",
-  success: "bg-success",
-  warning: "bg-warning",
-  error: "bg-error",
+const toneAlertClassMap: Record<NotificationTone, string> = {
+  info: "alert-info",
+  success: "alert-success",
+  warning: "alert-warning",
+  error: "alert-error",
 };
 
 const resolveToneLabel = (tone?: NotificationTone): string => toneLabelMap[tone || "info"];
@@ -93,92 +94,76 @@ const handleAction = (item: NotificationCenterItem): void => {
 </script>
 
 <template>
-  <aside
-    class="pointer-events-none fixed right-7 bottom-7 z-120 flex flex-col items-end max-md:right-4 max-md:bottom-4"
-    aria-live="polite"
-  >
-    <Transition
-      mode="out-in"
-      enter-active-class="transition duration-200"
-      leave-active-class="transition duration-200"
-      enter-from-class="translate-y-2 opacity-0"
-      leave-to-class="translate-y-2 opacity-0"
-    >
-      <section
-        v-if="!isCollapsed"
-        key="expanded"
-        class="pointer-events-auto card max-h-[calc(100vh-3.5rem)] w-[min(24rem,calc(100vw-2.5rem))] bg-base-100 shadow-xl"
-      >
-        <div class="card-body min-h-0 gap-4 p-5">
-          <header class="flex items-start justify-between gap-4">
-            <div>
-              <p class="text-xs tracking-widest text-base-content/60 uppercase">{{ title }}</p>
-              <strong class="text-xl">{{ unreadCount > 0 ? `${unreadCount} 条待处理` : "全部已读" }}</strong>
-            </div>
-            <div class="flex gap-2">
-              <button type="button" class="btn btn-ghost btn-sm" @click="toggleCollapsed">收起</button>
-              <button type="button" class="btn btn-ghost btn-sm" :disabled="items.length === 0" @click="$emit('clear')">
-                清空
-              </button>
-            </div>
-          </header>
-
-          <div v-if="visibleItems.length > 0" class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
-            <article
-              v-for="item in visibleItems"
-              :key="item.id"
-              class="card relative grid grid-cols-[0.25rem_minmax(0,1fr)_auto] gap-3 bg-base-100 p-4 pl-0 card-border"
-            >
-              <span class="ml-3 rounded-full" :class="toneAccentClassMap[item.tone || 'info']"></span>
-              <div class="min-w-0">
-                <div class="mb-2 flex items-center justify-between gap-3 text-xs text-base-content/50">
-                  <strong>{{ item.source || resolveToneLabel(item.tone) }}</strong>
-                  <time v-if="item.timestamp">{{ item.timestamp }}</time>
-                </div>
-                <h3 class="font-semibold">{{ item.title }}</h3>
-                <p class="mt-2 text-sm leading-relaxed text-base-content/70">{{ item.message }}</p>
-                <button
-                  v-if="item.actionLabel"
-                  type="button"
-                  class="btn mt-2 btn-link px-0 btn-sm"
-                  @click="handleAction(item)"
-                >
-                  {{ item.actionLabel }}
-                </button>
-                <span v-else class="mt-2 badge badge-ghost">{{ resolveToneLabel(item.tone) }}</span>
-              </div>
-              <button
-                type="button"
-                class="btn btn-circle btn-ghost btn-xs"
-                aria-label="关闭通知"
-                @click="$emit('dismiss', item.id)"
-              >
-                ×
-              </button>
-            </article>
-          </div>
-
-          <div v-else class="py-8 text-center">
-            <strong class="text-lg">通知中心</strong>
-            <p class="mt-2 text-sm text-base-content/60">{{ emptyText }}</p>
-          </div>
+  <aside class="toast toast-end z-40 w-full max-w-sm" aria-live="polite">
+    <template v-if="!isCollapsed">
+      <header class="alert flex items-start justify-between gap-4">
+        <div>
+          <p class="text-sm opacity-60">{{ title }}</p>
+          <strong class="text-lg font-bold">{{ unreadCount > 0 ? `${unreadCount} 条待处理` : "全部已读" }}</strong>
         </div>
-      </section>
+        <div class="flex gap-2">
+          <button type="button" class="btn btn-ghost btn-sm" @click="toggleCollapsed">收起</button>
+          <button type="button" class="btn btn-ghost btn-sm" :disabled="items.length === 0" @click="$emit('clear')">
+            清空
+          </button>
+        </div>
+      </header>
 
-      <button
-        v-else-if="items.length > 0"
-        key="collapsed"
-        type="button"
-        class="btn pointer-events-auto relative btn-circle h-14 w-14 bg-base-100 shadow-xl"
-        :title="collapsedSummary"
-        :aria-label="collapsedSummary"
-        @click="toggleCollapsed"
-      >
-        <span class="h-3 w-3 rounded-full bg-primary"></span>
-        <span v-if="unreadCount > 0" class="absolute -top-2 -right-2 badge badge-sm badge-primary">
-          {{ unreadCount > 9 ? "9+" : unreadCount }}
-        </span>
-      </button>
-    </Transition>
+      <div v-if="visibleItems.length > 0" class="flex max-h-[calc(100vh-12rem)] flex-col gap-3 overflow-y-auto">
+        <div
+          v-for="item in visibleItems"
+          :key="item.id"
+          role="alert"
+          class="alert grid grid-cols-[minmax(0,1fr)_auto] items-start"
+          :class="toneAlertClassMap[item.tone || 'info']"
+        >
+          <div class="min-w-0">
+            <div class="mb-2 flex items-center justify-between gap-3 text-xs text-base-content/50">
+              <strong class="font-medium">{{ item.source || resolveToneLabel(item.tone) }}</strong>
+              <time v-if="item.timestamp">{{ item.timestamp }}</time>
+            </div>
+            <h3 class="font-semibold">{{ item.title }}</h3>
+            <p class="mt-2 text-sm leading-relaxed text-base-content/70">{{ item.message }}</p>
+            <button
+              v-if="item.actionLabel"
+              type="button"
+              class="btn mt-2 btn-link px-0 btn-sm"
+              @click="handleAction(item)"
+            >
+              {{ item.actionLabel }}
+            </button>
+            <span v-else class="mt-2 badge badge-ghost">{{ resolveToneLabel(item.tone) }}</span>
+          </div>
+          <button
+            type="button"
+            class="btn btn-circle btn-ghost btn-xs"
+            aria-label="关闭通知"
+            @click="$emit('dismiss', item.id)"
+          >
+            <X :size="14" :stroke-width="1.75" aria-hidden="true" />
+          </button>
+        </div>
+      </div>
+
+      <div v-else role="alert" class="alert">
+        <strong class="text-lg font-semibold">通知中心</strong>
+        <p class="mt-2 text-sm text-base-content/60">{{ emptyText }}</p>
+      </div>
+    </template>
+
+    <button
+      v-else-if="items.length > 0"
+      key="collapsed"
+      type="button"
+      class="btn relative btn-circle btn-primary"
+      :title="collapsedSummary"
+      :aria-label="collapsedSummary"
+      @click="toggleCollapsed"
+    >
+      <Bell :size="20" :stroke-width="1.75" aria-hidden="true" />
+      <span v-if="unreadCount > 0" class="absolute -top-2 -right-2 badge badge-sm badge-neutral">
+        {{ unreadCount > 9 ? "9+" : unreadCount }}
+      </span>
+    </button>
   </aside>
 </template>

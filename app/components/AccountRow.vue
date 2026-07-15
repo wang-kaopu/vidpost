@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { PublishAccountItem } from "@/api/publish";
-import AppIcon from "./AppIcon.vue";
+import { Plus, Trash2, X } from "lucide-vue-next";
 import PlatformLogo from "./PlatformLogo.vue";
 
 defineOptions({ name: "AccountRow" });
@@ -33,8 +33,12 @@ const statusClassMap: Record<string, string> = {
 
 <template>
   <tr>
-    <td><PlatformLogo class="mx-auto" :platform="item.platform" /></td>
-    <td class="font-medium">{{ item.nickname }}</td>
+    <td class="sticky left-0 z-10 bg-base-100">
+      <PlatformLogo class="mx-auto" :platform="item.platform" />
+    </td>
+    <td class="sticky left-16 z-10 bg-base-100 font-medium whitespace-nowrap">
+      {{ item.nickname }}
+    </td>
     <td>{{ item.id }}</td>
     <td :class="{ 'text-base-content/40': item.remarkName === '--' }">
       {{ item.remarkName === "--" ? "未设置" : item.remarkName }}
@@ -44,51 +48,54 @@ const statusClassMap: Record<string, string> = {
     </td>
     <td>
       <div class="flex flex-wrap items-center gap-2">
-        <span v-for="tag in item.tags" :key="tag" class="badge gap-1 badge-outline">
+        <span v-for="tag in item.tags" :key="tag" class="badge gap-1 badge-soft badge-primary">
           {{ tag }}
           <button
             type="button"
-            class="text-base-content/40 hover:text-error"
+            class="btn btn-circle btn-ghost btn-xs"
             :disabled="deleting"
             :aria-label="`删除标签 ${tag}`"
             @click="$emit('deleteTag', item, tag)"
           >
-            ×
+            <X :size="12" :stroke-width="1.75" aria-hidden="true" />
           </button>
         </span>
-        <button type="button" class="btn btn-ghost btn-xs" @click="$emit('addTag', item)">+ 添加</button>
+        <button type="button" class="btn btn-ghost btn-sm" @click="$emit('addTag', item)">
+          <Plus :size="14" :stroke-width="1.75" aria-hidden="true" />
+          添加
+        </button>
       </div>
     </td>
     <td>
-      <span class="badge whitespace-nowrap" :class="statusClassMap[item.status] || 'badge-error'">
+      <span class="badge badge-soft whitespace-nowrap" :class="statusClassMap[item.status] || 'badge-error'">
         {{ statusLabelMap[item.status] || item.status }}
       </span>
     </td>
-    <td>
+    <td class="sticky right-0 z-10 bg-base-100 max-xl:static">
       <div class="flex items-center gap-1 whitespace-nowrap">
         <button
           v-if="canOpenBackend"
           type="button"
-          class="btn btn-ghost btn-xs"
+          class="btn btn-ghost btn-sm"
           :disabled="busy"
           @click="$emit('openBackend', item)"
         >
           {{ backendOpening ? "打开中..." : "账号后台" }}
         </button>
-        <button type="button" class="btn btn-ghost btn-xs" :disabled="busy" @click="$emit('rename', item)">
+        <button type="button" class="btn btn-ghost btn-sm" :disabled="busy" @click="$emit('rename', item)">
           重命名
         </button>
-        <button type="button" class="btn btn-ghost btn-xs" :disabled="busy" @click="$emit('ping', item)">
+        <button type="button" class="btn btn-ghost btn-sm" :disabled="busy" @click="$emit('ping', item)">
           {{ pingLabel }}
         </button>
         <button
           type="button"
-          class="btn btn-ghost text-error btn-xs"
+          class="btn btn-square btn-ghost text-error btn-sm"
           :disabled="busy"
           aria-label="删除账号"
           @click="$emit('delete', item)"
         >
-          <AppIcon name="trash" :size="16" />
+          <Trash2 :size="16" :stroke-width="1.75" aria-hidden="true" />
         </button>
       </div>
     </td>

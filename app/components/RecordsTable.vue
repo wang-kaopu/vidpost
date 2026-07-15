@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
-import AppIcon from "./AppIcon.vue";
+import { ArrowRight, Download, Info, RotateCcw, Search, Trash2 } from "lucide-vue-next";
 import PlatformLogo from "./PlatformLogo.vue";
 import { getPublishPlatforms, getPublishTasks, deletePublishTask, exportPublishTasks } from "@/api/publish";
 import type { PublishTask, BackendPlatform } from "@/api/publish";
@@ -53,11 +53,11 @@ const recordStatusLabelMap: Record<string, string> = {
 };
 
 const recordStatusClassMap: Record<string, string> = {
-  running: "badge-warning",
-  reviewing: "badge-warning",
-  public: "badge-success",
-  non_public: "badge-error",
-  failed: "badge-error",
+  running: "badge-soft badge-info",
+  reviewing: "badge-soft badge-warning",
+  public: "badge-soft badge-success",
+  non_public: "badge-soft badge-neutral",
+  failed: "badge-soft badge-error",
 };
 
 /** 提取状态原因，优先展示平台终态，再展示最近同步错误和发布过程错误。 */
@@ -267,31 +267,31 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <section class="card overflow-hidden bg-base-100 shadow-sm">
+  <section class="min-w-0">
     <header
       class="flex items-center justify-between gap-6 px-8 pt-8 pb-5 max-lg:flex-col max-lg:items-stretch max-lg:px-5"
     >
       <h2 class="text-2xl font-bold">矩阵发布记录</h2>
-      <button class="btn btn-outline" type="button" :disabled="exporting || !items.length" @click="handleExport">
+      <button class="btn btn-ghost" type="button" :disabled="exporting || !items.length" @click="handleExport">
         <span v-if="exporting" class="loading loading-sm loading-spinner"></span>
-        <AppIcon v-else name="download" :size="16" />
+        <Download v-else :size="16" :stroke-width="1.75" aria-hidden="true" />
         {{ exporting ? "导出中..." : "导出发布记录" }}
       </button>
     </header>
 
-    <div class="card mx-6 mb-5 bg-base-200 p-5 card-border max-lg:mx-4 max-lg:p-4">
+    <div class="mx-6 mb-5 max-lg:mx-4">
       <div class="grid grid-cols-3 items-end gap-4 max-xl:grid-cols-2 max-md:grid-cols-1">
         <fieldset class="fieldset">
           <legend class="fieldset-legend">标题</legend>
-          <label class="input-bordered input flex w-full items-center gap-2">
-            <AppIcon class="opacity-50" name="search" :size="14" />
+          <label class="input w-full">
+            <Search class="opacity-50" :size="16" :stroke-width="1.75" aria-hidden="true" />
             <input v-model="titleFilter" class="grow" type="text" placeholder="搜索标题" />
           </label>
         </fieldset>
 
         <fieldset class="fieldset">
           <legend class="fieldset-legend">平台</legend>
-          <select v-model="platformFilter" class="select-bordered select w-full">
+          <select v-model="platformFilter" class="select w-full">
             <option value="">全部平台</option>
             <option v-for="platform in platformOptions" :key="platform.key" :value="platform.key">
               {{ platform.label }}
@@ -301,7 +301,7 @@ onUnmounted(() => {
 
         <fieldset class="fieldset">
           <legend class="fieldset-legend">视频类别</legend>
-          <select v-model="categoryFilter" class="select-bordered select w-full">
+          <select v-model="categoryFilter" class="select w-full">
             <option value="">全部类别</option>
             <option v-for="category in categoryOptions" :key="category.value" :value="category.value">
               {{ category.label }}
@@ -314,16 +314,16 @@ onUnmounted(() => {
           <div class="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 max-md:grid-cols-1">
             <input
               v-model="scheduledStart"
-              class="input-bordered input w-full"
+              class="input w-full"
               :type="scheduledStart ? 'date' : 'text'"
               placeholder="开始日期"
               @focus="onDateFocus"
               @blur="onDateBlurStart"
             />
-            <span class="text-base-content/40 max-md:hidden">→</span>
+            <ArrowRight class="text-base-content/40 max-md:hidden" :size="16" :stroke-width="1.75" aria-hidden="true" />
             <input
               v-model="scheduledEnd"
-              class="input-bordered input w-full"
+              class="input w-full"
               :type="scheduledEnd ? 'date' : 'text'"
               placeholder="结束日期"
               @focus="onDateFocus"
@@ -333,18 +333,18 @@ onUnmounted(() => {
         </fieldset>
 
         <div class="flex justify-end gap-2 max-md:w-full">
-          <button class="btn btn-primary max-md:flex-1" type="button" @click="loadRecords">
-            <AppIcon name="search" :size="14" /> 搜索
+          <button class="btn btn-info max-md:flex-1" type="button" @click="loadRecords">
+            <Search :size="16" :stroke-width="1.75" aria-hidden="true" /> 搜索
           </button>
           <button class="btn btn-ghost max-md:flex-1" type="button" @click="resetFilters">
-            <AppIcon name="refresh" :size="14" /> 重置
+            <RotateCcw :size="16" :stroke-width="1.75" aria-hidden="true" /> 重置
           </button>
         </div>
       </div>
     </div>
 
-    <div class="mx-6 overflow-x-auto max-lg:mx-4">
-      <table class="table w-full table-fixed table-zebra">
+    <div class="card mx-6 overflow-x-auto bg-base-100 card-border max-lg:mx-4">
+      <table class="table-pin-rows table min-w-[66rem] table-fixed">
         <colgroup>
           <col class="w-12" />
           <col class="w-18" />
@@ -357,7 +357,7 @@ onUnmounted(() => {
         </colgroup>
         <thead>
           <tr>
-            <th>
+            <th class="sticky left-0 z-40 bg-base-200">
               <input
                 class="checkbox checkbox-sm checkbox-primary"
                 type="checkbox"
@@ -366,13 +366,13 @@ onUnmounted(() => {
                 @change="toggleSelectAll"
               />
             </th>
-            <th>平台</th>
+            <th class="sticky left-12 z-40 bg-base-200">平台</th>
             <th>账号昵称</th>
             <th>账号ID</th>
             <th>内容标题</th>
             <th>状态</th>
             <th>预约发布时间</th>
-            <th>操作</th>
+            <th class="sticky right-0 z-40 bg-base-200">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -381,7 +381,7 @@ onUnmounted(() => {
           </tr>
           <tr v-else-if="errorMessage">
             <td colspan="8">
-              <div role="alert" class="alert alert-error">
+              <div role="alert" class="alert alert-soft alert-error">
                 <span>{{ errorMessage }}</span>
               </div>
             </td>
@@ -390,7 +390,7 @@ onUnmounted(() => {
             <td colspan="8" class="py-12 text-center text-base-content/60">暂无发布记录</td>
           </tr>
           <tr v-for="item in items" :key="item.id">
-            <td>
+            <td class="sticky left-0 z-10 bg-base-100">
               <input
                 class="checkbox checkbox-sm checkbox-primary"
                 type="checkbox"
@@ -398,7 +398,7 @@ onUnmounted(() => {
                 @change="toggleSelect(item)"
               />
             </td>
-            <td>
+            <td class="sticky left-12 z-10 bg-base-100">
               <PlatformLogo
                 class="mx-auto"
                 :platform="platformLabelMap[item.platform || ''] || item.platform || '未知平台'"
@@ -409,7 +409,10 @@ onUnmounted(() => {
             <td class="truncate" :title="item.title || '--'">{{ item.title || "--" }}</td>
             <td>
               <span class="inline-flex items-center gap-2">
-                <span class="badge whitespace-nowrap" :class="recordStatusClassMap[item.status] || 'badge-error'">
+                <span
+                  class="badge whitespace-nowrap"
+                  :class="recordStatusClassMap[item.status] || 'badge-soft badge-error'"
+                >
                   {{ recordStatusLabelMap[item.status] || item.status || "未知状态" }}
                 </span>
                 <span
@@ -417,14 +420,16 @@ onUnmounted(() => {
                   class="tooltip tooltip-left"
                   :data-tip="getRecordStatusReason(item)"
                 >
-                  <span class="badge cursor-help badge-ghost badge-sm">i</span>
+                  <span class="badge cursor-help badge-ghost badge-sm">
+                    <Info :size="12" :stroke-width="1.75" aria-hidden="true" />
+                  </span>
                 </span>
               </span>
             </td>
             <td class="truncate">{{ item.scheduled_at || "--" }}</td>
-            <td>
+            <td class="sticky right-0 z-10 bg-base-100">
               <button type="button" class="btn btn-ghost text-error btn-xs" @click="handleDelete(item)">
-                <AppIcon name="trash" :size="14" /> 删除
+                <Trash2 :size="14" :stroke-width="1.75" aria-hidden="true" /> 删除
               </button>
             </td>
           </tr>
@@ -432,6 +437,6 @@ onUnmounted(() => {
       </table>
     </div>
 
-    <footer class="px-8 py-6 text-sm text-base-content/60">共 {{ items.length }} 条</footer>
+    <footer class="px-8 py-6 text-sm opacity-60">共 {{ items.length }} 条</footer>
   </section>
 </template>

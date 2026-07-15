@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, provide, ref } from "vue";
+import { Menu } from "lucide-vue-next";
 import LoginView from "./components/LoginView.vue";
 import SidebarNav from "./components/SidebarNav.vue";
 import AccountTable from "./components/AccountTable.vue";
 import RecordsTable from "./components/RecordsTable.vue";
-import AppContentTransition from "./components/AppContentTransition.vue";
 // import WorksPlaceholder from "./components/WorksPlaceholder.vue";
 import { fetchUserProfile, loginByPhone, logout as apiLogout, refreshToken } from "./api/auth";
 import { clearSessionTokens, getAccessToken, getRefreshToken, setAccessToken, setRefreshToken } from "./config";
@@ -28,6 +28,7 @@ const loggedIn = ref(false);
 const user = ref<User | null>(null);
 const loginError = ref("");
 const pendingLaunchMenu = ref<MenuKey | null>(null);
+const drawerOpen = ref(false);
 let tokenRefreshTimer: number | null = null;
 let removeLaunchIntentListener: (() => void) | null = null;
 let removeNotificationEventListener: (() => void) | null = null;
@@ -240,25 +241,34 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main class="min-h-screen bg-base-200">
+  <main class="min-h-screen">
     <LoginView v-if="!loggedIn" @submit="login" />
 
-    <div
-      v-else
-      class="grid h-screen grid-cols-[268px_minmax(0,1fr)] overflow-hidden max-xl:grid-cols-[100px_minmax(0,1fr)] max-lg:grid-cols-1"
-    >
-      <SidebarNav :active="activeMenu" :user="user" @select="activeMenu = $event" @logout="logout" />
-      <section class="h-screen overflow-y-auto px-8 py-7 max-lg:p-5">
-        <header
-          v-if="activeMenu !== 'accounts' && activeMenu !== 'records' && activeMenu !== 'works'"
-          class="mb-5 flex items-center max-lg:flex-col max-lg:items-start [&_h1]:m-0 [&_h1]:text-3xl [&_h1]:font-bold"
-        >
-          <div>
-            <h1>预定发布作品</h1>
-          </div>
-        </header>
-        <AppContentTransition :view="currentView" :view-key="activeMenu" />
-      </section>
+    <div v-else class="drawer lg:drawer-open">
+      <input id="app-drawer" v-model="drawerOpen" type="checkbox" class="drawer-toggle" />
+      <div class="drawer-content flex h-screen min-w-0 flex-col overflow-hidden">
+        <div class="navbar bg-base-100 lg:hidden">
+          <label for="app-drawer" class="btn btn-square btn-ghost" aria-label="打开导航">
+            <Menu :size="20" aria-hidden="true" />
+          </label>
+          <span class="px-2 text-lg font-bold">矩阵特工队</span>
+        </div>
+        <section class="min-w-0 flex-1 overflow-y-auto">
+          <component :is="currentView" />
+        </section>
+      </div>
+      <div class="drawer-side z-50">
+        <label for="app-drawer" aria-label="关闭导航" class="drawer-overlay"></label>
+        <SidebarNav
+          :active="activeMenu"
+          :user="user"
+          @select="
+            activeMenu = $event;
+            drawerOpen = false;
+          "
+          @logout="logout"
+        />
+      </div>
     </div>
 
     <NotificationCenter
@@ -270,19 +280,12 @@ onBeforeUnmount(() => {
       @clear="clearNotifications"
       @action="handleNotificationAction($event.id)"
     />
-    <transition
-      enter-active-class="transition duration-200"
-      leave-active-class="transition duration-200"
-      enter-from-class="-translate-y-2 opacity-0"
-      leave-to-class="-translate-y-2 opacity-0"
-    >
-      <PublishProgressPanel
-        v-if="publishProgressCenter.visible.value && publishProgressCenter.items.value.length > 0"
-        :items="publishProgressCenter.items.value"
-        :collapsed="publishProgressCenter.collapsed.value"
-        @toggle-collapsed="publishProgressCenter.toggleCollapsed"
-        @close="publishProgressCenter.close"
-      />
-    </transition>
+    <PublishProgressPanel
+      v-if="publishProgressCenter.visible.value && publishProgressCenter.items.value.length > 0"
+      :items="publishProgressCenter.items.value"
+      :collapsed="publishProgressCenter.collapsed.value"
+      @toggle-collapsed="publishProgressCenter.toggleCollapsed"
+      @close="publishProgressCenter.close"
+    />
   </main>
 </template>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import AppIcon from "./AppIcon.vue";
+import { ArrowRight, RotateCcw, Search } from "lucide-vue-next";
 
 defineOptions({ name: "WorkFilters" });
 
@@ -40,19 +40,19 @@ const handleReset = (): void => {
 </script>
 
 <template>
-  <div class="card mx-6 mb-5 bg-base-200 p-5 card-border max-lg:mx-4 max-lg:p-4">
+  <div class="mx-6 mb-5 max-lg:mx-4">
     <div class="grid grid-cols-[1fr_1fr_2fr_auto] items-end gap-4 max-xl:grid-cols-2 max-md:grid-cols-1">
       <fieldset class="fieldset">
         <legend class="fieldset-legend">标题</legend>
-        <label class="input-bordered input flex w-full items-center gap-2">
-          <AppIcon class="opacity-50" name="search" :size="14" />
+        <label class="input w-full">
+          <Search class="opacity-50" :size="16" :stroke-width="1.75" aria-hidden="true" />
           <input v-model="title" class="grow" type="text" placeholder="搜索标题" />
         </label>
       </fieldset>
 
       <fieldset class="fieldset">
         <legend class="fieldset-legend">视频类别</legend>
-        <select v-model="type" class="select-bordered select w-full">
+        <select v-model="type" class="select w-full">
           <option value="">全部类别</option>
           <option v-for="option in videoTypeOptions" :key="option.value" :value="option.value">
             {{ option.label }}
@@ -65,16 +65,16 @@ const handleReset = (): void => {
         <div class="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 max-md:grid-cols-1">
           <input
             v-model="dateStart"
-            class="input-bordered input w-full"
+            class="input w-full"
             :type="dateStart ? 'date' : 'text'"
             placeholder="开始日期"
             @focus="handleDateFocus"
             @blur="handleDateBlur($event, dateStart)"
           />
-          <span class="text-base-content/40 max-md:hidden">→</span>
+          <ArrowRight class="text-base-content/40 max-md:hidden" :size="16" :stroke-width="1.75" aria-hidden="true" />
           <input
             v-model="dateEnd"
-            class="input-bordered input w-full"
+            class="input w-full"
             :type="dateEnd ? 'date' : 'text'"
             placeholder="结束日期"
             @focus="handleDateFocus"
@@ -84,11 +84,11 @@ const handleReset = (): void => {
       </fieldset>
 
       <div class="flex gap-2 max-md:w-full">
-        <button class="btn btn-primary max-md:flex-1" type="button" @click="emit('search')">
-          <AppIcon name="search" :size="14" /> 搜索
+        <button class="btn btn-info max-md:flex-1" type="button" @click="emit('search')">
+          <Search :size="16" :stroke-width="1.75" aria-hidden="true" /> 搜索
         </button>
         <button class="btn btn-ghost max-md:flex-1" type="button" @click="handleReset">
-          <AppIcon name="refresh" :size="14" /> 重置
+          <RotateCcw :size="16" :stroke-width="1.75" aria-hidden="true" /> 重置
         </button>
       </div>
     </div>

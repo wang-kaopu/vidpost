@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { PLATFORMS, type Platform } from "@shared/electron-api";
-import AppIcon from "./AppIcon.vue";
+import { Plus, RefreshCw } from "lucide-vue-next";
 import AccountFilters from "./AccountFilters.vue";
 import AccountRow from "./AccountRow.vue";
 import AccountTextDialog from "./AccountTextDialog.vue";
@@ -448,19 +448,17 @@ onMounted(() => {
 </script>
 
 <template>
-  <section class="card overflow-hidden bg-base-100 shadow-sm">
-    <header
-      class="flex items-center justify-between gap-6 px-8 pt-8 pb-5 max-lg:flex-col max-lg:items-stretch max-lg:px-5 max-lg:pt-5"
-    >
+  <section class="min-h-full min-w-0 p-6 max-md:p-4">
+    <header class="mb-6 flex items-center justify-between gap-4 max-md:flex-col max-md:items-stretch">
       <h2 class="text-2xl font-bold">矩阵账号</h2>
       <div class="flex gap-3 max-md:flex-col">
-        <button class="btn btn-success" type="button" :disabled="pingingAll" @click="handlePingAllAccounts">
+        <button class="btn btn-ghost" type="button" :disabled="pingingAll" @click="handlePingAllAccounts">
           <span v-if="pingingAll" class="loading loading-sm loading-spinner"></span>
-          <AppIcon v-else name="refresh" :size="18" />
+          <RefreshCw v-else :size="18" :stroke-width="1.75" aria-hidden="true" />
           {{ pingingAll ? "检测中..." : "检测本页账号" }}
         </button>
         <button class="btn btn-primary" type="button" @click="openPlatformDialog">
-          <AppIcon name="plus" :size="18" />
+          <Plus :size="18" :stroke-width="1.75" aria-hidden="true" />
           绑定账号
         </button>
       </div>
@@ -479,28 +477,28 @@ onMounted(() => {
       @reset="handleReset"
     />
 
-    <div class="mx-6 overflow-x-auto max-lg:mx-4">
-      <table class="table w-full table-fixed table-zebra">
+    <div class="card overflow-x-auto bg-base-100 card-border">
+      <table class="table-pin-rows table min-w-[68rem] table-fixed">
         <colgroup>
-          <col class="w-18" />
-          <col class="w-40" />
-          <col class="w-24" />
-          <col class="w-30" />
+          <col class="w-16" />
           <col class="w-36" />
-          <col class="w-60" />
+          <col class="w-24" />
           <col class="w-28" />
-          <col class="w-64" />
+          <col class="w-32" />
+          <col class="w-56" />
+          <col class="w-24" />
+          <col class="w-56" />
         </colgroup>
         <thead>
           <tr>
-            <th>平台</th>
-            <th>账号昵称</th>
+            <th class="sticky left-0 z-40 bg-base-200">平台</th>
+            <th class="sticky left-16 z-40 bg-base-200">账号昵称</th>
             <th>账号ID</th>
             <th>备注名</th>
             <th>手机号</th>
             <th>标签</th>
             <th>状态</th>
-            <th>操作</th>
+            <th class="sticky right-0 z-40 bg-base-200 max-xl:static">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -511,7 +509,7 @@ onMounted(() => {
           </tr>
           <tr v-else-if="errorMessage && !allAccounts.length">
             <td colspan="8">
-              <div role="alert" class="alert alert-error">
+              <div role="alert" class="alert alert-soft alert-error">
                 <span>{{ errorMessage }}</span>
               </div>
             </td>
@@ -543,9 +541,7 @@ onMounted(() => {
       </table>
     </div>
 
-    <footer
-      class="flex items-center justify-between gap-4 px-8 py-6 text-sm text-base-content/60 max-lg:flex-col max-lg:items-start"
-    >
+    <footer class="flex items-center justify-between gap-4 pt-4 text-sm opacity-60 max-lg:flex-col max-lg:items-start">
       <p>
         显示 {{ Math.min((page - 1) * pageSize + 1, filteredAccounts.length) }} 到
         {{ Math.min(page * pageSize, filteredAccounts.length) }}，共 {{ filteredAccounts.length }} 条
@@ -564,7 +560,7 @@ onMounted(() => {
           :key="pageNumber"
           type="button"
           class="btn join-item btn-sm"
-          :class="{ 'btn-active': pageNumber === page }"
+          :class="{ 'btn-primary': pageNumber === page }"
           :disabled="pingingAll"
           @click="handlePageChange(pageNumber)"
         >

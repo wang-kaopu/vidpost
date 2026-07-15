@@ -44,7 +44,7 @@ Electron 主进程构建为 `.build/main.js` ESM。`preload.ts` 仍在源码层�
 
 `npm run dev` 会选择空闲端口启动当前项目的 Vite，并通过 `RENDERER_DEV_SERVER_URL` 将准确地址交给 Electron。Electron 不再探测固定端口，因此不会连接其他项目或工作区的开发服务器。`npm start` 和打包后的应用只加载 `app/dist/index.html`。
 
-`app/App.vue` 是正式渲染入口；正式渲染界面使用 Tailwind CSS v4，并通过 `@tailwindcss/vite` 接入 Vite。通用控件直接使用 daisyUI 5 的预设组件类，全站仅启用 `corporate` 亮色主题；布局和业务状态继续使用标准 Tailwind utility，只有动态尺寸和业务网格保留少量 arbitrary value。弹窗统一由原生 `<dialog>` 与 `AppDialog.vue` 管理，作品和账号两个大型页面按领域职责拆分组件。项目不再依赖 Ant Design Vue，也不引入 `tailwind-variants` 或薄封装控件。`app/styles.css` 只保留 Tailwind/daisyUI 入口、全局基础规则和必要关键帧，不使用 `@apply`；`prettier-plugin-tailwindcss` 负责 class 排序。`app/src/App.vue` 和 `app/src/scripts/sse-register.ts` 是后端联调 Demo，不在正式界面迁移范围内，也不能作为废弃目录删除。
+`app/App.vue` 是正式渲染入口；界面使用 Tailwind CSS v4 和 daisyUI 5，并启用 `maybeghost` plugin theme。按钮、表单、卡片、表格、弹窗、抽屉、通知和进度反馈直接组合 daisyUI 默认组件及官方修饰类，不维护平行的视觉组件层。应用导航使用响应式 `drawer`：`lg` 及以上常驻，较窄窗口通过 `navbar` 打开遮罩抽屉。Tailwind utility 仅负责布局、响应式、定位和必要的文字层级；宽表格保留横向滚动和关键列定位。非平台界面图标按需使用 Lucide Vue，平台品牌 Logo 保留原始资源。`app/styles.css` 只注册 Tailwind、daisyUI 和当前主题，不包含额外 design tokens、组件覆盖或自定义动效。`app/src/App.vue` 和 `app/src/scripts/sse-register.ts` 是后端联调 Demo，不在正式界面迁移范围内，也不能作为废弃目录删除。
 
 ## 日志规范
 
