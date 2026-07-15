@@ -49,7 +49,7 @@ export interface PublishTask {
   video_url?: string | null;
   scheduled_at?: string | null;
   link?: string | null;
-  video_type?: "talking_head_video" | "ai_ad_video" | "ai_sora_video" | "social_commerce_video" | null;
+  video_type?: "talking_head_video" | "ai_ad_video" | "ai_sora2_video" | "social_commerce_video" | null;
   user_id?: string;
   created_at?: string;
   updated_at?: string;

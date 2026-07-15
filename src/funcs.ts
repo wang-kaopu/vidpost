@@ -133,7 +133,7 @@ export async function publish(event: IpcMainInvokeEvent, payloadValue: unknown) 
   switch (stringPayload.videoType) {
     case "talking_head_video":
     case "ai_ad_video":
-    case "ai_sora_video":
+    case "ai_sora2_video":
     case "social_commerce_video":
       videoType = stringPayload.videoType;
       break;

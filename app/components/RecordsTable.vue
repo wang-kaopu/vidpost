@@ -35,7 +35,7 @@ const platformOptions = ref<{ id: string; key: string; label: string }[]>([]);
 const categoryOptions = [
   { value: "talking_head_video", label: "真人口播视频" },
   { value: "ai_ad_video", label: "卡通营销视频" },
-  { value: "ai_sora_video", label: "高级广告大片" },
+  { value: "ai_sora2_video", label: "高级广告大片" },
   { value: "social_commerce_video", label: "全球网红带货视频" },
 ];
 

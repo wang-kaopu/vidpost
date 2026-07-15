@@ -83,7 +83,7 @@ function mapWorkType(type: string | null | undefined): { platform: string; platf
   if (type === "ai_ad_video") {
     return { platform: "卡通营销视频", platformShort: "卡" };
   }
-  if (type === "ai_sora_video") {
+  if (type === "ai_sora2_video") {
     return { platform: "高级广告大片", platformShort: "高" };
   }
   if (type === "social_commerce_video") {
@@ -155,7 +155,7 @@ export async function fetchWorkPublishPayload(workId: string): Promise<WorkPubli
   switch (data.type) {
     case "talking_head_video":
     case "ai_ad_video":
-    case "ai_sora_video":
+    case "ai_sora2_video":
     case "social_commerce_video":
       videoType = data.type;
       break;

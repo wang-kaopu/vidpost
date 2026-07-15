@@ -8,7 +8,7 @@ export type Platform = (typeof PLATFORMS)[number];
 export type WorkVideoType =
   | "talking_head_video"
   | "ai_ad_video"
-  | "ai_sora_video"
+  | "ai_sora2_video"
   | "social_commerce_video";
 
 /** renderer 发起发布任务时必须提供的公共字段。 */
