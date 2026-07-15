@@ -31,18 +31,20 @@ export default tseslint.config(
   },
   { files: ["app/**/*.vue"], languageOptions: { parserOptions: { parser: tseslint.parser } } },
   {
+    files: ["app/components/ui/**/*.{ts,vue}"],
+    rules: {
+      // shadcn-vue registry component names intentionally mirror their single-word primitives.
+      "vue/multi-word-component-names": "off",
+      // Registry props are forwarded to Reka UI and intentionally preserve undefined defaults.
+      "vue/require-default-prop": "off",
+    },
+  },
+  {
     files: ["*.ts", "scripts/**/*.ts", "shared/**/*.ts", "src/**/*.ts", "test/**/*.ts", "types/**/*.d.ts"],
     rules: {
       "no-restricted-imports": [
         "error",
-        {
-          patterns: [
-            {
-              group: ["./*", "../*"],
-              message: "后端项目内模块统一使用 @/ 根路径",
-            },
-          ],
-        },
+        { patterns: [{ group: ["./*", "../*"], message: "后端项目内模块统一使用 @/ 根路径" }] },
       ],
     },
   },

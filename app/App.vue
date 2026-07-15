@@ -1,20 +1,21 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, provide, ref } from "vue";
-import { Menu } from "lucide-vue-next";
-import LoginView from "./components/LoginView.vue";
-import SidebarNav from "./components/SidebarNav.vue";
-import AccountTable from "./components/AccountTable.vue";
-import RecordsTable from "./components/RecordsTable.vue";
+import { LoginView } from "./components/login-view";
+import { SidebarNav } from "./components/sidebar-nav";
+import { AccountTable } from "./components/account-table";
+import { RecordsTable } from "./components/records-table";
 // import WorksPlaceholder from "./components/WorksPlaceholder.vue";
 import { fetchUserProfile, loginByPhone, logout as apiLogout, refreshToken } from "./api/auth";
 import { clearSessionTokens, getAccessToken, getRefreshToken, setAccessToken, setRefreshToken } from "./config";
 import type { LoginForm, MenuKey, User } from "./types";
-import Work from "./components/Work.vue";
-import NotificationCenter from "./components/NotificationCenter.vue";
+import { Work } from "./components/work";
+import { NotificationCenter } from "./components/notification-center";
 import { createNotificationCenter, notificationCenterKey } from "./notifications";
-import PublishProgressPanel from "./components/PublishProgressPanel.vue";
+import { PublishProgressPanel } from "./components/publish-progress-panel";
 import { createPublishProgressCenter, publishProgressCenterKey } from "./publish-progress";
 import type { LaunchIntent } from "@shared/electron-api";
+import { Separator } from "@/components/ui/separator";
+import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 
 type AppNotificationEventDetail = {
   title: string;
@@ -28,7 +29,6 @@ const loggedIn = ref(false);
 const user = ref<User | null>(null);
 const loginError = ref("");
 const pendingLaunchMenu = ref<MenuKey | null>(null);
-const drawerOpen = ref(false);
 let tokenRefreshTimer: number | null = null;
 let removeLaunchIntentListener: (() => void) | null = null;
 let removeNotificationEventListener: (() => void) | null = null;
@@ -244,42 +244,43 @@ onBeforeUnmount(() => {
   <main class="min-h-screen">
     <LoginView v-if="!loggedIn" @submit="login" />
 
-    <div v-else class="drawer lg:drawer-open">
-      <input id="app-drawer" v-model="drawerOpen" type="checkbox" class="drawer-toggle" />
-      <div class="drawer-content flex h-screen min-w-0 flex-col overflow-hidden">
-        <div class="navbar bg-base-100 lg:hidden">
-          <label for="app-drawer" class="btn btn-square btn-ghost" aria-label="打开导航">
-            <Menu :size="20" aria-hidden="true" />
-          </label>
-          <span class="px-2 text-lg font-bold">矩阵特工队</span>
-        </div>
+    <SidebarProvider v-else :default-open="true">
+      <SidebarNav :active="activeMenu" :user="user" @select="activeMenu = $event" @logout="logout">
+        <template #notifications>
+          <div class="hidden md:block">
+            <NotificationCenter
+              :items="notificationCenter.items.value"
+              title="系统通知"
+              empty-text="新的发布结果会显示在这里"
+              @dismiss="dismissNotification"
+              @clear="clearNotifications"
+              @action="handleNotificationAction($event.id)"
+            />
+          </div>
+        </template>
+      </SidebarNav>
+
+      <SidebarInset class="h-svh min-w-0 overflow-hidden">
+        <header class="flex h-14 shrink-0 items-center gap-2 border-b px-4 md:hidden">
+          <SidebarTrigger aria-label="打开导航" />
+          <Separator orientation="vertical" class="mr-2 h-4" />
+          <strong class="text-base">矩阵特工队</strong>
+          <div class="ml-auto">
+            <NotificationCenter
+              :items="notificationCenter.items.value"
+              title="系统通知"
+              empty-text="新的发布结果会显示在这里"
+              @dismiss="dismissNotification"
+              @clear="clearNotifications"
+              @action="handleNotificationAction($event.id)"
+            />
+          </div>
+        </header>
         <section class="min-w-0 flex-1 overflow-y-auto">
           <component :is="currentView" />
         </section>
-      </div>
-      <div class="drawer-side z-50">
-        <label for="app-drawer" aria-label="关闭导航" class="drawer-overlay"></label>
-        <SidebarNav
-          :active="activeMenu"
-          :user="user"
-          @select="
-            activeMenu = $event;
-            drawerOpen = false;
-          "
-          @logout="logout"
-        />
-      </div>
-    </div>
-
-    <NotificationCenter
-      :items="notificationCenter.items.value"
-      title="系统通知"
-      empty-text="新的发布结果会显示在这里"
-      :default-collapsed="true"
-      @dismiss="dismissNotification"
-      @clear="clearNotifications"
-      @action="handleNotificationAction($event.id)"
-    />
+      </SidebarInset>
+    </SidebarProvider>
     <PublishProgressPanel
       v-if="publishProgressCenter.visible.value && publishProgressCenter.items.value.length > 0"
       :items="publishProgressCenter.items.value"

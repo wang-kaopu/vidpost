@@ -1,5 +1,5 @@
 import { inject, ref, type InjectionKey, type Ref } from "vue";
-import type { NotificationCenterItem } from "./components/NotificationCenter.vue";
+import type { NotificationCenterItem } from "./components/notification-center";
 
 type NotificationInput = Omit<NotificationCenterItem, "id"> & { id?: string };
 
