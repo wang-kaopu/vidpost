@@ -36,6 +36,31 @@ npm run forge:package
 npm run forge:make
 ```
 
+### Windows x64 打包
+
+Windows 安装包必须在 Windows x64 主机上构建。从根目录的 `.nvmrc` 选择 Node 版本，然后按 lockfile 重建包含开发与可选依赖的完整依赖树：
+
+```powershell
+nvm install 22.22.3
+nvm use 22.22.3
+Get-Process -Name "矩阵特工队" -ErrorAction SilentlyContinue | Stop-Process -Force
+Remove-Item -Recurse -Force node_modules, app\node_modules, out, .build, app\dist -ErrorAction SilentlyContinue
+npm ci --include=dev --include=optional
+npm run typecheck
+npm test
+npm run forge:make
+```
+
+`forge:package` 只生成 `out/矩阵特工队-win32-x64` 下的可运行目录；`forge:make` 额外生成可分发安装包。打包前必须退出从 `out` 启动的旧应用，否则 Windows 会锁住 `app.asar` 并使清理或覆盖报 `EBUSY`。Forge 每次会覆盖旧的 package 目录，`.build` 和 `app/dist` 也会在构建前清空。
+
+Sharp 的 Windows 原生模块依赖同目录的 libvips DLL。打包前应确认 `node_modules/@img/sharp-win32-x64/lib` 同时包含 `.node` 和 `.dll` 文件；打包后应确认它们都被复制到：
+
+```text
+out/矩阵特工队-win32-x64/resources/app.asar.unpacked/node_modules/@img/sharp-win32-x64/lib/
+```
+
+不得使用 `--omit=optional` 或从其他操作系统拷贝的 `node_modules` 打包 Windows 产物。
+
 Electron 主进程构建为 `.build/main.js` ESM。`preload.ts` 仍在源码层使用 TypeScript 和 ESM 语法，但为了保留 sandbox，构建产物为 `.build/preload.cjs`。
 
 `shared/electron-api.ts` 是主进程、preload 和正式 renderer 共用的唯一 Electron IPC 契约，同时提供 DTO、平台联合和 channel 常量。preload 与 renderer 不再用 `unknown` 表示业务参数或结果；只有主进程 IPC 入口把跨进程输入视为 `unknown`，完成必要的结构校验并投影为共享 DTO。账号相关输入统一使用 `accountId`，发布输入统一使用 camelCase 字段，不兼容旧 `id`、`account_id` 和平台选项 snake_case 别名。

@@ -12,10 +12,12 @@ const configDirectory = path.dirname(fileURLToPath(import.meta.url));
 const config: ForgeConfig = {
   packagerConfig: {
     asar: {
-      unpack: '**/node_modules/{playwright,playwright-core}/**',
+      // Sharp 的 .node 依赖同目录 DLL，必须连同平台原生包整体解包。
+      unpack: '**/node_modules/{playwright,playwright-core,@img/sharp-*}/**',
     },
     ignore: (targetPath) => isPackagedPathIgnored(targetPath, configDirectory),
     junk: true,
+    overwrite: true,
     prune: true,
     protocols: [
       {
