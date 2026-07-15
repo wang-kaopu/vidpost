@@ -17,6 +17,7 @@ const TEST_IDENTITY: BrowserIdentity = {
 
 test("configureAccountBrowserWindow applies the shared browser identity", async () => {
   const commands: Array<{ method: string; params?: Record<string, unknown> }> = [];
+  const registeredEvents: string[] = [];
   const userAgents: string[] = [];
   let requestHeaders: Record<string, string> | undefined;
   const accountWindow = {
@@ -30,6 +31,7 @@ test("configureAccountBrowserWindow applies the shared browser identity", async 
         },
       },
       getURL: () => "about:blank",
+      on: (event: string) => registeredEvents.push(event),
       session: {
         setProxy: async () => undefined,
         webRequest: {
@@ -51,6 +53,7 @@ test("configureAccountBrowserWindow applies the shared browser identity", async 
 
   await configureAccountBrowserWindow(accountWindow, TEST_IDENTITY);
 
+  assert.deepEqual(registeredEvents, ["will-frame-navigate"]);
   assert.deepEqual(userAgents, [TEST_IDENTITY.userAgent]);
   assert.deepEqual(requestHeaders, {
     Existing: "value",

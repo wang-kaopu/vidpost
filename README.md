@@ -63,6 +63,8 @@ out/矩阵特工队-win32-x64/resources/app.asar.unpacked/node_modules/@img/shar
 
 Electron 主进程构建为 `.build/main.js` ESM。`preload.ts` 仍在源码层使用 TypeScript 和 ESM 语法，但为了保留 sandbox，构建产物为 `.build/preload.cjs`。
 
+Forge 的 ASAR 配置会整体解包 Playwright、Sharp 和 `@img` 运行时目录。Sharp 的 Windows 原生模块及其 libvips DLL 必须共同位于 `app.asar.unpacked`，否则打包应用启动时会因系统加载器无法从 ASAR 读取依赖 DLL 而报 `ERR_DLOPEN_FAILED`。
+
 `shared/electron-api.ts` 是主进程、preload 和正式 renderer 共用的唯一 Electron IPC 契约，同时提供 DTO、平台联合和 channel 常量。preload 与 renderer 不再用 `unknown` 表示业务参数或结果；只有主进程 IPC 入口把跨进程输入视为 `unknown`，完成必要的结构校验并投影为共享 DTO。账号相关输入统一使用 `accountId`，发布输入统一使用 camelCase 字段，不兼容旧 `id`、`account_id` 和平台选项 snake_case 别名。
 
 根目录 TypeScript 工程已启用 `strict: true`，主进程、脚本和 `src/` 下的运行时代码必须通过严格类型检查，不保留目录级豁免。
@@ -165,6 +167,7 @@ Bilibili、百家号、抖音和搜狐的 `xx-video.ts` 是稳定门面，只实
 - 主应用窗口使用 `persist:app-main`，不与平台账号页面共用。
 - 登录窗口关闭不会删除账号 partition。
 - 登录窗口不向平台页面注入悬浮关闭按钮，只通过原生标题栏或 `Cmd/Ctrl+W` 关闭，也不响应 `Esc`。
+- 新账号登录窗口和已有账号后台窗口都会在 frame 导航阶段静默拦截平台隐藏 iframe 发起的 `bitbrowser:` 外部协议探测，避免 Windows 弹出应用关联提示；HTTP/HTTPS 平台导航不受影响。
 - 登录窗口确认成功并保存草稿账号文件后，四个平台统一执行一次最多 20 秒的 HTTP `ping()`；离线或检测异常时不创建远程账号。
 - `ping()` 返回昵称时直接创建远程账号；昵称缺失时先创建账号，再在写入账号文件路径和 partition 的同一次更新中使用远程账号 ID 作为昵称。
 
