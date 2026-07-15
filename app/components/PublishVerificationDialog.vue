@@ -1,7 +1,8 @@
 <script setup lang="ts">
-// 空实现
 import { computed, ref, watch } from "vue";
-import { useDialogLayer } from "../composables/useDialogLayer";
+import AppDialog from "./AppDialog.vue";
+
+defineOptions({ name: "PublishVerificationDialog" });
 
 interface VerificationRequest {
   requestId: string;
@@ -23,23 +24,11 @@ interface VerificationRequest {
 }
 
 const props = withDefaults(
-  defineProps<{
-    visible: boolean;
-    request: VerificationRequest | null;
-    submitting?: boolean;
-    errorMessage?: string;
-  }>(),
-  {
-    submitting: false,
-    errorMessage: "",
-  },
+  defineProps<{ visible: boolean; request: VerificationRequest | null; submitting?: boolean; errorMessage?: string }>(),
+  { submitting: false, errorMessage: "" },
 );
 
-const emit = defineEmits<{
-  close: [];
-  submit: [code: string];
-  cancel: [];
-}>();
+const emit = defineEmits<{ submit: [code: string]; cancel: [] }>();
 
 const code = ref("");
 
@@ -70,68 +59,68 @@ watch(
     }
   },
 );
-
-useDialogLayer(() => props.visible && Boolean(props.request));
 </script>
 
 <template>
-  <teleport to="body">
-    <transition name="dialog-layer" appear>
-      <div v-if="visible && request" class="platform-dialog-mask">
-        <section class="platform-dialog verification-dialog dialog-surface">
-          <header class="platform-dialog-header">
-            <div>
-              <h2>输入验证码</h2>
-              <p>{{ request.prompt }}</p>
-            </div>
-          </header>
+  <AppDialog
+    :visible="visible && Boolean(request)"
+    title="输入验证码"
+    :description="request?.prompt"
+    size="md"
+    :dismissible="!submitting"
+    :show-close="false"
+    @close="emit('cancel')"
+  >
+    <div v-if="request" class="space-y-5">
+      <dl class="divide-y divide-base-300 rounded-box bg-base-200 px-5">
+        <div class="flex min-h-11 items-center justify-between gap-5 py-2">
+          <dt class="text-sm text-base-content/60">平台</dt>
+          <dd class="text-right font-semibold">{{ request.platform }}</dd>
+        </div>
+        <div class="flex min-h-11 items-center justify-between gap-5 py-2">
+          <dt class="text-sm text-base-content/60">账号</dt>
+          <dd class="text-right font-semibold">{{ accountName }}</dd>
+        </div>
+        <div class="flex min-h-11 items-center justify-between gap-5 py-2">
+          <dt class="text-sm text-base-content/60">标题</dt>
+          <dd class="text-right font-semibold">{{ title }}</dd>
+        </div>
+        <div class="flex min-h-11 items-center justify-between gap-5 py-2">
+          <dt class="text-sm text-base-content/60">剩余时间</dt>
+          <dd class="text-right font-semibold">{{ expiresText }}</dd>
+        </div>
+      </dl>
 
-          <div class="verification-dialog-body">
-            <div class="verification-summary-card">
-              <div class="verification-summary-row">
-                <span>平台</span>
-                <strong>{{ request.platform }}</strong>
-              </div>
-              <div class="verification-summary-row">
-                <span>账号</span>
-                <strong>{{ accountName }}</strong>
-              </div>
-              <div class="verification-summary-row">
-                <span>标题</span>
-                <strong>{{ title }}</strong>
-              </div>
-              <div class="verification-summary-row">
-                <span>剩余时间</span>
-                <strong>{{ expiresText }}</strong>
-              </div>
-            </div>
+      <input
+        v-model="code"
+        class="input-bordered input w-full text-center text-2xl font-bold tracking-[0.28em] input-lg"
+        type="text"
+        inputmode="numeric"
+        maxlength="8"
+        placeholder="请输入短信验证码"
+        @keyup.enter="handleSubmit"
+      />
 
-            <label class="field verification-field">
-              <input
-                v-model="code"
-                type="text"
-                inputmode="numeric"
-                maxlength="8"
-                placeholder="请输入短信验证码"
-                @keyup.enter="handleSubmit"
-              />
-            </label>
-
-            <p v-if="errorMessage" class="platform-dialog-state platform-dialog-state-error">
-              {{ errorMessage }}
-            </p>
-          </div>
-
-          <footer class="platform-dialog-footer verification-dialog-footer">
-            <button class="ghost-button compact" type="button" :disabled="submitting" @click="emit('cancel')">
-              取消
-            </button>
-            <button class="platform-confirm-button" :class="{ active: canSubmit }" type="button" :disabled="!canSubmit" @click="handleSubmit">
-              {{ submitting ? "提交中..." : "提交验证码" }}
-            </button>
-          </footer>
-        </section>
+      <div v-if="errorMessage" role="alert" class="alert text-sm alert-error">
+        <span>{{ errorMessage }}</span>
       </div>
-    </transition>
-  </teleport>
+    </div>
+
+    <template #actions>
+      <div class="flex w-full justify-between gap-3 max-md:flex-col-reverse">
+        <button type="button" class="btn btn-ghost max-md:w-full" :disabled="submitting" @click="emit('cancel')">
+          取消
+        </button>
+        <button
+          type="button"
+          class="btn min-w-36 btn-primary max-md:w-full"
+          :disabled="!canSubmit"
+          @click="handleSubmit"
+        >
+          <span v-if="submitting" class="loading loading-sm loading-spinner"></span>
+          {{ submitting ? "提交中..." : "提交验证码" }}
+        </button>
+      </div>
+    </template>
+  </AppDialog>
 </template>

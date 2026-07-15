@@ -44,7 +44,7 @@ Electron 主进程构建为 `.build/main.js` ESM。`preload.ts` 仍在源码层�
 
 `npm run dev` 会选择空闲端口启动当前项目的 Vite，并通过 `RENDERER_DEV_SERVER_URL` 将准确地址交给 Electron。Electron 不再探测固定端口，因此不会连接其他项目或工作区的开发服务器。`npm start` 和打包后的应用只加载 `app/dist/index.html`。
 
-`app/App.vue` 是正式渲染入口；`app/src/App.vue` 和 `app/src/scripts/sse-register.ts` 是后端联调 Demo，不能作为废弃目录删除。
+`app/App.vue` 是正式渲染入口；正式渲染界面使用 Tailwind CSS v4，并通过 `@tailwindcss/vite` 接入 Vite。通用控件直接使用 daisyUI 5 的预设组件类，全站仅启用 `corporate` 亮色主题；布局和业务状态继续使用标准 Tailwind utility，只有动态尺寸和业务网格保留少量 arbitrary value。弹窗统一由原生 `<dialog>` 与 `AppDialog.vue` 管理，作品和账号两个大型页面按领域职责拆分组件。项目不再依赖 Ant Design Vue，也不引入 `tailwind-variants` 或薄封装控件。`app/styles.css` 只保留 Tailwind/daisyUI 入口、全局基础规则和必要关键帧，不使用 `@apply`；`prettier-plugin-tailwindcss` 负责 class 排序。`app/src/App.vue` 和 `app/src/scripts/sse-register.ts` 是后端联调 Demo，不在正式界面迁移范围内，也不能作为废弃目录删除。
 
 ## 日志规范
 

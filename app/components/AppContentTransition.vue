@@ -2,12 +2,11 @@
 import { computed, ref, watch, type Component } from "vue";
 import type { MenuKey } from "@/types";
 
+defineOptions({ name: "AppContentTransition" });
+
 const MENU_ORDER: MenuKey[] = ["accounts", "works", "records"];
 
-const props = defineProps<{
-  view: Component;
-  viewKey: MenuKey;
-}>();
+const props = defineProps<{ view: Component; viewKey: MenuKey }>();
 
 const previousViewKey = ref<MenuKey>(props.viewKey);
 
@@ -26,9 +25,15 @@ watch(
 </script>
 
 <template>
-  <div class="content-stage">
-    <Transition :name="transitionName" mode="out-in">
-      <div :key="viewKey" class="content-scene">
+  <div class="min-h-full">
+    <Transition
+      mode="out-in"
+      enter-active-class="transition duration-200 ease-out"
+      leave-active-class="transition duration-200 ease-out"
+      :enter-from-class="transitionName === 'content-forward' ? 'translate-x-4 opacity-0' : '-translate-x-4 opacity-0'"
+      :leave-to-class="transitionName === 'content-forward' ? '-translate-x-3 opacity-0' : 'translate-x-3 opacity-0'"
+    >
+      <div :key="viewKey" class="min-h-full">
         <component :is="view" />
       </div>
     </Transition>

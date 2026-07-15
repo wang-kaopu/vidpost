@@ -37,13 +37,7 @@ const notificationCenter = createNotificationCenter();
 const publishProgressCenter = createPublishProgressCenter();
 
 const pushSystemError = (title: string, message: string): void => {
-  notificationCenter.push({
-    title,
-    message,
-    source: "系统",
-    tone: "error",
-    unread: true,
-  });
+  notificationCenter.push({ title, message, source: "系统", tone: "error", unread: true });
 };
 
 const currentView = computed(() => {
@@ -132,8 +126,7 @@ const startVerificationPolling = () => {
   void pollVerificationRequests();
 };
 
-const stopVerificationPolling = () => {
-};
+const stopVerificationPolling = () => {};
 
 const dismissNotification = (notificationId: string) => {
   notificationCenter.dismiss(notificationId);
@@ -184,9 +177,12 @@ const refreshAccessToken = async () => {
 
 const startTokenRefresh = () => {
   stopTokenRefresh();
-  tokenRefreshTimer = window.setInterval(() => {
-    void refreshAccessToken();
-  }, 50 * 60 * 1000);
+  tokenRefreshTimer = window.setInterval(
+    () => {
+      void refreshAccessToken();
+    },
+    50 * 60 * 1000,
+  );
 };
 
 const stopTokenRefresh = () => {
@@ -202,13 +198,15 @@ onMounted(async () => {
     window.removeEventListener("app-notification", handleAppNotificationEvent);
   };
 
-  removePublishProgressListener = window.electronAPI?.onPublishTaskProgress((event) => {
-    publishProgressCenter.updatePhase(event.taskId, event.phase);
-  }) ?? null;
+  removePublishProgressListener =
+    window.electronAPI?.onPublishTaskProgress((event) => {
+      publishProgressCenter.updatePhase(event.taskId, event.phase);
+    }) ?? null;
 
-  removeLaunchIntentListener = window.electronAPI?.onLaunchIntent((intent) => {
-    applyLaunchIntent(intent);
-  }) ?? null;
+  removeLaunchIntentListener =
+    window.electronAPI?.onLaunchIntent((intent) => {
+      applyLaunchIntent(intent);
+    }) ?? null;
 
   const initialLaunchIntent = await window.electronAPI?.getLaunchIntent?.();
   applyLaunchIntent(initialLaunchIntent ?? null);
@@ -242,13 +240,19 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main class="app-root">
+  <main class="min-h-screen bg-base-200">
     <LoginView v-if="!loggedIn" @submit="login" />
 
-    <div v-else class="workspace">
+    <div
+      v-else
+      class="grid h-screen grid-cols-[268px_minmax(0,1fr)] overflow-hidden max-xl:grid-cols-[100px_minmax(0,1fr)] max-lg:grid-cols-1"
+    >
       <SidebarNav :active="activeMenu" :user="user" @select="activeMenu = $event" @logout="logout" />
-      <section class="content-area">
-        <header v-if="activeMenu !== 'accounts' && activeMenu !== 'records' && activeMenu !== 'works'" class="workspace-header">
+      <section class="h-screen overflow-y-auto px-8 py-7 max-lg:p-5">
+        <header
+          v-if="activeMenu !== 'accounts' && activeMenu !== 'records' && activeMenu !== 'works'"
+          class="mb-5 flex items-center max-lg:flex-col max-lg:items-start [&_h1]:m-0 [&_h1]:text-3xl [&_h1]:font-bold"
+        >
           <div>
             <h1>预定发布作品</h1>
           </div>
@@ -266,7 +270,12 @@ onBeforeUnmount(() => {
       @clear="clearNotifications"
       @action="handleNotificationAction($event.id)"
     />
-    <transition name="publish-progress-panel">
+    <transition
+      enter-active-class="transition duration-200"
+      leave-active-class="transition duration-200"
+      enter-from-class="-translate-y-2 opacity-0"
+      leave-to-class="-translate-y-2 opacity-0"
+    >
       <PublishProgressPanel
         v-if="publishProgressCenter.visible.value && publishProgressCenter.items.value.length > 0"
         :items="publishProgressCenter.items.value"

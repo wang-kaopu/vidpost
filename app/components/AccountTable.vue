@@ -2,7 +2,10 @@
 import { computed, onMounted, ref } from "vue";
 import { PLATFORMS, type Platform } from "@shared/electron-api";
 import AppIcon from "./AppIcon.vue";
-import PlatformLogo from "./PlatformLogo.vue";
+import AccountFilters from "./AccountFilters.vue";
+import AccountRow from "./AccountRow.vue";
+import AccountTextDialog from "./AccountTextDialog.vue";
+import AppDialog from "./AppDialog.vue";
 import PlatformPickerDialog from "./PlatformPickerDialog.vue";
 import {
   getPublishPlatforms,
@@ -17,7 +20,8 @@ import type { PublishAccountItem, PlatformOption, BackendPlatform } from "@/api/
 import { useNotificationCenter } from "@/notifications";
 import { usePublishProgressCenter } from "@/publish-progress";
 import { runAccountPingBatch } from "@/utils/account-ping-batch";
-import { useDialogLayer } from "../composables/useDialogLayer";
+
+defineOptions({ name: "AccountTable" });
 
 const loading = ref(false);
 const errorMessage = ref("");
@@ -75,10 +79,6 @@ const pushAccountBatchSummary = (succeeded: number, failed: number, pending: num
     unread: true,
   });
 };
-
-const statusLabelMap: Record<string, string> = { online: "在线", success: "成功", offline: "离线" };
-
-const statusClassMap: Record<string, string> = { online: "success", success: "success", offline: "danger" };
 
 const filteredAccounts = computed(() => {
   let result = [...allAccounts.value];
@@ -181,9 +181,6 @@ const renameDialogTarget = ref<PublishAccountItem | null>(null);
 const renameDialogDraft = ref("");
 const renameDialogLoading = ref(false);
 const renameDialogError = ref("");
-const accountDialogVisible = computed(
-  () => tagDialogVisible.value || renameDialogVisible.value || backendWindowVisible.value,
-);
 
 const openRenameDialog = (item: PublishAccountItem) => {
   renameDialogTarget.value = item;
@@ -448,215 +445,134 @@ onMounted(() => {
   void loadTags();
   void loadAccounts();
 });
-
-useDialogLayer(() => accountDialogVisible.value);
 </script>
 
 <template>
-  <section class="panel-card">
-    <header class="panel-header">
-      <div>
-        <h2>矩阵账号</h2>
-        <!-- <p>管理并监控所有社交平台的账号同步状态与访问凭证</p> -->
-      </div>
-      <div class="panel-actions">
-        <button class="green-button" type="button" :disabled="pingingAll" @click="handlePingAllAccounts">
-          <AppIcon name="refresh" :size="18" />
-          <span>{{ pingingAll ? "检测中..." : "检测本页账号" }}</span>
+  <section class="card overflow-hidden bg-base-100 shadow-sm">
+    <header
+      class="flex items-center justify-between gap-6 px-8 pt-8 pb-5 max-lg:flex-col max-lg:items-stretch max-lg:px-5 max-lg:pt-5"
+    >
+      <h2 class="text-2xl font-bold">矩阵账号</h2>
+      <div class="flex gap-3 max-md:flex-col">
+        <button class="btn btn-success" type="button" :disabled="pingingAll" @click="handlePingAllAccounts">
+          <span v-if="pingingAll" class="loading loading-sm loading-spinner"></span>
+          <AppIcon v-else name="refresh" :size="18" />
+          {{ pingingAll ? "检测中..." : "检测本页账号" }}
         </button>
-        <button class="blue-button" type="button" @click="openPlatformDialog">
+        <button class="btn btn-primary" type="button" @click="openPlatformDialog">
           <AppIcon name="plus" :size="18" />
-          <span>绑定账号</span>
+          绑定账号
         </button>
       </div>
     </header>
 
-    <div class="filter-section filter-inline account-filters">
-      <div class="filter-item">
-        <label>平台</label>
-        <select v-model="filterPlatform" :class="{ 'is-placeholder': !filterPlatform }">
-          <option value="" disabled hidden>选择平台</option>
-          <option v-for="p in platformOptions" :key="p.key" :value="p.key">{{ p.label }}</option>
-        </select>
-      </div>
-      <div class="filter-item">
-        <label>账号昵称</label>
-        <div class="filter-input-wrap">
-          <AppIcon class="filter-search-icon" name="search" :size="14" />
-          <input v-model="filterNickname" type="text" placeholder="搜索账号昵称" />
-        </div>
-      </div>
-      <div class="filter-item">
-        <label>手机号</label>
-        <div class="filter-input-wrap">
-          <AppIcon class="filter-search-icon" name="search" :size="14" />
-          <input v-model="filterPhone" type="text" placeholder="搜索手机号" />
-        </div>
-      </div>
-      <div class="filter-item account-filters-tag">
-        <label>标签</label>
-        <select v-model="filterTag" :class="{ 'is-placeholder': !filterTag }">
-          <option value="" disabled hidden>选择标签</option>
-          <option v-for="tag in tagOptions" :key="tag" :value="tag">{{ tag }}</option>
-        </select>
-      </div>
-      <div class="filter-item account-filters-status">
-        <label>状态</label>
-        <select v-model="filterStatus" :class="{ 'is-placeholder': !filterStatus }">
-          <option value="" disabled hidden>选择状态</option>
-          <option v-for="s in statusOptions" :key="s" :value="s">{{ statusLabelMap[s] || s }}</option>
-        </select>
-      </div>
-      <div class="filter-actions account-filters-actions">
-        <button class="search-btn" type="button" @click="handleSearch">
-          <AppIcon name="search" :size="14" /> 搜索
-        </button>
-        <button class="reset-btn" type="button" @click="handleReset"><AppIcon name="refresh" :size="14" /> 重置</button>
-      </div>
+    <AccountFilters
+      v-model:platform="filterPlatform"
+      v-model:nickname="filterNickname"
+      v-model:phone="filterPhone"
+      v-model:tag="filterTag"
+      v-model:status="filterStatus"
+      :platform-options="platformOptions"
+      :tag-options="tagOptions"
+      :status-options="statusOptions"
+      @search="handleSearch"
+      @reset="handleReset"
+    />
+
+    <div class="mx-6 overflow-x-auto max-lg:mx-4">
+      <table class="table w-full table-fixed table-zebra">
+        <colgroup>
+          <col class="w-18" />
+          <col class="w-40" />
+          <col class="w-24" />
+          <col class="w-30" />
+          <col class="w-36" />
+          <col class="w-60" />
+          <col class="w-28" />
+          <col class="w-64" />
+        </colgroup>
+        <thead>
+          <tr>
+            <th>平台</th>
+            <th>账号昵称</th>
+            <th>账号ID</th>
+            <th>备注名</th>
+            <th>手机号</th>
+            <th>标签</th>
+            <th>状态</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-if="loading && !pagedAccounts.length">
+            <td colspan="8" class="py-12 text-center">
+              <span class="loading loading-md loading-spinner"></span>
+            </td>
+          </tr>
+          <tr v-else-if="errorMessage && !allAccounts.length">
+            <td colspan="8">
+              <div role="alert" class="alert alert-error">
+                <span>{{ errorMessage }}</span>
+              </div>
+            </td>
+          </tr>
+          <tr v-else-if="!pagedAccounts.length">
+            <td colspan="8" class="py-12 text-center text-base-content/60">暂无账号数据</td>
+          </tr>
+          <AccountRow
+            v-for="item in pagedAccounts"
+            :key="item.id"
+            :item="item"
+            :can-open-backend="accountBackendPlatforms.has(item.platformKey)"
+            :busy="
+              Boolean(
+                renameDialogLoading || deletingAccountId || pingingAccountId || pingingAll || backendWindowVisible,
+              )
+            "
+            :deleting="deletingAccountId === item.id"
+            :backend-opening="backendOpeningAccountId === item.id"
+            :ping-label="getPingButtonLabel(item.id)"
+            @add-tag="openTagDialog"
+            @delete-tag="handleDeleteTag"
+            @open-backend="handleOpenAccountBackend"
+            @rename="openRenameDialog"
+            @ping="handlePingAccount"
+            @delete="handleDeleteAccount"
+          />
+        </tbody>
+      </table>
     </div>
 
-    <table class="data-table accounts-table">
-      <colgroup>
-        <col class="accounts-col-platform" />
-        <col class="accounts-col-nickname" />
-        <col class="accounts-col-id" />
-        <col class="accounts-col-remark" />
-        <col class="accounts-col-phone" />
-        <col class="accounts-col-tags" />
-        <col class="accounts-col-status" />
-        <col class="accounts-col-actions" />
-      </colgroup>
-      <thead>
-        <tr>
-          <th>平台</th>
-          <th>账号昵称</th>
-          <th>账号ID</th>
-          <th>备注名</th>
-          <th>手机号</th>
-          <th>标签</th>
-          <th>状态</th>
-          <th>操作</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-if="loading && !pagedAccounts.length">
-          <td colspan="8" class="table-state">正在加载账号列表...</td>
-        </tr>
-        <tr v-else-if="errorMessage && !allAccounts.length">
-          <td colspan="8" class="table-state table-state-error">{{ errorMessage }}</td>
-        </tr>
-        <tr v-else-if="!pagedAccounts.length">
-          <td colspan="8" class="table-state">暂无账号数据</td>
-        </tr>
-        <tr v-for="item in pagedAccounts" :key="item.id">
-          <td>
-            <div class="platform-cell">
-              <PlatformLogo :platform="item.platform" />
-            </div>
-          </td>
-          <td>{{ item.nickname }}</td>
-          <td>{{ item.id }}</td>
-          <td>
-            <span :class="{ 'cell-empty': item.remarkName === '--' }">
-              {{ item.remarkName === "--" ? "未设置" : item.remarkName }}
-            </span>
-          </td>
-          <td>
-            <span :class="{ 'cell-empty': item.phoneNumber === '--' }">
-              {{ item.phoneNumber === "--" ? "未设置" : item.phoneNumber }}
-            </span>
-          </td>
-          <td>
-            <div class="account-tags-cell">
-              <span v-for="tag in item.tags" :key="tag" class="account-tag-chip">
-                {{ tag }}
-                <button
-                  type="button"
-                  class="account-tag-remove"
-                  :disabled="deletingAccountId === item.id"
-                  @click="handleDeleteTag(item, tag)"
-                >
-                  ×
-                </button>
-              </span>
-              <button type="button" class="account-tag-add" @click="openTagDialog(item)">+ 添加</button>
-            </div>
-          </td>
-          <td>
-            <span class="status-pill" :class="statusClassMap[item.status] || 'danger'">
-              {{ statusLabelMap[item.status] || item.status }}
-            </span>
-          </td>
-          <td>
-            <div class="table-links">
-              <button
-                v-if="accountBackendPlatforms.has(item.platformKey)"
-                type="button"
-                :disabled="
-                  Boolean(
-                    renameDialogLoading || deletingAccountId || pingingAccountId || pingingAll || backendWindowVisible,
-                  )
-                "
-                @click="handleOpenAccountBackend(item)"
-              >
-                {{ backendOpeningAccountId === item.id ? "打开中..." : "账号后台" }}
-              </button>
-              <button
-                type="button"
-                :disabled="Boolean(renameDialogLoading || deletingAccountId || pingingAccountId || pingingAll)"
-                @click="openRenameDialog(item)"
-              >
-                重命名
-              </button>
-              <button
-                type="button"
-                :disabled="Boolean(renameDialogLoading || deletingAccountId || pingingAccountId || pingingAll)"
-                @click="handlePingAccount(item)"
-              >
-                {{ getPingButtonLabel(item.id) }}
-              </button>
-              <button
-                type="button"
-                class="danger-text"
-                :disabled="Boolean(renameDialogLoading || deletingAccountId || pingingAccountId || pingingAll)"
-                @click="handleDeleteAccount(item)"
-              >
-                <AppIcon name="trash" :size="16" />
-              </button>
-            </div>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-
-    <footer class="table-footer">
-      <div class="pager-info">
+    <footer
+      class="flex items-center justify-between gap-4 px-8 py-6 text-sm text-base-content/60 max-lg:flex-col max-lg:items-start"
+    >
+      <p>
         显示 {{ Math.min((page - 1) * pageSize + 1, filteredAccounts.length) }} 到
         {{ Math.min(page * pageSize, filteredAccounts.length) }}，共 {{ filteredAccounts.length }} 条
-      </div>
-      <div class="pager-numbers">
+      </p>
+      <div class="join">
         <button
           type="button"
-          class="pager-button pager-nav-button"
+          class="btn join-item btn-sm"
           :disabled="page <= 1 || pingingAll"
           @click="handlePageChange(page - 1)"
         >
           上一页
         </button>
         <button
-          v-for="p in totalPages"
-          :key="p"
+          v-for="pageNumber in totalPages"
+          :key="pageNumber"
           type="button"
-          class="pager-button pager-number-button"
+          class="btn join-item btn-sm"
+          :class="{ 'btn-active': pageNumber === page }"
           :disabled="pingingAll"
-          :class="{ active: p === page }"
-          @click="handlePageChange(p)"
+          @click="handlePageChange(pageNumber)"
         >
-          {{ p }}
+          {{ pageNumber }}
         </button>
         <button
           type="button"
-          class="pager-button pager-nav-button"
+          class="btn join-item btn-sm"
           :disabled="page >= totalPages || pingingAll"
           @click="handlePageChange(page + 1)"
         >
@@ -665,13 +581,18 @@ useDialogLayer(() => accountDialogVisible.value);
       </div>
     </footer>
 
-    <teleport to="body">
-      <transition name="dialog-layer" appear>
-        <div v-if="backendWindowVisible" class="platform-dialog-mask account-backend-mask">
-          <div class="account-backend-mask-status" role="status">正在同步账号状态…</div>
-        </div>
-      </transition>
-    </teleport>
+    <AppDialog
+      :visible="backendWindowVisible"
+      title="正在同步账号状态"
+      size="sm"
+      :dismissible="false"
+      :show-close="false"
+    >
+      <div class="flex items-center justify-center gap-3 py-8">
+        <span class="loading loading-md loading-spinner"></span>
+        正在同步账号状态…
+      </div>
+    </AppDialog>
 
     <PlatformPickerDialog
       :visible="platformDialogVisible"
@@ -689,84 +610,28 @@ useDialogLayer(() => accountDialogVisible.value);
       @select="createPlatformAccount"
     />
 
-    <teleport to="body">
-      <transition name="dialog-layer" appear>
-        <div v-if="tagDialogVisible" class="platform-dialog-mask" @click.self="closeTagDialog">
-          <div class="tag-dialog dialog-surface" @click.stop>
-            <div class="tag-dialog-header">
-              <h3>添加标签</h3>
-              <button type="button" class="platform-dialog-close" @click="closeTagDialog">×</button>
-            </div>
-            <div class="tag-dialog-body">
-              <div class="tag-dialog-field">
-                <input
-                  v-model="tagDialogDraft"
-                  type="text"
-                  placeholder="请输入标签名"
-                  maxlength="20"
-                  :disabled="tagDialogLoading"
-                  @keydown.enter="confirmTagDialog"
-                />
-                <div class="tag-dialog-char-count">{{ tagDialogDraft.length }} / 20</div>
-              </div>
-              <div v-if="tagDialogError" class="tag--error">{{ tagDialogError }}</div>
-            </div>
-            <div class="tag-dialog-footer">
-              <button type="button" class="ghost-button" :disabled="tagDialogLoading" @click="closeTagDialog">
-                取消
-              </button>
-              <button
-                type="button"
-                class="blue-button"
-                :disabled="!tagDialogDraft.trim() || tagDialogLoading"
-                @click="confirmTagDialog"
-              >
-                {{ tagDialogLoading ? "提交中..." : "确认" }}
-              </button>
-            </div>
-          </div>
-        </div>
-      </transition>
-    </teleport>
+    <AccountTextDialog
+      v-model="tagDialogDraft"
+      :visible="tagDialogVisible"
+      title="添加标签"
+      placeholder="请输入标签名"
+      :max-length="20"
+      :loading="tagDialogLoading"
+      :error-message="tagDialogError"
+      @close="closeTagDialog"
+      @confirm="confirmTagDialog"
+    />
 
-    <teleport to="body">
-      <transition name="dialog-layer" appear>
-        <div v-if="renameDialogVisible" class="platform-dialog-mask" @click.self="closeRenameDialog">
-          <div class="tag-dialog dialog-surface" @click.stop>
-            <div class="tag-dialog-header">
-              <h3>重命名</h3>
-              <button type="button" class="platform-dialog-close" @click="closeRenameDialog">×</button>
-            </div>
-            <div class="tag-dialog-body">
-              <div class="tag-dialog-field">
-                <input
-                  v-model="renameDialogDraft"
-                  type="text"
-                  placeholder="请输入新的昵称"
-                  maxlength="30"
-                  :disabled="renameDialogLoading"
-                  @keydown.enter="confirmRenameDialog"
-                />
-                <div class="tag-dialog-char-count">{{ renameDialogDraft.length }} / 30</div>
-              </div>
-              <div v-if="renameDialogError" class="tag-dialog-error">{{ renameDialogError }}</div>
-            </div>
-            <div class="tag-dialog-footer">
-              <button type="button" class="ghost-button" :disabled="renameDialogLoading" @click="closeRenameDialog">
-                取消
-              </button>
-              <button
-                type="button"
-                class="blue-button"
-                :disabled="!renameDialogDraft.trim() || renameDialogLoading"
-                @click="confirmRenameDialog"
-              >
-                {{ renameDialogLoading ? "提交中..." : "确认" }}
-              </button>
-            </div>
-          </div>
-        </div>
-      </transition>
-    </teleport>
+    <AccountTextDialog
+      v-model="renameDialogDraft"
+      :visible="renameDialogVisible"
+      title="重命名"
+      placeholder="请输入新的昵称"
+      :max-length="30"
+      :loading="renameDialogLoading"
+      :error-message="renameDialogError"
+      @close="closeRenameDialog"
+      @confirm="confirmRenameDialog"
+    />
   </section>
 </template>

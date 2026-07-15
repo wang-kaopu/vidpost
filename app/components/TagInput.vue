@@ -1,21 +1,17 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from "vue";
 
+defineOptions({ name: "TagInput" });
+
 interface Props {
   modelValue: string[];
   placeholder?: string;
   disabled?: boolean;
 }
 
-const props = withDefaults(defineProps<Props>(), {
-  placeholder: "输入标签，回车添加",
-  disabled: false,
-});
+const props = withDefaults(defineProps<Props>(), { placeholder: "输入标签，回车添加", disabled: false });
 
-const emit = defineEmits<{
-  "update:modelValue": [value: string[]];
-  cancel: [];
-}>();
+const emit = defineEmits<{ "update:modelValue": [value: string[]]; cancel: [] }>();
 
 const inputRef = ref<HTMLInputElement | null>(null);
 const chipRefs = ref<(HTMLDivElement | null)[]>([]);
@@ -140,18 +136,21 @@ watch(
 </script>
 
 <template>
-  <div class="tag-input" :class="{ disabled }">
+  <div
+    class="input-bordered input flex h-auto min-h-10 w-full flex-wrap items-center gap-2 py-1"
+    :class="{ 'opacity-60': disabled }"
+  >
     <div
       v-for="(tag, index) in modelValue"
       :key="`${tag}-${index}`"
-      :ref="(el) => syncChipRefs(el as HTMLDivElement | null, index)"
-      class="tag-chip"
+      :ref="(element) => syncChipRefs(element as HTMLDivElement | null, index)"
+      class="badge h-8 gap-1 badge-outline focus:ring-2 focus:ring-primary"
       :tabindex="disabled ? -1 : 0"
       @keydown="onChipKeydown(index, $event)"
     >
-      <span class="tag-chip-label">{{ tag }}</span>
+      <span>{{ tag }}</span>
       <button
-        class="tag-chip-remove"
+        class="btn btn-circle btn-ghost btn-xs"
         type="button"
         :disabled="disabled"
         :aria-label="`删除标签 ${tag}`"
@@ -164,7 +163,7 @@ watch(
     <input
       ref="inputRef"
       v-model="draft"
-      class="tag-input-field"
+      class="min-h-8 min-w-30 flex-1 border-0 bg-transparent outline-none"
       type="text"
       :disabled="disabled"
       :placeholder="placeholder"

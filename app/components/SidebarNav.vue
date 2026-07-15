@@ -3,15 +3,11 @@ import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import AppIcon from "./AppIcon.vue";
 import type { MenuKey, User } from "@/types";
 
-const props = defineProps<{
-  active: MenuKey;
-  user?: User | null;
-}>();
+defineOptions({ name: "SidebarNav" });
 
-const emit = defineEmits<{
-  select: [value: MenuKey];
-  logout: [];
-}>();
+const props = defineProps<{ active: MenuKey; user?: User | null }>();
+
+const emit = defineEmits<{ select: [value: MenuKey]; logout: [] }>();
 
 const menus: Array<{ key: MenuKey; label: string; icon: "accounts" | "works" | "records" }> = [
   { key: "accounts", label: "矩阵账号", icon: "accounts" },
@@ -51,30 +47,42 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <aside class="sidebar">
-    <nav class="sidebar-nav">
-      <button
-        v-for="menu in menus"
-        :key="menu.key"
-        class="nav-item"
-        :class="{ active: active === menu.key }"
-        type="button"
-        @click="emit('select', menu.key)"
-      >
-        <AppIcon :name="menu.icon" :size="22" />
-        <span>{{ menu.label }}</span>
-      </button>
+  <aside
+    class="flex h-screen flex-col overflow-hidden border-r border-base-300 bg-base-100 p-4 pt-20 max-lg:h-auto max-lg:flex-row max-lg:items-center max-lg:overflow-x-auto max-lg:border-r-0 max-lg:border-b max-lg:pt-4"
+  >
+    <nav class="menu mt-5 w-full gap-2 p-0 max-lg:mt-0 max-lg:flex-row">
+      <li v-for="menu in menus" :key="menu.key">
+        <button
+          type="button"
+          class="flex min-h-12 gap-3 text-base max-xl:justify-center max-xl:px-0 max-xl:[&_span]:hidden"
+          :class="{ active: active === menu.key }"
+          @click="emit('select', menu.key)"
+        >
+          <AppIcon :name="menu.icon" :size="22" />
+          <span>{{ menu.label }}</span>
+        </button>
+      </li>
     </nav>
 
-    <div ref="cardRef" class="profile-card" :class="{ 'is-open': menuOpen }">
-      <div class="profile-main">
-        <div class="avatar" @click.stop="menuOpen = true">{{ avatarLetter }}</div>
-        <div class="profile-meta">
-          <strong>{{ displayName }}</strong>
-          <span>{{ displayRole }}</span>
+    <div ref="cardRef" class="dropdown dropdown-top mt-auto border-t border-base-300 pt-4 max-lg:hidden">
+      <button
+        type="button"
+        class="flex w-full items-center gap-3 rounded-box p-2 text-left hover:bg-base-200"
+        @click.stop="menuOpen = !menuOpen"
+      >
+        <div class="placeholder avatar">
+          <div class="w-11 rounded-full bg-neutral text-neutral-content">
+            <span>{{ avatarLetter }}</span>
+          </div>
         </div>
-      </div>
-      <button class="profile-logout" type="button" @click.stop="handleLogout">退出登录</button>
+        <span class="flex flex-col max-xl:hidden">
+          <strong>{{ displayName }}</strong>
+          <small class="text-base-content/60">{{ displayRole }}</small>
+        </span>
+      </button>
+      <ul v-if="menuOpen" class="dropdown-content menu z-10 mb-2 w-44 rounded-box bg-base-100 p-2 shadow">
+        <li><button type="button" @click.stop="handleLogout">退出登录</button></li>
+      </ul>
     </div>
   </aside>
 </template>

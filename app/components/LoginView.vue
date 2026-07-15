@@ -4,15 +4,11 @@ import AppIcon from "./AppIcon.vue";
 import { sendCode } from "@/api/auth";
 import type { LoginForm } from "@/types";
 
-const emit = defineEmits<{
-  submit: [payload: LoginForm];
-}>();
+defineOptions({ name: "LoginView" });
 
-const form = reactive<LoginForm>({
-  phone: "",
-  code: "",
-  agreed: true,
-});
+const emit = defineEmits<{ submit: [payload: LoginForm] }>();
+
+const form = reactive<LoginForm>({ phone: "", code: "", agreed: true });
 
 const sending = ref(false);
 const countdown = ref(0);
@@ -65,43 +61,41 @@ const submit = () => {
 </script>
 
 <template>
-  <div class="login-shell">
-    <div class="login-card">
-      <div class="login-header">
-        <h1>欢迎登录</h1>
-        <p>使用手机号快速登录</p>
-      </div>
+  <div class="grid min-h-screen place-items-center p-6">
+    <section class="card w-full max-w-md bg-base-100 shadow-xl">
+      <div class="card-body gap-5 p-10 max-md:p-6">
+        <header class="mb-2 text-center">
+          <h1 class="text-4xl font-bold">欢迎登录</h1>
+          <p class="mt-2 text-base-content/60">使用手机号快速登录</p>
+        </header>
 
-      <label class="field field-full">
-        <span class="field-icon"><AppIcon name="phone" :size="22" /></span>
-        <input v-model="form.phone" type="tel" maxlength="11" placeholder="请输入手机号" />
-      </label>
-
-      <div class="field-row">
-        <label class="field">
-          <span class="field-icon"><AppIcon name="shield" :size="22" /></span>
-          <input v-model="form.code" type="text" maxlength="6" placeholder="请输入验证码" />
+        <label class="input-bordered input flex w-full items-center gap-3">
+          <AppIcon class="opacity-40" name="phone" :size="22" />
+          <input v-model="form.phone" class="grow" type="tel" maxlength="11" placeholder="请输入手机号" />
         </label>
-        <button
-          class="ghost-button"
-          type="button"
-          :disabled="!canSend"
-          @click="handleSendCode"
-        >
-          {{ sendButtonText }}
-        </button>
+
+        <div class="grid grid-cols-[1fr_auto] gap-3 max-md:grid-cols-1">
+          <label class="input-bordered input flex w-full items-center gap-3">
+            <AppIcon class="opacity-40" name="shield" :size="22" />
+            <input v-model="form.code" class="grow" type="text" maxlength="6" placeholder="请输入验证码" />
+          </label>
+          <button class="btn btn-outline" type="button" :disabled="!canSend" @click="handleSendCode">
+            <span v-if="sending" class="loading loading-sm loading-spinner"></span>
+            {{ sendButtonText }}
+          </button>
+        </div>
+
+        <div v-if="errorMessage" role="alert" class="alert py-3 text-sm alert-error">
+          <span>{{ errorMessage }}</span>
+        </div>
+
+        <label class="label cursor-pointer justify-start gap-3">
+          <input v-model="form.agreed" class="checkbox checkbox-sm checkbox-primary" type="checkbox" />
+          <span class="label-text">我已阅读并同意《用户协议》和《隐私政策》</span>
+        </label>
+
+        <button class="btn w-full btn-lg btn-primary" type="button" :disabled="!canLogin" @click="submit">登录</button>
       </div>
-
-      <p v-if="errorMessage" class="login-error">{{ errorMessage }}</p>
-
-      <label class="agreement">
-        <input v-model="form.agreed" type="checkbox" />
-        <span>我已阅读并同意《用户协议》和《隐私政策》</span>
-      </label>
-
-      <button class="primary-login" type="button" :disabled="!canLogin" @click="submit">
-        登 录
-      </button>
-    </div>
+    </section>
   </div>
 </template>

@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed } from "vue";
 
-const props = defineProps<{
-  platform: string;
-}>();
+defineOptions({ name: "PlatformLogo" });
+
+const props = defineProps<{ platform: string }>();
 
 const logoMap: Record<string, string> = {
   小红书: "./platform-icons/xiaohongshu.ico",
@@ -22,8 +22,12 @@ const fallbackText = computed(() => props.platform.trim().slice(0, 1) || "?");
 </script>
 
 <template>
-  <span class="platform-logo" :title="platform" :aria-label="platform">
-    <img v-if="src" :src="src" :alt="platform" />
-    <span v-else class="platform-logo-fallback">{{ fallbackText }}</span>
+  <span
+    class="inline-flex h-9 w-9 items-center justify-center overflow-hidden rounded-box border border-base-300 bg-base-100"
+    :title="platform"
+    :aria-label="platform"
+  >
+    <img v-if="src" class="h-6 w-6 object-contain" :src="src" :alt="platform" />
+    <span v-else class="font-bold text-base-content/60">{{ fallbackText }}</span>
   </span>
 </template>

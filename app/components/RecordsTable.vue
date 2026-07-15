@@ -16,13 +16,7 @@ let cancelTaskStateListener: (() => void) | null = null;
 let taskStateRefreshTimer: number | null = null;
 
 const pushRecordsError = (title: string, message: string): void => {
-  notificationCenter.push({
-    title,
-    message,
-    source: "矩阵发布记录",
-    tone: "error",
-    unread: true,
-  });
+  notificationCenter.push({ title, message, source: "矩阵发布记录", tone: "error", unread: true });
 };
 
 const titleFilter = ref("");
@@ -59,22 +53,22 @@ const recordStatusLabelMap: Record<string, string> = {
 };
 
 const recordStatusClassMap: Record<string, string> = {
-  running: "warning",
-  reviewing: "warning",
-  public: "success",
-  non_public: "danger",
-  failed: "danger",
+  running: "badge-warning",
+  reviewing: "badge-warning",
+  public: "badge-success",
+  non_public: "badge-error",
+  failed: "badge-error",
 };
 
 /** 提取状态原因，优先展示平台终态，再展示最近同步错误和发布过程错误。 */
 const getRecordStatusReason = (item: PublishTask): string => {
   const attributes = item.attributes;
   return String(
-    attributes?.review_state?.reason
-      || attributes?.review_state?.sync_error
-      || attributes?.failure_detail?.reason
-      || attributes?.error_message
-      || "",
+    attributes?.review_state?.reason ||
+      attributes?.review_state?.sync_error ||
+      attributes?.failure_detail?.reason ||
+      attributes?.error_message ||
+      "",
   ).trim();
 };
 
@@ -85,11 +79,7 @@ const loadPlatforms = async () => {
       .filter((p: BackendPlatform) => p.name)
       .map((p: BackendPlatform) => {
         const key = p.name.trim().toLowerCase();
-        return {
-          id: String(p.name),
-          key,
-          label: platformLabelMap[key] || key,
-        };
+        return { id: String(p.name), key, label: platformLabelMap[key] || key };
       });
   } catch {
     platformOptions.value = [];
@@ -121,7 +111,9 @@ const items = computed(() => {
 
   if (platformFilter.value) {
     result = result.filter((item: PublishTask) => {
-      const key = String(item.platform || "").trim().toLowerCase();
+      const key = String(item.platform || "")
+        .trim()
+        .toLowerCase();
       return key === platformFilter.value;
     });
   }
@@ -139,7 +131,9 @@ const items = computed(() => {
   return result;
 });
 
-const allSelected = computed(() => items.value.length > 0 && items.value.every((item) => selectedIds.value.has(item.id)));
+const allSelected = computed(
+  () => items.value.length > 0 && items.value.every((item) => selectedIds.value.has(item.id)),
+);
 
 const someSelected = computed(() => items.value.some((item) => selectedIds.value.has(item.id)) && !allSelected.value);
 
@@ -258,9 +252,10 @@ const scheduleRecordsRefresh = (): void => {
 onMounted(() => {
   void loadPlatforms();
   void loadRecords();
-  cancelTaskStateListener = window.electronAPI?.onPublishTaskStateChanged(() => {
-    scheduleRecordsRefresh();
-  }) ?? null;
+  cancelTaskStateListener =
+    window.electronAPI?.onPublishTaskStateChanged(() => {
+      scheduleRecordsRefresh();
+    }) ?? null;
 });
 
 onUnmounted(() => {
@@ -272,165 +267,171 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <section class="panel-card history-card">
-    <header class="panel-header">
-      <div>
-        <h2>矩阵发布记录</h2>
-      </div>
-      <div class="panel-actions">
-        <button class="ghost-button compact" type="button" :disabled="exporting || !items.length" @click="handleExport">
-          <span>{{ exporting ? "导出中..." : "导出发布记录" }}</span>
-        </button>
-        <!-- <button class="blue-button" type="button">
-          <AppIcon name="plus" :size="16" />
-          <span>新建发布</span>
-        </button> -->
-      </div>
+  <section class="card overflow-hidden bg-base-100 shadow-sm">
+    <header
+      class="flex items-center justify-between gap-6 px-8 pt-8 pb-5 max-lg:flex-col max-lg:items-stretch max-lg:px-5"
+    >
+      <h2 class="text-2xl font-bold">矩阵发布记录</h2>
+      <button class="btn btn-outline" type="button" :disabled="exporting || !items.length" @click="handleExport">
+        <span v-if="exporting" class="loading loading-sm loading-spinner"></span>
+        <AppIcon v-else name="download" :size="16" />
+        {{ exporting ? "导出中..." : "导出发布记录" }}
+      </button>
     </header>
 
-    <div class="filter-section filter-inline records-filters">
-      <div class="filter-item">
-        <label>标题</label>
-        <div class="filter-input-wrap">
-          <AppIcon class="filter-search-icon" name="search" :size="14" />
-          <input v-model="titleFilter" type="text" placeholder="搜索标题" />
+    <div class="card mx-6 mb-5 bg-base-200 p-5 card-border max-lg:mx-4 max-lg:p-4">
+      <div class="grid grid-cols-3 items-end gap-4 max-xl:grid-cols-2 max-md:grid-cols-1">
+        <fieldset class="fieldset">
+          <legend class="fieldset-legend">标题</legend>
+          <label class="input-bordered input flex w-full items-center gap-2">
+            <AppIcon class="opacity-50" name="search" :size="14" />
+            <input v-model="titleFilter" class="grow" type="text" placeholder="搜索标题" />
+          </label>
+        </fieldset>
+
+        <fieldset class="fieldset">
+          <legend class="fieldset-legend">平台</legend>
+          <select v-model="platformFilter" class="select-bordered select w-full">
+            <option value="">全部平台</option>
+            <option v-for="platform in platformOptions" :key="platform.key" :value="platform.key">
+              {{ platform.label }}
+            </option>
+          </select>
+        </fieldset>
+
+        <fieldset class="fieldset">
+          <legend class="fieldset-legend">视频类别</legend>
+          <select v-model="categoryFilter" class="select-bordered select w-full">
+            <option value="">全部类别</option>
+            <option v-for="category in categoryOptions" :key="category.value" :value="category.value">
+              {{ category.label }}
+            </option>
+          </select>
+        </fieldset>
+
+        <fieldset class="col-span-2 fieldset max-md:col-span-1">
+          <legend class="fieldset-legend">预约发布时间</legend>
+          <div class="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 max-md:grid-cols-1">
+            <input
+              v-model="scheduledStart"
+              class="input-bordered input w-full"
+              :type="scheduledStart ? 'date' : 'text'"
+              placeholder="开始日期"
+              @focus="onDateFocus"
+              @blur="onDateBlurStart"
+            />
+            <span class="text-base-content/40 max-md:hidden">→</span>
+            <input
+              v-model="scheduledEnd"
+              class="input-bordered input w-full"
+              :type="scheduledEnd ? 'date' : 'text'"
+              placeholder="结束日期"
+              @focus="onDateFocus"
+              @blur="onDateBlurEnd"
+            />
+          </div>
+        </fieldset>
+
+        <div class="flex justify-end gap-2 max-md:w-full">
+          <button class="btn btn-primary max-md:flex-1" type="button" @click="loadRecords">
+            <AppIcon name="search" :size="14" /> 搜索
+          </button>
+          <button class="btn btn-ghost max-md:flex-1" type="button" @click="resetFilters">
+            <AppIcon name="refresh" :size="14" /> 重置
+          </button>
         </div>
-      </div>
-      <div class="filter-item">
-        <label>平台</label>
-        <select v-model="platformFilter" :class="{ 'is-placeholder': !platformFilter }">
-          <option value="" disabled hidden>选择平台</option>
-          <option v-for="p in platformOptions" :key="p.key" :value="p.key">{{ p.label }}</option>
-        </select>
-      </div>
-      <div class="filter-item">
-        <label>视频类别</label>
-        <select v-model="categoryFilter" :class="{ 'is-placeholder': !categoryFilter }">
-          <option value="" disabled hidden>选择类别</option>
-          <option v-for="c in categoryOptions" :key="c.value" :value="c.value">{{ c.label }}</option>
-        </select>
-      </div>
-      <div class="filter-item filter-item--date records-filters-date">
-        <label>预约发布时间</label>
-        <div class="date-range">
-          <input
-            v-model="scheduledStart"
-            :type="scheduledStart ? 'date' : 'text'"
-            placeholder="开始日期"
-            @focus="onDateFocus"
-            @blur="onDateBlurStart"
-          />
-          <span>→</span>
-          <input
-            v-model="scheduledEnd"
-            :type="scheduledEnd ? 'date' : 'text'"
-            placeholder="结束日期"
-            @focus="onDateFocus"
-            @blur="onDateBlurEnd"
-          />
-        </div>
-      </div>
-      <div class="filter-actions records-filters-actions">
-        <button class="search-btn" type="button" @click="loadRecords">
-          <AppIcon name="search" :size="14" /> 搜索
-        </button>
-        <button class="reset-btn" type="button" @click="resetFilters">
-          <AppIcon name="refresh" :size="14" /> 重置
-        </button>
       </div>
     </div>
 
-    <table class="data-table records-table">
-      <colgroup>
-        <col class="records-col-check" />
-        <col class="records-col-platform" />
-        <col class="records-col-nickname" />
-        <col class="records-col-id" />
-        <col class="records-col-title" />
-        <col class="records-col-status" />
-        <col class="records-col-scheduled" />
-        <col class="records-col-actions" />
-      </colgroup>
-      <thead>
-        <tr>
-          <th>
-            <input
-              type="checkbox"
-              :checked="allSelected"
-              :indeterminate="someSelected"
-              @change="toggleSelectAll"
-            />
-          </th>
-          <th>平台</th>
-          <th>账号昵称</th>
-          <th>账号ID</th>
-          <th>内容标题</th>
-          <th>状态</th>
-          <th>预约发布时间</th>
-          <th>操作</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-if="loading && !items.length">
-          <td colspan="8" class="table-state">正在加载发布记录...</td>
-        </tr>
-        <tr v-else-if="errorMessage">
-          <td colspan="8" class="table-state table-state-error">{{ errorMessage }}</td>
-        </tr>
-        <tr v-else-if="!items.length">
-          <td colspan="8" class="table-state">暂无发布记录</td>
-        </tr>
-        <tr v-for="item in items" :key="item.id">
-          <td>
-            <input
-              type="checkbox"
-              :checked="selectedIds.has(item.id)"
-              @change="toggleSelect(item)"
-            />
-          </td>
-          <td>
-            <div class="platform-cell">
-              <PlatformLogo :platform="platformLabelMap[item.platform || ''] || item.platform || '未知平台'" />
-            </div>
-          </td>
-          <td class="records-account-cell">--</td>
-          <td>{{ item.account_id || "--" }}</td>
-          <td class="records-title-cell" :title="item.title || '--'">{{ item.title || "--" }}</td>
-          <td class="records-status-cell">
-            <span class="records-status-wrap">
-              <span class="status-pill" :class="recordStatusClassMap[item.status] || 'danger'">
-                {{ recordStatusLabelMap[item.status] || item.status || "未知状态" }}
+    <div class="mx-6 overflow-x-auto max-lg:mx-4">
+      <table class="table w-full table-fixed table-zebra">
+        <colgroup>
+          <col class="w-12" />
+          <col class="w-18" />
+          <col class="w-36" />
+          <col class="w-28" />
+          <col />
+          <col class="w-32" />
+          <col class="w-40" />
+          <col class="w-28" />
+        </colgroup>
+        <thead>
+          <tr>
+            <th>
+              <input
+                class="checkbox checkbox-sm checkbox-primary"
+                type="checkbox"
+                :checked="allSelected"
+                :indeterminate="someSelected"
+                @change="toggleSelectAll"
+              />
+            </th>
+            <th>平台</th>
+            <th>账号昵称</th>
+            <th>账号ID</th>
+            <th>内容标题</th>
+            <th>状态</th>
+            <th>预约发布时间</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-if="loading && !items.length">
+            <td colspan="8" class="py-12 text-center"><span class="loading loading-md loading-spinner"></span></td>
+          </tr>
+          <tr v-else-if="errorMessage">
+            <td colspan="8">
+              <div role="alert" class="alert alert-error">
+                <span>{{ errorMessage }}</span>
+              </div>
+            </td>
+          </tr>
+          <tr v-else-if="!items.length">
+            <td colspan="8" class="py-12 text-center text-base-content/60">暂无发布记录</td>
+          </tr>
+          <tr v-for="item in items" :key="item.id">
+            <td>
+              <input
+                class="checkbox checkbox-sm checkbox-primary"
+                type="checkbox"
+                :checked="selectedIds.has(item.id)"
+                @change="toggleSelect(item)"
+              />
+            </td>
+            <td>
+              <PlatformLogo
+                class="mx-auto"
+                :platform="platformLabelMap[item.platform || ''] || item.platform || '未知平台'"
+              />
+            </td>
+            <td class="truncate">--</td>
+            <td>{{ item.account_id || "--" }}</td>
+            <td class="truncate" :title="item.title || '--'">{{ item.title || "--" }}</td>
+            <td>
+              <span class="inline-flex items-center gap-2">
+                <span class="badge whitespace-nowrap" :class="recordStatusClassMap[item.status] || 'badge-error'">
+                  {{ recordStatusLabelMap[item.status] || item.status || "未知状态" }}
+                </span>
+                <span
+                  v-if="getRecordStatusReason(item)"
+                  class="tooltip tooltip-left"
+                  :data-tip="getRecordStatusReason(item)"
+                >
+                  <span class="badge cursor-help badge-ghost badge-sm">i</span>
+                </span>
               </span>
-              <span
-                v-if="getRecordStatusReason(item)"
-                class="records-status-reason"
-                :title="getRecordStatusReason(item)"
-                :aria-label="getRecordStatusReason(item)"
-              >i</span>
-            </span>
-          </td>
-          <td class="records-scheduled-cell">{{ item.scheduled_at || "--" }}</td>
-          <td>
-            <div class="table-links">
-              <!-- <button
-                type="button"
-                class="link-btn"
-                :disabled="!item.link"
-                @click="openLink(item.link)"
-              >
-                <AppIcon name="search" :size="14" /> 链接
-              </button> -->
-              <button type="button" class="danger-text" @click="handleDelete(item)">
+            </td>
+            <td class="truncate">{{ item.scheduled_at || "--" }}</td>
+            <td>
+              <button type="button" class="btn btn-ghost text-error btn-xs" @click="handleDelete(item)">
                 <AppIcon name="trash" :size="14" /> 删除
               </button>
-            </div>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
 
-    <footer class="table-footer">
-      <div class="pager">共 {{ items.length }} 条</div>
-    </footer>
+    <footer class="px-8 py-6 text-sm text-base-content/60">共 {{ items.length }} 条</footer>
   </section>
 </template>
