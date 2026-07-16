@@ -1387,7 +1387,7 @@ async function prepareInRenderer(options: DouyinWorkerOptions): Promise<DouyinPr
   const firstNonEmptyIndex = lines.findIndex((line) => line.trim().length > 0);
   if (firstNonEmptyIndex < 0) throw new Error("文案至少需要一行非空标题");
   const publishTitle = lines[firstNonEmptyIndex]?.trim() ?? "";
-  if ([...publishTitle].length > 20) throw new Error("文案首行标题不能超过 20 个字符");
+  if ([...publishTitle].length > 30) throw new Error("文案首行标题不能超过 30 个字符");
   const publishText: PublishText = {
     description: lines
       .slice(firstNonEmptyIndex + 1)

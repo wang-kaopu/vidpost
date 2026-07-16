@@ -289,10 +289,9 @@ export function createSohuBrief(introduction: string, tags: unknown): string {
 
 /** 应用搜狐标题和简介规则，构造最终发布文案。 */
 export function createSohuPublication(title: unknown, introduction: unknown, tags: unknown): SohuPublication {
-  const normalizedTitle = String(title ?? "")
-    .trim()
-    .slice(0, 60);
+  const normalizedTitle = String(title ?? "").trim();
   if (normalizedTitle.length < 5) throw new SohuInfraError("搜狐视频标题长度必须至少为 5 个字符");
+  if (normalizedTitle.length > 60) throw new SohuInfraError("搜狐视频标题长度必须不超过 60 个字符");
   const description = String(introduction ?? normalizedTitle).trim();
   return { brief: createSohuBrief(description, tags), title: normalizedTitle };
 }
