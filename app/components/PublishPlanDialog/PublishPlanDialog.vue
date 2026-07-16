@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue";
-import { useDialogLayer } from "../composables/useDialogLayer";
-import CapsuleButton from "./ui/CapsuleButton.vue";
-import DialogShell from "./ui/DialogShell.vue";
-import StateMessage from "./ui/StateMessage.vue";
-import TextInput from "./ui/TextInput.vue";
-import TextArea from "./ui/TextArea.vue";
+import { useDialogLayer } from "@/composables/useDialogLayer";
+import CapsuleButton from "../ui/CapsuleButton.vue";
+import DialogShell from "../ui/DialogShell.vue";
+import StateMessage from "../ui/StateMessage.vue";
+import TextInput from "../ui/TextInput.vue";
+import TextArea from "../ui/TextArea.vue";
 import {
   getScheduledPublishBounds,
   IMMEDIATE_PUBLISH_VALUE,
@@ -13,7 +13,7 @@ import {
   supportsScheduledPublish,
   toDatetimeLocalValue,
   validateScheduledAt,
-} from "../utils/publish-schedule";
+} from "@/utils/publish-schedule";
 
 type PublishPlanRow = {
   id: string;

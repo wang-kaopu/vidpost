@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import PlatformLogo from "./PlatformLogo.vue";
-import IconButton from "./ui/IconButton.vue";
+import PlatformLogo from "../PlatformLogo.vue";
+import IconButton from "../ui/IconButton.vue";
 import type { PublishProgressPhase, PublishProgressTask } from "@/publish-progress";
 
 defineProps<{

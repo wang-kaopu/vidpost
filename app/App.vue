@@ -9,10 +9,10 @@ import AppContentTransition from "./components/AppContentTransition.vue";
 import { fetchUserProfile, loginByPhone, logout as apiLogout, refreshToken } from "./api/auth";
 import { clearSessionTokens, getAccessToken, getRefreshToken, setAccessToken, setRefreshToken } from "./config";
 import type { LoginForm, MenuKey, User } from "./types";
-import Work from "./components/Work.vue";
-import NotificationCenter from "./components/NotificationCenter.vue";
+import Work from "./components/Work/Work.vue";
+import NotificationCenter from "./components/NotificationCenter/NotificationCenter.vue";
 import { createNotificationCenter, notificationCenterKey } from "./notifications";
-import PublishProgressPanel from "./components/PublishProgressPanel.vue";
+import PublishProgressPanel from "./components/PublishProgressPanel/PublishProgressPanel.vue";
 import { createPublishProgressCenter, publishProgressCenterKey } from "./publish-progress";
 import type { LaunchIntent } from "@shared/electron-api";
 

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import CapsuleButton from "./ui/CapsuleButton.vue";
-import IconButton from "./ui/IconButton.vue";
+import CapsuleButton from "../ui/CapsuleButton.vue";
+import IconButton from "../ui/IconButton.vue";
 
 type NotificationTone = "info" | "success" | "warning" | "error";
 

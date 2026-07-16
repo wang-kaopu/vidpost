@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, reactive } from "vue";
-import PlatformLogo from "./PlatformLogo.vue";
-import CapsuleButton from "./ui/CapsuleButton.vue";
-import DialogShell from "./ui/DialogShell.vue";
-import StateMessage from "./ui/StateMessage.vue";
+import PlatformLogo from "../PlatformLogo.vue";
+import CapsuleButton from "../ui/CapsuleButton.vue";
+import DialogShell from "../ui/DialogShell.vue";
+import StateMessage from "../ui/StateMessage.vue";
 import type { AccountItem, PlatformItem } from "@/types";
-import { useDialogLayer } from "../composables/useDialogLayer";
+import { useDialogLayer } from "@/composables/useDialogLayer";
 
 type PlatformDialogTableRow = {
   id: string;

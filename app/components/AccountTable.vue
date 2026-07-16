@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { PLATFORMS, type Platform } from "@shared/electron-api";
 import AppIcon from "./AppIcon.vue";
 import PlatformLogo from "./PlatformLogo.vue";
-import PlatformPickerDialog from "./PlatformPickerDialog.vue";
+import PlatformPickerDialog from "./PlatformPickerDialog/PlatformPickerDialog.vue";
 import CapsuleButton from "./ui/CapsuleButton.vue";
 import SelectField from "./ui/SelectField.vue";
 import TextInput from "./ui/TextInput.vue";

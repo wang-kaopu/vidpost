@@ -14,26 +14,26 @@ import {
 import {
   PlayCircleOutlined,
 } from "@ant-design/icons-vue";
-import AppIcon from "./AppIcon.vue";
-import CapsuleButton from "./ui/CapsuleButton.vue";
-import SelectField from "./ui/SelectField.vue";
-import TextInput from "./ui/TextInput.vue";
-import CircleCheckbox from "./ui/CircleCheckbox.vue";
-import FilterPopover from "./ui/FilterPopover.vue";
-import PanelShell from "./ui/PanelShell.vue";
-import IconButton from "./ui/IconButton.vue";
-import ToneBadge from "./ui/ToneBadge.vue";
+import AppIcon from "../AppIcon.vue";
+import CapsuleButton from "../ui/CapsuleButton.vue";
+import SelectField from "../ui/SelectField.vue";
+import TextInput from "../ui/TextInput.vue";
+import CircleCheckbox from "../ui/CircleCheckbox.vue";
+import FilterPopover from "../ui/FilterPopover.vue";
+import PanelShell from "../ui/PanelShell.vue";
+import IconButton from "../ui/IconButton.vue";
+import ToneBadge from "../ui/ToneBadge.vue";
 import { fetchWorkPublishPayload, fetchWorksPage } from "@/api/works";
 import { getPublishAccounts, normalizePublishAccount } from "@/api/publish";
 import { appConfig } from "@/config";
 import { mockWorks } from "@/mock";
-import PlatformPickerDialog from "./PlatformPickerDialog.vue";
-import PublishPlanDialog from "./PublishPlanDialog.vue";
+import PlatformPickerDialog from "../PlatformPickerDialog/PlatformPickerDialog.vue";
+import PublishPlanDialog from "../PublishPlanDialog/PublishPlanDialog.vue";
 import type { AccountItem, WorkItem } from "@/types";
 import { useNotificationCenter } from "@/notifications";
 import { usePublishProgressCenter } from "@/publish-progress";
 import { IMMEDIATE_PUBLISH_VALUE, validateScheduledAt } from "@/utils/publish-schedule";
-import { useDialogLayer } from "../composables/useDialogLayer";
+import { useDialogLayer } from "@/composables/useDialogLayer";
 
 type SelectedWorkRow = {
   id: string;

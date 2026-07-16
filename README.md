@@ -36,6 +36,8 @@ npm install -D tailwindcss @tailwindcss/vite --workspace app
 
 新增通用交互优先扩展 `components/ui` 中已有组件；只有业务结构和行为无法归入现有基础组件时才新建组件。UI 小组件不得直接请求接口、读取 Electron API 或依赖具体业务类型。
 
+具有独立 CSS 文件的业务组件按组件名建立目录，并在目录内只维护同名 Vue 与 CSS，例如 `components/Work/Work.vue` 和 `components/Work/Work.css`。没有独立 CSS 的简单组件继续直接放在 `components/` 或 `components/ui/` 下。
+
 账号、作品和记录页的筛选条件统一收纳在标题栏“筛选”按钮的轻量浮层中。浮层支持按钮切换、点击外部或按 `Esc` 关闭；按钮上的数字表示当前启用的筛选条件数量。
 
 ## 开发与验证
