@@ -15,6 +15,14 @@ import {
   PlayCircleOutlined,
 } from "@ant-design/icons-vue";
 import AppIcon from "./AppIcon.vue";
+import CapsuleButton from "./ui/CapsuleButton.vue";
+import SelectField from "./ui/SelectField.vue";
+import TextInput from "./ui/TextInput.vue";
+import CircleCheckbox from "./ui/CircleCheckbox.vue";
+import FilterPopover from "./ui/FilterPopover.vue";
+import PanelShell from "./ui/PanelShell.vue";
+import IconButton from "./ui/IconButton.vue";
+import ToneBadge from "./ui/ToneBadge.vue";
 import { fetchWorkPublishPayload, fetchWorksPage } from "@/api/works";
 import { getPublishAccounts, normalizePublishAccount } from "@/api/publish";
 import { appConfig } from "@/config";
@@ -85,6 +93,9 @@ const filterTitle = ref("");
 const filterType = ref("");
 const filterDateStart = ref("");
 const filterDateEnd = ref("");
+const activeWorkFilterCount = computed(
+  () => [filterTitle.value.trim(), filterType.value, filterDateStart.value, filterDateEnd.value].filter(Boolean).length,
+);
 
 const videoTypeOptions = [
   { value: "talking_head_video", label: "真人口播视频" },
@@ -136,7 +147,7 @@ const pushWorksError = (title: string, messageText: string): void => {
   notificationCenter.push({
     title,
     message: messageText,
-    source: "预定发布作品",
+    source: "作品",
     tone: "error",
     unread: true,
   });
@@ -810,59 +821,59 @@ useDialogLayer(() => previewVisible.value);
 </script>
 
 <template>
-  <section class="panel-card">
-    <header class="panel-header">
-      <div>
-        <h2>预定发布作品</h2>
-        <p class="panel-header-tip">勾选作品右下角方框，创建发布计划</p>
-      </div>
-    </header>
+  <PanelShell title="作品">
+    <template #actions>
+        <FilterPopover v-slot="{ close }" panel-id="work-filter-popover" :active-count="activeWorkFilterCount">
+          <div class="mb-4 flex items-center justify-between gap-4">
+            <div>
+              <strong class="text-sm text-ink">筛选作品</strong>
+            </div>
+            <span v-if="activeWorkFilterCount > 0" class="text-xs text-primary">
+              已启用 {{ activeWorkFilterCount }} 项
+            </span>
+          </div>
 
-    <!-- 筛选栏 -->
-    <div class="filter-section filter-inline works-filter">
-      <div class="filter-item">
-        <label>标题</label>
-        <div class="filter-input-wrap">
-          <AppIcon class="filter-search-icon" name="search" :size="14" />
-          <input v-model="filterTitle" type="text" placeholder="搜索标题" />
-        </div>
-      </div>
-      <div class="filter-item">
-        <label>视频类别</label>
-        <select v-model="filterType" :class="{ 'is-placeholder': !filterType }">
-          <option value="" disabled hidden>选择类别</option>
-          <option v-for="opt in videoTypeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-        </select>
-      </div>
-      <div class="filter-item filter-item--date">
-        <label>生成时间</label>
-        <div class="date-range">
-          <input
-            v-model="filterDateStart"
-            :type="filterDateStart ? 'date' : 'text'"
-            placeholder="开始日期"
-            @focus="onDateFocus"
-            @blur="onDateBlurStart"
-          />
-          <span>→</span>
-          <input
-            v-model="filterDateEnd"
-            :type="filterDateEnd ? 'date' : 'text'"
-            placeholder="结束日期"
-            @focus="onDateFocus"
-            @blur="onDateBlurEnd"
-          />
-        </div>
-      </div>
-      <div class="filter-actions">
-        <button class="search-btn" type="button" @click="handleSearch">
-          <AppIcon name="search" :size="14" /> 搜索
-        </button>
-        <button class="reset-btn" type="button" @click="handleReset">
-          <AppIcon name="refresh" :size="14" /> 重置
-        </button>
-      </div>
-    </div>
+          <div class="grid grid-cols-6 gap-4 max-[900px]:grid-cols-1">
+            <label class="col-span-3 flex flex-col gap-2 max-[900px]:col-span-1">
+              <span class="text-xs font-semibold text-ink-muted">标题</span>
+              <TextInput v-model="filterTitle" type="text" placeholder="搜索标题" />
+            </label>
+            <label class="col-span-3 flex flex-col gap-2 max-[900px]:col-span-1">
+              <span class="text-xs font-semibold text-ink-muted">视频类别</span>
+              <SelectField v-model="filterType" :class="{ 'text-ink-faint': !filterType }">
+                <option value="" disabled hidden>选择类别</option>
+                <option v-for="opt in videoTypeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+              </SelectField>
+            </label>
+            <fieldset class="col-span-6 grid grid-cols-2 gap-3 border-0 p-0 max-[900px]:col-span-1 max-[900px]:grid-cols-1">
+              <legend class="mb-2 text-xs font-semibold text-ink-muted">生成时间</legend>
+              <TextInput
+                v-model="filterDateStart"
+                :type="filterDateStart ? 'date' : 'text'"
+                placeholder="开始日期"
+                @focus="onDateFocus"
+                @blur="onDateBlurStart"
+              />
+              <TextInput
+                v-model="filterDateEnd"
+                :type="filterDateEnd ? 'date' : 'text'"
+                placeholder="结束日期"
+                @focus="onDateFocus"
+                @blur="onDateBlurEnd"
+              />
+            </fieldset>
+          </div>
+
+          <div class="mt-5 flex justify-end gap-2 border-t border-border pt-4">
+            <CapsuleButton variant="quiet" size="sm" type="button" @click="handleReset">
+              <AppIcon name="refresh" :size="14" /> 重置
+            </CapsuleButton>
+            <CapsuleButton variant="primary" size="sm" type="button" @click="handleSearch(); close()">
+              <AppIcon name="search" :size="14" /> 搜索
+            </CapsuleButton>
+          </div>
+        </FilterPopover>
+    </template>
 
     <!-- 作品列表 -->
     <div class="works-content">
@@ -881,16 +892,19 @@ useDialogLayer(() => previewVisible.value);
 
             <div class="work-card-body">
               <div class="work-card-status">
-                <span
-                  :class="['status-tag', item.status === '已完成' ? 'completed' : item.status === '生成中' ? 'processing' : 'failed']">
+                <ToneBadge
+                  :tone="item.status === '已完成' ? 'success' : item.status === '生成中' ? 'warning' : 'danger'"
+                  dot
+                  :pulse="item.status === '生成中'"
+                >
                   {{ item.status }}
-                </span>
+                </ToneBadge>
               </div>
               <h3 class="work-card-title" :title="item.title">{{ item.title }}</h3>
               <div class="work-card-meta">
                 <p class="work-card-time">{{ formatTime(item.updatedAt) }}</p>
                 <div v-if="item.status === '已完成'" class="work-card-check" @click.stop>
-                  <input type="checkbox" :checked="selectedWorkIds.has(item.id)" @change="toggleSelect(item.id)" />
+                  <CircleCheckbox :checked="selectedWorkIds.has(item.id)" @change="toggleSelect(item.id)" />
                 </div>
               </div>
             </div>
@@ -908,7 +922,7 @@ useDialogLayer(() => previewVisible.value);
     <!-- 初次加载错误 -->
     <div v-else-if="loadError && worksList.length === 0 && !appConfig.isMockMode" class="load-status">
       <span>{{ loadError }}</span>
-      <button type="button" class="batch-btn" @click="reloadWorks">重新加载</button>
+      <CapsuleButton variant="secondary" type="button" @click="reloadWorks">重新加载</CapsuleButton>
     </div>
 
     <!-- 分页加载状态 -->
@@ -924,19 +938,19 @@ useDialogLayer(() => previewVisible.value);
       <p>暂无作品</p>
     </div>
 
-  </section>
+  </PanelShell>
 
   <!-- 底部批量操作栏 -->
   <transition name="slide-up">
     <div v-if="hasSelected" class="batch-action-bar">
       <div class="batch-info">
         已选择 <span class="batch-count">{{ selectedWorkIds.size }}</span> 个作品
-        <span v-if="publishPlatformAccountSummary" style="margin-left: 12px; color: #2f7ce8;">{{
+        <span v-if="publishPlatformAccountSummary" class="ml-3 text-primary">{{
           publishPlatformAccountSummary }}</span>
       </div>
-      <button type="button" class="batch-btn" @click="openPublishPlatformAccountDialog">
+      <CapsuleButton class="shrink-0" variant="primary" size="md" type="button" @click="openPublishPlatformAccountDialog">
         创建发布计划
-      </button>
+      </CapsuleButton>
     </div>
   </transition>
 
@@ -961,15 +975,16 @@ useDialogLayer(() => previewVisible.value);
         <div class="video-preview-dialog dialog-surface">
           <div class="video-preview-header">
             <h3>{{ previewTitle || '视频预览' }}</h3>
-            <button class="video-preview-close" type="button" @click="closePreview">×</button>
+            <IconButton aria-label="关闭视频预览" @click="closePreview"><span class="text-[22px] leading-none">×</span></IconButton>
           </div>
           <div class="video-preview-body">
             <div v-if="previewLoading" class="video-preview-loading">加载中...</div>
-            <video v-else-if="previewVideoUrl" :src="previewVideoUrl" controls autoplay
-              style="width: 100%; max-height: 70vh; display: block;"></video>
+            <video v-else-if="previewVideoUrl" class="block max-h-[70vh] w-full" :src="previewVideoUrl" controls autoplay></video>
           </div>
         </div>
       </div>
     </transition>
   </teleport>
 </template>
+
+<style scoped src="./Work.css"></style>

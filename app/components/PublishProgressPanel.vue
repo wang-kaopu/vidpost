@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import PlatformLogo from "./PlatformLogo.vue";
+import IconButton from "./ui/IconButton.vue";
 import type { PublishProgressPhase, PublishProgressTask } from "@/publish-progress";
 
 defineProps<{
@@ -42,9 +43,10 @@ const phasePresentation: Record<PublishProgressPhase, PhasePresentation> = {
         <span>共 {{ items.length }} 个任务</span>
       </div>
       <div class="publish-progress-header-actions">
-        <button
-          type="button"
-          class="publish-progress-icon-button publish-progress-collapse"
+        <IconButton
+          size="sm"
+          appearance="ghost"
+          class="publish-progress-collapse"
           :aria-label="collapsed ? '展开发布进度' : '折叠发布进度'"
           :title="collapsed ? '展开发布进度' : '折叠发布进度'"
           :aria-expanded="!collapsed"
@@ -53,16 +55,17 @@ const phasePresentation: Record<PublishProgressPhase, PhasePresentation> = {
           <svg aria-hidden="true" viewBox="0 0 24 24">
             <path :d="collapsed ? 'M6 9L12 15L18 9' : 'M6 15L12 9L18 15'" />
           </svg>
-        </button>
-        <button
-          type="button"
-          class="publish-progress-icon-button publish-progress-close"
+        </IconButton>
+        <IconButton
+          size="sm"
+          appearance="ghost"
+          class="publish-progress-close"
           aria-label="关闭发布进度"
           title="关闭发布进度"
           @click="$emit('close')"
         >
           ×
-        </button>
+        </IconButton>
       </div>
     </header>
 
@@ -112,3 +115,5 @@ const phasePresentation: Record<PublishProgressPhase, PhasePresentation> = {
     </div>
   </aside>
 </template>
+
+<style scoped src="./PublishProgressPanel.css"></style>

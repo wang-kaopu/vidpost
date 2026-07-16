@@ -26,11 +26,34 @@ watch(
 </script>
 
 <template>
-  <div class="content-stage">
+  <div class="min-h-full">
     <Transition :name="transitionName" mode="out-in">
-      <div :key="viewKey" class="content-scene">
+      <div :key="viewKey" class="min-h-full">
         <component :is="view" />
       </div>
     </Transition>
   </div>
 </template>
+
+<style scoped>
+.content-forward-enter-active,
+.content-forward-leave-active,
+.content-backward-enter-active,
+.content-backward-leave-active {
+  transition: transform 220ms cubic-bezier(0.2, 0.82, 0.2, 1), opacity 180ms ease, filter 220ms cubic-bezier(0.2, 0.82, 0.2, 1);
+  will-change: transform, opacity, filter;
+}
+
+.content-forward-enter-from,
+.content-backward-enter-from {
+  opacity: 0;
+  filter: blur(6px);
+}
+
+.content-forward-leave-to,
+.content-backward-leave-to { opacity: 0; }
+.content-forward-enter-from { transform: translateX(18px) scale(0.985); }
+.content-forward-leave-to { transform: translateX(-12px) scale(0.992); filter: blur(4px); }
+.content-backward-enter-from { transform: translateX(-18px) scale(0.985); }
+.content-backward-leave-to { transform: translateX(12px) scale(0.992); filter: blur(4px); }
+</style>

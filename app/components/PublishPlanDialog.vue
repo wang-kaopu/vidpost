@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useDialogLayer } from "../composables/useDialogLayer";
+import CapsuleButton from "./ui/CapsuleButton.vue";
+import DialogShell from "./ui/DialogShell.vue";
+import StateMessage from "./ui/StateMessage.vue";
+import TextInput from "./ui/TextInput.vue";
+import TextArea from "./ui/TextArea.vue";
 import {
   getScheduledPublishBounds,
   IMMEDIATE_PUBLISH_VALUE,
@@ -162,27 +167,20 @@ useDialogLayer(() => props.visible);
 </script>
 
 <template>
-  <teleport to="body">
-    <transition name="dialog-layer" appear>
-      <div v-if="visible" class="platform-dialog-mask" @click.self="emit('close')">
-        <section class="platform-dialog platform-dialog--table publish-plan-dialog dialog-surface">
-          <header class="platform-dialog-header">
-            <div>
-              <h2>发布计划</h2>
-              <p>{{ description || `已生成 ${totalPlanCount} 条待发布计划` }}</p>
-            </div>
-            <button class="platform-dialog-close" type="button" aria-label="关闭" @click="emit('close')">
-              ×
-            </button>
-          </header>
-
-          <div v-if="!groups.length" class="platform-dialog-state">
+  <DialogShell
+    :visible="visible"
+    title="发布计划"
+    :description="description || `已生成 ${totalPlanCount} 条待发布计划`"
+    width="xwide"
+    @close="emit('close')"
+  >
+          <StateMessage v-if="!groups.length">
             暂无可生成的发布计划
-          </div>
+          </StateMessage>
           <div v-else class="publish-plan-shell">
-            <p v-if="errorMessage" class="platform-dialog-state platform-dialog-state-error">
+            <StateMessage v-if="errorMessage" as="p" tone="danger">
               {{ errorMessage }}
-            </p>
+            </StateMessage>
 
         <section class="publish-plan-global-card">
           <div class="publish-plan-global-head">
@@ -192,25 +190,23 @@ useDialogLayer(() => props.visible);
           <div class="publish-plan-global-grid">
             <label class="publish-plan-field publish-plan-field--title">
               <span>标题</span>
-              <input
-                :value="globalTitle"
+              <TextInput
+                v-model="globalTitle"
                 type="text"
                 placeholder="标题"
-                @input="globalTitle = ($event.target as HTMLInputElement).value"
               />
             </label>
             <label class="publish-plan-field publish-plan-field--summary">
               <span>简介</span>
-              <textarea
-                :value="globalSummary"
+              <TextArea
+                v-model="globalSummary"
                 placeholder="简介"
-                @input="globalSummary = ($event.target as HTMLTextAreaElement).value"
               />
             </label>
           </div>
 
           <div class="publish-plan-global-actions">
-            <button class="blue-button publish-plan-apply-button" type="button" @click="applyAll">应用到全部</button>
+            <CapsuleButton class="publish-plan-apply-button" variant="primary" size="sm" type="button" @click="applyAll">应用到全部</CapsuleButton>
           </div>
         </section>
 
@@ -242,12 +238,12 @@ useDialogLayer(() => props.visible);
                   </div>
                 </td>
                 <td>
-                  <input
+                  <TextInput
                     class="publish-plan-table-input"
-                    :value="row.title"
+                    :model-value="row.title"
                     type="text"
                     placeholder="输入标题"
-                    @input="emit('update-row-field', { rowId: row.id, field: 'title', value: ($event.target as HTMLInputElement).value })"
+                    @update:model-value="emit('update-row-field', { rowId: row.id, field: 'title', value: $event })"
                   />
                 </td>
                 <td>
@@ -328,12 +324,12 @@ useDialogLayer(() => props.visible);
                   <span v-else class="publish-plan-text-cell">—</span>
                 </td>
                 <td>
-                  <input
+                  <TextInput
                     class="publish-plan-table-input"
-                    :value="row.summary"
+                    :model-value="row.summary"
                     type="text"
                     placeholder="输入简介"
-                    @input="emit('update-row-field', { rowId: row.id, field: 'summary', value: ($event.target as HTMLInputElement).value })"
+                    @update:model-value="emit('update-row-field', { rowId: row.id, field: 'summary', value: $event })"
                   />
                 </td>
                 <td>
@@ -382,13 +378,14 @@ useDialogLayer(() => props.visible);
                   </div>
                 </td>
                 <td>
-                  <button
-                    class="platform-remove-button danger-text"
+                  <CapsuleButton
+                    variant="danger"
+                    size="sm"
                     type="button"
                     @click="emit('remove', { workId: row.workId, accountId: row.accountId })"
                   >
                     删除
-                  </button>
+                  </CapsuleButton>
                 </td>
               </tr>
             </tbody>
@@ -400,14 +397,13 @@ useDialogLayer(() => props.visible);
                 共 <strong>{{ totalPlanCount }}</strong> 条发布计划
               </p>
               <div class="publish-plan-footer-actions">
-                <button class="platform-confirm-button" :class="{ active: canConfirm && !submitting }" type="button" :disabled="!canConfirm || submitting" @click="emit('confirm')">
+                <CapsuleButton variant="primary" size="lg" type="button" :disabled="!canConfirm || submitting" @click="emit('confirm')">
                   {{ submitting ? "发布中..." : "确定发布" }}
-                </button>
+                </CapsuleButton>
               </div>
             </footer>
           </div>
-        </section>
-      </div>
-    </transition>
-  </teleport>
+  </DialogShell>
 </template>
+
+<style scoped src="./PublishPlanDialog.css"></style>

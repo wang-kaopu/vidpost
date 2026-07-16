@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import CapsuleButton from "./ui/CapsuleButton.vue";
+import IconButton from "./ui/IconButton.vue";
 
 type NotificationTone = "info" | "success" | "warning" | "error";
 
@@ -99,17 +101,18 @@ const handleAction = (item: NotificationCenterItem): void => {
             <strong>{{ unreadCount > 0 ? `${unreadCount} 条待处理` : "全部已读" }}</strong>
           </div>
           <div class="notification-center-header-actions">
-            <button type="button" class="notification-center-icon-button" @click="toggleCollapsed">
+            <CapsuleButton type="button" variant="secondary" size="sm" @click="toggleCollapsed">
               收起
-            </button>
-            <button
+            </CapsuleButton>
+            <CapsuleButton
               type="button"
-              class="notification-center-icon-button"
+              variant="secondary"
+              size="sm"
               :disabled="items.length === 0"
               @click="$emit('clear')"
             >
               清空
-            </button>
+            </CapsuleButton>
           </div>
         </header>
 
@@ -140,14 +143,15 @@ const handleAction = (item: NotificationCenterItem): void => {
                 <span v-else class="notification-toast-state">{{ resolveToneLabel(item.tone) }}</span>
               </div>
             </div>
-            <button
-              type="button"
+            <IconButton
+              size="sm"
+              appearance="ghost"
               class="notification-toast-dismiss"
               aria-label="关闭通知"
               @click="$emit('dismiss', item.id)"
             >
               ×
-            </button>
+            </IconButton>
           </article>
         </div>
 
@@ -176,3 +180,5 @@ const handleAction = (item: NotificationCenterItem): void => {
     </transition>
   </aside>
 </template>
+
+<style scoped src="./NotificationCenter.css"></style>

@@ -13,6 +13,7 @@
     "build:electron": "tsx scripts/build-electron.ts",
     "build:renderer": "npm run build --workspace app",
     "build": "npm run build:electron && npm run build:renderer",
+    "check:renderer-css": "tsx scripts/check-renderer-css.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit && npm run typecheck --workspace app",
     "test": "tsx --test test/*.test.ts",
@@ -20,7 +21,8 @@
     "start": "npm run build:electron && tsx scripts/start-electron.ts",
     "forge:start": "npm run build:electron && electron-forge start",
     "forge:package": "npm run build && electron-forge package",
-    "forge:make": "npm run build && electron-forge make"
+    "forge:make": "npm run build && electron-forge make",
+    "verify:renderer": "npm run check:renderer-css && npm run lint && npm run typecheck --workspace app && npm run build --workspace app"
   },
   "keywords": [],
   "author": "",

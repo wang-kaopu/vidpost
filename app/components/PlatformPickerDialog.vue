@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed, reactive } from "vue";
 import PlatformLogo from "./PlatformLogo.vue";
+import CapsuleButton from "./ui/CapsuleButton.vue";
+import DialogShell from "./ui/DialogShell.vue";
+import StateMessage from "./ui/StateMessage.vue";
 import type { AccountItem, PlatformItem } from "@/types";
 import { useDialogLayer } from "../composables/useDialogLayer";
 
@@ -186,30 +189,17 @@ const handleConfirm = () => {
 </script>
 
 <template>
-  <teleport to="body">
-    <transition name="dialog-layer" appear>
-      <div v-if="visible" class="platform-dialog-mask" @click.self="emit('close')">
-        <section class="platform-dialog dialog-surface" :class="{ 'platform-dialog--table': isTableLayout }">
-          <header class="platform-dialog-header">
-            <div>
-              <h2>{{ title }}</h2>
-              <p>{{ description }}</p>
-            </div>
-            <button class="platform-dialog-close" type="button" aria-label="关闭" @click="emit('close')">
-              ×
-            </button>
-          </header>
-
-          <div v-if="loading" class="platform-dialog-state">正在加载平台列表...</div>
-          <div v-else-if="errorMessage" class="platform-dialog-state platform-dialog-state-error">
+  <DialogShell :visible="visible" :title="title" :description="description" :width="isTableLayout ? 'wide' : 'default'" @close="emit('close')">
+          <StateMessage v-if="loading">正在加载平台列表...</StateMessage>
+          <StateMessage v-else-if="errorMessage" tone="danger">
             {{ errorMessage }}
-          </div>
-          <div v-else-if="isTableLayout && !hasTableContent" class="platform-dialog-state">
+          </StateMessage>
+          <StateMessage v-else-if="isTableLayout && !hasTableContent">
             {{ emptyMessage }}
-          </div>
-          <div v-else-if="!isTableLayout && !platforms.length" class="platform-dialog-state">
+          </StateMessage>
+          <StateMessage v-else-if="!isTableLayout && !platforms.length">
             {{ emptyMessage }}
-          </div>
+          </StateMessage>
           <template v-else-if="!isTableLayout">
             <div class="platform-grid" :class="{ 'platform-grid--selectable': selectionMode === 'multiple' }">
               <button
@@ -236,9 +226,9 @@ const handleConfirm = () => {
               <p class="platform-dialog-footer-copy">
                 已选择 <strong>{{ selectedPlatformKeys.length }}</strong> 个平台
               </p>
-              <button class="platform-confirm-button" :class="{ active: canConfirm }" type="button" :disabled="!canConfirm" @click="handleConfirm">
+              <CapsuleButton variant="primary" size="lg" type="button" :disabled="!canConfirm" @click="handleConfirm">
                 {{ confirmLabel }}
-              </button>
+              </CapsuleButton>
             </footer>
           </template>
           <template v-else>
@@ -272,9 +262,9 @@ const handleConfirm = () => {
                             <PlatformLogo :platform="account.platform" />
                             <span class="platform-account-chip-label">{{ account.nickname }}</span>
                           </button>
-                          <button class="blue-button platform-add-button" type="button" @click="toggleTableDropdown(row.id, $event)">
+                          <CapsuleButton class="platform-add-button" variant="primary" size="sm" type="button" @click="toggleTableDropdown(row.id, $event)">
                             添加账号
-                          </button>
+                          </CapsuleButton>
                         </div>
                         <div
                           v-if="isTableDropdownOpen(row.id)"
@@ -307,9 +297,9 @@ const handleConfirm = () => {
                       </div>
                     </td>
                     <td class="platform-table-actions-cell">
-                      <button class="platform-remove-button danger-text" type="button" @click="clearTableRowAccounts(row.id)">
+                      <CapsuleButton variant="danger" size="sm" type="button" @click="clearTableRowAccounts(row.id)">
                         删除
-                      </button>
+                      </CapsuleButton>
                     </td>
                   </tr>
                 </tbody>
@@ -319,14 +309,13 @@ const handleConfirm = () => {
                 <p class="platform-dialog-footer-copy">
                   已选择 <strong>{{ selectedTableAccountCount }}</strong> 个账号
                 </p>
-                <button class="platform-confirm-button" :class="{ active: canConfirm }" type="button" :disabled="!canConfirm" @click="handleConfirm">
+                <CapsuleButton variant="primary" size="lg" type="button" :disabled="!canConfirm" @click="handleConfirm">
                   {{ confirmLabel }}
-                </button>
+                </CapsuleButton>
               </footer>
             </div>
           </template>
-        </section>
-      </div>
-    </transition>
-  </teleport>
+  </DialogShell>
 </template>
+
+<style scoped src="./PlatformPickerDialog.css"></style>

@@ -15,6 +15,29 @@ npm install
 
 前端环境变量维护在 `app/.env`，包括 API 地址、应用名称和 Mock 模式。`RENDERER_DEV_SERVER_URL` 由开发启动器按实际端口动态注入，无需手动配置。
 
+## 前端样式与 UI 组件
+
+渲染进程使用 Tailwind CSS 4，并通过官方 `@tailwindcss/vite` 插件接入 Vite。依赖由根目录 npm workspace 统一管理；单独补装前端样式依赖时使用：
+
+```bash
+npm install -D tailwindcss @tailwindcss/vite --workspace app
+```
+
+`app/styles.css` 是唯一全局样式入口，只保留 Tailwind 入口、`@theme` 设计令牌、基础 reset、原生表单继承和工作区弹窗状态。页面布局优先使用 Tailwind 工具类；复杂动画和业务状态放在所属组件的 `<style scoped>` 中，较长样式可以通过 `<style scoped src="...">` 与组件同目录维护。不要新增页面级全局按钮、字段、徽标或业务选择器。
+
+无业务语义的小组件统一维护在 `app/components/ui/`。当前包含按钮、图标按钮、文本输入框、文本域、选择字段、圆形复选框、数据表、页面面板、弹窗外壳、筛选浮层、操作菜单和状态消息。业务组件直接组合这些组件，并通过明确的 `variant`、`tone`、`size` 等属性选择外观。例如：
+
+```vue
+<CapsuleButton variant="primary" size="sm">绑定账号</CapsuleButton>
+<TextInput v-model="keyword" placeholder="搜索标题" />
+<SelectField v-model="platform">...</SelectField>
+<ToneBadge tone="success" dot>在线</ToneBadge>
+```
+
+新增通用交互优先扩展 `components/ui` 中已有组件；只有业务结构和行为无法归入现有基础组件时才新建组件。UI 小组件不得直接请求接口、读取 Electron API 或依赖具体业务类型。
+
+账号、作品和记录页的筛选条件统一收纳在标题栏“筛选”按钮的轻量浮层中。浮层支持按钮切换、点击外部或按 `Esc` 关闭；按钮上的数字表示当前启用的筛选条件数量。
+
 ## 开发与验证
 
 ```bash
@@ -25,10 +48,14 @@ npm run dev
 npm start
 
 # 类型检查、测试和完整构建
+npm run check:renderer-css
 npm run lint
 npm run typecheck
 npm test
 npm run build
+
+# 一次执行渲染进程 CSS 边界、ESLint、vue-tsc 和前端构建
+npm run verify:renderer
 
 # Electron Forge
 npm run forge:start

@@ -140,18 +140,21 @@ watch(
 </script>
 
 <template>
-  <div class="tag-input" :class="{ disabled }">
+  <div
+    class="flex min-h-10 flex-wrap items-center gap-1.5 rounded-xl border border-border bg-surface px-2.5 py-1.5 transition focus-within:border-primary focus-within:ring-3 focus-within:ring-primary/10"
+    :class="{ 'cursor-not-allowed bg-surface-muted opacity-60': disabled }"
+  >
     <div
       v-for="(tag, index) in modelValue"
       :key="`${tag}-${index}`"
       :ref="(el) => syncChipRefs(el as HTMLDivElement | null, index)"
-      class="tag-chip"
+      class="inline-flex min-h-7 max-w-full items-center gap-1 rounded-lg bg-primary-soft px-2 text-xs font-semibold text-primary outline-none focus:ring-2 focus:ring-primary/20"
       :tabindex="disabled ? -1 : 0"
       @keydown="onChipKeydown(index, $event)"
     >
-      <span class="tag-chip-label">{{ tag }}</span>
+      <span class="max-w-32 truncate">{{ tag }}</span>
       <button
-        class="tag-chip-remove"
+        class="grid size-4 place-items-center rounded-full text-sm leading-none text-primary/70 transition hover:bg-primary/10 hover:text-primary disabled:cursor-not-allowed"
         type="button"
         :disabled="disabled"
         :aria-label="`删除标签 ${tag}`"
@@ -164,7 +167,7 @@ watch(
     <input
       ref="inputRef"
       v-model="draft"
-      class="tag-input-field"
+      class="h-7 min-w-28 flex-1 border-0 bg-transparent px-1 text-[13px] text-ink outline-none placeholder:text-ink-faint"
       type="text"
       :disabled="disabled"
       :placeholder="placeholder"

@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from "vue";
 import AppIcon from "./AppIcon.vue";
+import CapsuleButton from "./ui/CapsuleButton.vue";
+import CircleCheckbox from "./ui/CircleCheckbox.vue";
+import TextInput from "./ui/TextInput.vue";
 import { sendCode } from "@/api/auth";
 import type { LoginForm } from "@/types";
 
@@ -65,43 +68,45 @@ const submit = () => {
 </script>
 
 <template>
-  <div class="login-shell">
-    <div class="login-card">
-      <div class="login-header">
-        <h1>欢迎登录</h1>
-        <p>使用手机号快速登录</p>
+  <div class="grid min-h-screen place-items-center px-6 py-12">
+    <div class="w-full max-w-[480px] rounded-3xl border border-white/80 bg-white/90 px-12 py-11 shadow-[0_28px_80px_rgba(146,167,194,0.28)] backdrop-blur-xl max-sm:px-6">
+      <div class="mb-9 text-center">
+        <h1 class="m-0 text-[clamp(2rem,4vw,2.625rem)] leading-[1.1] font-bold tracking-[-0.04em] text-ink">欢迎登录</h1>
+        <p class="mt-2.5 mb-0 text-base text-ink-faint">使用手机号快速登录</p>
       </div>
 
-      <label class="field field-full">
-        <span class="field-icon"><AppIcon name="phone" :size="22" /></span>
-        <input v-model="form.phone" type="tel" maxlength="11" placeholder="请输入手机号" />
+      <label class="mb-[18px] flex min-h-14 items-center gap-2.5 rounded-[14px] border-[1.5px] border-border bg-surface px-[18px] transition focus-within:border-primary focus-within:ring-3 focus-within:ring-primary/10">
+        <span class="inline-flex text-ink-faint"><AppIcon name="phone" :size="22" /></span>
+        <TextInput v-model="form.phone" variant="bare" size="lg" type="tel" maxlength="11" placeholder="请输入手机号" />
       </label>
 
-      <div class="field-row">
-        <label class="field">
-          <span class="field-icon"><AppIcon name="shield" :size="22" /></span>
-          <input v-model="form.code" type="text" maxlength="6" placeholder="请输入验证码" />
+      <div class="grid grid-cols-[1.1fr_0.75fr] gap-3.5 max-sm:grid-cols-1">
+        <label class="flex min-h-14 items-center gap-2.5 rounded-[14px] border-[1.5px] border-border bg-surface px-[18px] transition focus-within:border-primary focus-within:ring-3 focus-within:ring-primary/10">
+          <span class="inline-flex text-ink-faint"><AppIcon name="shield" :size="22" /></span>
+          <TextInput v-model="form.code" variant="bare" size="lg" type="text" maxlength="6" placeholder="请输入验证码" />
         </label>
-        <button
-          class="ghost-button"
+        <CapsuleButton
+          class="h-14 min-h-14"
+          size="lg"
+          variant="secondary"
           type="button"
           :disabled="!canSend"
           @click="handleSendCode"
         >
           {{ sendButtonText }}
-        </button>
+        </CapsuleButton>
       </div>
 
-      <p v-if="errorMessage" class="login-error">{{ errorMessage }}</p>
+      <p v-if="errorMessage" class="mt-2 mb-0 text-[13px] text-danger">{{ errorMessage }}</p>
 
-      <label class="agreement">
-        <input v-model="form.agreed" type="checkbox" />
+      <label class="my-6 flex items-center gap-2.5 text-sm text-ink">
+        <CircleCheckbox :checked="form.agreed" size="sm" @change="form.agreed = ($event.target as HTMLInputElement).checked" />
         <span>我已阅读并同意《用户协议》和《隐私政策》</span>
       </label>
 
-      <button class="primary-login" type="button" :disabled="!canLogin" @click="submit">
+      <CapsuleButton variant="primary" size="lg" block type="button" :disabled="!canLogin" @click="submit">
         登 录
-      </button>
+      </CapsuleButton>
     </div>
   </div>
 </template>

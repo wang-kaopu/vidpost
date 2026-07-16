@@ -242,17 +242,12 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main class="app-root">
+  <main class="min-h-screen">
     <LoginView v-if="!loggedIn" @submit="login" />
 
-    <div v-else class="workspace">
+    <div v-else class="workspace grid h-screen grid-cols-[268px_minmax(0,1fr)] overflow-hidden max-[1180px]:grid-cols-[100px_minmax(0,1fr)]">
       <SidebarNav :active="activeMenu" :user="user" @select="activeMenu = $event" @logout="logout" />
-      <section class="content-area">
-        <header v-if="activeMenu !== 'accounts' && activeMenu !== 'records' && activeMenu !== 'works'" class="workspace-header">
-          <div>
-            <h1>预定发布作品</h1>
-          </div>
-        </header>
+      <section class="h-screen overflow-y-auto px-[34px] py-7 max-[900px]:px-5">
         <AppContentTransition :view="currentView" :view-key="activeMenu" />
       </section>
     </div>

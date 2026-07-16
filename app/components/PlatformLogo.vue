@@ -22,8 +22,8 @@ const fallbackText = computed(() => props.platform.trim().slice(0, 1) || "?");
 </script>
 
 <template>
-  <span class="platform-logo" :title="platform" :aria-label="platform">
-    <img v-if="src" :src="src" :alt="platform" />
-    <span v-else class="platform-logo-fallback">{{ fallbackText }}</span>
+  <span class="platform-logo inline-flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-[11px] bg-surface-muted" :title="platform" :aria-label="platform">
+    <img v-if="src" class="size-full object-cover" :src="src" :alt="platform" />
+    <span v-else class="platform-logo-fallback text-xs font-bold text-ink-muted">{{ fallbackText }}</span>
   </span>
 </template>

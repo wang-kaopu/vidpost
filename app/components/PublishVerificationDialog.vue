@@ -2,6 +2,10 @@
 // 空实现
 import { computed, ref, watch } from "vue";
 import { useDialogLayer } from "../composables/useDialogLayer";
+import CapsuleButton from "./ui/CapsuleButton.vue";
+import DialogShell from "./ui/DialogShell.vue";
+import StateMessage from "./ui/StateMessage.vue";
+import TextInput from "./ui/TextInput.vue";
 
 interface VerificationRequest {
   requestId: string;
@@ -75,17 +79,15 @@ useDialogLayer(() => props.visible && Boolean(props.request));
 </script>
 
 <template>
-  <teleport to="body">
-    <transition name="dialog-layer" appear>
-      <div v-if="visible && request" class="platform-dialog-mask">
-        <section class="platform-dialog verification-dialog dialog-surface">
-          <header class="platform-dialog-header">
-            <div>
-              <h2>输入验证码</h2>
-              <p>{{ request.prompt }}</p>
-            </div>
-          </header>
-
+  <DialogShell
+    :visible="visible && Boolean(request)"
+    title="输入验证码"
+    :description="request?.prompt || ''"
+    width="compact"
+    :show-close="false"
+    :close-on-mask="false"
+  >
+        <template v-if="request">
           <div class="verification-dialog-body">
             <div class="verification-summary-card">
               <div class="verification-summary-row">
@@ -106,32 +108,76 @@ useDialogLayer(() => props.visible && Boolean(props.request));
               </div>
             </div>
 
-            <label class="field verification-field">
-              <input
-                v-model="code"
-                type="text"
-                inputmode="numeric"
-                maxlength="8"
-                placeholder="请输入短信验证码"
-                @keyup.enter="handleSubmit"
-              />
-            </label>
+            <TextInput
+              v-model="code"
+              type="text"
+              inputmode="numeric"
+              maxlength="8"
+              placeholder="请输入短信验证码"
+              @keyup.enter="handleSubmit"
+            />
 
-            <p v-if="errorMessage" class="platform-dialog-state platform-dialog-state-error">
+            <StateMessage v-if="errorMessage" as="p" tone="danger">
               {{ errorMessage }}
-            </p>
+            </StateMessage>
           </div>
 
-          <footer class="platform-dialog-footer verification-dialog-footer">
-            <button class="ghost-button compact" type="button" :disabled="submitting" @click="emit('cancel')">
+          <footer class="verification-dialog-footer">
+            <CapsuleButton variant="secondary" type="button" :disabled="submitting" @click="emit('cancel')">
               取消
-            </button>
-            <button class="platform-confirm-button" :class="{ active: canSubmit }" type="button" :disabled="!canSubmit" @click="handleSubmit">
+            </CapsuleButton>
+            <CapsuleButton variant="primary" type="button" :disabled="!canSubmit" @click="handleSubmit">
               {{ submitting ? "提交中..." : "提交验证码" }}
-            </button>
+            </CapsuleButton>
           </footer>
-        </section>
-      </div>
-    </transition>
-  </teleport>
+        </template>
+  </DialogShell>
 </template>
+
+<style scoped>
+.verification-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding-top: 12px;
+}
+
+.verification-summary-card {
+  padding: 20px 22px;
+  border: 1px solid rgba(204, 220, 237, 0.85);
+  border-radius: 22px;
+  background: rgba(246, 250, 255, 0.95);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.verification-summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  min-height: 36px;
+  color: #607087;
+  font-size: 15px;
+}
+
+.verification-summary-row + .verification-summary-row {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(216, 227, 239, 0.9);
+}
+
+.verification-summary-row strong {
+  color: #1f2530;
+  font-size: 15px;
+  text-align: right;
+}
+
+.verification-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 14px;
+  margin-top: 8px;
+  padding-top: 18px;
+  border-top: 1px solid #eef2f7;
+}
+</style>
