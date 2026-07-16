@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
-import AppIcon from "./AppIcon.vue";
+import { Tooltip as AntTooltip } from "ant-design-vue";
+import { Download, Info, RefreshCw, Search } from "lucide-vue-next";
 import PlatformLogo from "./PlatformLogo.vue";
 import CapsuleButton from "./ui/CapsuleButton.vue";
 import SelectField from "./ui/SelectField.vue";
 import TextInput from "./ui/TextInput.vue";
 import CircleCheckbox from "./ui/CircleCheckbox.vue";
+import ActionMenu from "./ui/ActionMenu.vue";
 import DataList from "./ui/DataList.vue";
 import FilterPopover from "./ui/FilterPopover.vue";
 import PanelShell from "./ui/PanelShell.vue";
@@ -79,16 +81,38 @@ const recordStatusToneMap: Record<string, "success" | "warning" | "danger"> = {
   failed: "danger",
 };
 
-/** 提取状态原因，优先展示平台终态，再展示最近同步错误和发布过程错误。 */
+/** 提取状态备注，优先展示明确状态原因，再回退到同步或发布错误。 */
 const getRecordStatusReason = (item: PublishTask): string => {
   const attributes = item.attributes;
   return String(
-    attributes?.review_state?.reason
+    item.status_reason
+      || item.reason
+      || attributes?.review_state?.reason
       || attributes?.review_state?.sync_error
       || attributes?.failure_detail?.reason
+      || attributes?.failure_detail?.detail
+      || item.error_msg
+      || attributes?.error_msg
       || attributes?.error_message
       || "",
   ).trim();
+};
+
+/** 将记录创建时间格式化为本地年月日和时分。 */
+const formatCreatedAt = (value?: string): string => {
+  if (!value) return "--";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date).replaceAll("/", "-");
 };
 
 const loadPlatforms = async () => {
@@ -337,28 +361,28 @@ onUnmounted(() => {
 
           <div class="mt-5 flex justify-end gap-2 border-t border-border pt-4">
             <CapsuleButton variant="quiet" size="sm" type="button" @click="resetFilters">
-              <AppIcon name="refresh" :size="14" /> 重置
+              <RefreshCw :size="14" aria-hidden="true" /> 重置
             </CapsuleButton>
             <CapsuleButton variant="primary" size="sm" type="button" @click="loadRecords(); close()">
-              <AppIcon name="search" :size="14" /> 搜索
+              <Search :size="14" aria-hidden="true" /> 搜索
             </CapsuleButton>
           </div>
         </FilterPopover>
-        <CapsuleButton variant="secondary" type="button" :disabled="exporting || !items.length" @click="handleExport">
+        <CapsuleButton variant="primary" type="button" :disabled="exporting || !items.length" @click="handleExport">
+          <Download :size="17" aria-hidden="true" />
           <span>{{ exporting ? "导出中..." : "导出发布记录" }}</span>
         </CapsuleButton>
     </template>
 
-    <DataList :columns="8" min-width="980px" table-class="records-table">
+    <DataList :columns="7" min-width="920px" table-class="records-table">
       <template #columns>
         <colgroup>
         <col class="records-col-check" />
         <col class="records-col-platform" />
         <col class="records-col-nickname" />
-        <col class="records-col-id" />
         <col class="records-col-title" />
         <col class="records-col-status" />
-        <col class="records-col-scheduled" />
+        <col class="records-col-created" />
         <col class="records-col-actions" />
         </colgroup>
       </template>
@@ -374,21 +398,20 @@ onUnmounted(() => {
           </th>
           <th>平台</th>
           <th>账号昵称</th>
-          <th>账号ID</th>
           <th>内容标题</th>
           <th>状态</th>
-          <th>预约发布时间</th>
+          <th>创建时间</th>
           <th>操作</th>
         </tr>
       </template>
         <tr v-if="loading && !items.length">
-          <StateMessage as="td" variant="table" colspan="8">正在加载发布记录...</StateMessage>
+          <StateMessage as="td" variant="table" colspan="7">正在加载发布记录...</StateMessage>
         </tr>
         <tr v-else-if="errorMessage">
-          <StateMessage as="td" variant="table" tone="danger" colspan="8">{{ errorMessage }}</StateMessage>
+          <StateMessage as="td" variant="table" tone="danger" colspan="7">{{ errorMessage }}</StateMessage>
         </tr>
         <tr v-else-if="!items.length">
-          <StateMessage as="td" variant="table" colspan="8">暂无发布记录</StateMessage>
+          <StateMessage as="td" variant="table" colspan="7">暂无发布记录</StateMessage>
         </tr>
         <tr v-for="item in items" :key="item.id">
           <td>
@@ -404,41 +427,58 @@ onUnmounted(() => {
             </div>
           </td>
           <td class="records-account-cell">--</td>
-          <td>{{ item.account_id || "--" }}</td>
           <td class="records-title-cell" :title="item.title || '--'">{{ item.title || "--" }}</td>
           <td class="records-status-cell">
             <span class="records-status-wrap">
               <ToneBadge :tone="recordStatusToneMap[item.status] || 'danger'" dot :pulse="item.status === 'running'">
                 {{ recordStatusLabelMap[item.status] || item.status || "未知状态" }}
               </ToneBadge>
-              <span
+              <AntTooltip
                 v-if="getRecordStatusReason(item)"
-                class="records-status-reason"
                 :title="getRecordStatusReason(item)"
-                :aria-label="getRecordStatusReason(item)"
-              >i</span>
+                placement="top"
+                :mouse-enter-delay="0.1"
+              >
+                <span
+                  class="records-status-reason"
+                  tabindex="0"
+                  :aria-label="`状态说明：${getRecordStatusReason(item)}`"
+                >
+                  <Info :size="13" aria-hidden="true" />
+                </span>
+              </AntTooltip>
             </span>
           </td>
-          <td class="records-scheduled-cell">{{ item.scheduled_at || "--" }}</td>
+          <td class="records-created-cell" :title="item.created_at || '--'">
+            {{ formatCreatedAt(item.created_at) }}
+          </td>
           <td>
-            <div class="flex items-center justify-center gap-3 whitespace-nowrap">
-              <!-- <button
-                type="button"
-                class="link-btn"
-                :disabled="!item.link"
-                @click="openLink(item.link)"
+            <div class="flex items-center justify-center whitespace-nowrap">
+              <ActionMenu
+                v-slot="{ close }"
+                :panel-id="`record-actions-${item.id}`"
+                :label="`${item.title || item.id}的记录操作`"
               >
-                <AppIcon name="search" :size="14" /> 链接
-              </button> -->
-              <button
-                type="button"
-                class="inline-flex h-8 w-8 items-center justify-center rounded-lg text-danger hover:bg-danger-soft"
-                title="删除"
-                :aria-label="`删除发布记录 ${item.title || item.id}`"
-                @click="handleDelete(item)"
-              >
-                <AppIcon name="trash" :size="14" />
-              </button>
+                <div role="presentation" class="border-b border-border px-3 py-2.5 text-left">
+                  <span class="block text-[11px] font-semibold text-ink-faint">记录 ID</span>
+                  <strong class="mt-1 block text-xs font-medium text-ink">{{ item.id }}</strong>
+                  <span class="mt-2.5 block text-[11px] font-semibold text-ink-faint">账号 ID</span>
+                  <strong class="mt-1 block text-xs font-medium text-ink">{{ item.account_id || "--" }}</strong>
+                  <span class="mt-2.5 block text-[11px] font-semibold text-ink-faint">预约发布时间</span>
+                  <strong class="mt-1 block text-xs font-medium whitespace-normal text-ink">
+                    {{ item.scheduled_at || "--" }}
+                  </strong>
+                </div>
+                <button
+                  type="button"
+                  role="menuitem"
+                  class="flex h-10 w-full items-center rounded-lg px-3 text-left text-[13px] text-danger transition hover:bg-danger-soft"
+                  :aria-label="`删除发布记录 ${item.title || item.id}`"
+                  @click="close(); handleDelete(item)"
+                >
+                  删除
+                </button>
+              </ActionMenu>
             </div>
           </td>
         </tr>
@@ -454,21 +494,22 @@ onUnmounted(() => {
 .records-table .records-col-check { width: 44px; text-align: center; }
 .records-table .records-col-platform { width: 68px; }
 .records-table .records-col-nickname { width: 140px; }
-.records-table .records-col-id { width: 100px; }
 .records-table .records-col-title { width: auto; }
-.records-table .records-col-status { width: 200px; }
-.records-table .records-col-scheduled { width: 160px; }
-.records-table .records-col-actions { width: 72px; }
+.records-table .records-col-status { width: 240px; }
+.records-table .records-col-created { width: 168px; }
+.records-table .records-col-actions { width: 64px; }
 .records-table :deep(th:first-child),
 .records-table :deep(td:first-child),
 .records-table :deep(th:last-child),
 .records-table :deep(td:last-child) { text-align: center; }
 .records-account-cell,
+.records-created-cell,
 .records-status-cell,
-.records-scheduled-cell,
 .records-title-cell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.records-created-cell { color: #64748b; font-size: 13px; text-align: center; font-variant-numeric: tabular-nums; }
 .records-status-cell { text-align: center; }
 .records-status-wrap { display: inline-flex; align-items: center; gap: 6px; }
-.records-status-reason { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: #eef2f7; color: #64748b; font-family: serif; font-size: 12px; font-weight: 700; cursor: help; }
+.records-status-reason { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: #eef2f7; color: #64748b; cursor: default; }
+.records-status-reason:focus-visible { outline: 2px solid rgba(63,140,255,.55); outline-offset: 2px; }
 .records-table .records-title-cell { max-width: none; }
 </style>

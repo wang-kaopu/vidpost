@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import AppIcon from "./AppIcon.vue";
+import { computed, onBeforeUnmount, onMounted, ref, type Component } from "vue";
+import { History, UserRound, Video } from "lucide-vue-next";
 import PopoverPanel from "./ui/PopoverPanel.vue";
 import type { MenuKey, User } from "@/types";
 
@@ -14,10 +14,10 @@ const emit = defineEmits<{
   logout: [];
 }>();
 
-const menus: Array<{ key: MenuKey; label: string; icon: "accounts" | "works" | "records" }> = [
-  { key: "accounts", label: "账号", icon: "accounts" },
-  { key: "works", label: "作品", icon: "works" },
-  { key: "records", label: "记录", icon: "records" },
+const menus: Array<{ key: MenuKey; label: string; icon: Component }> = [
+  { key: "accounts", label: "账号", icon: UserRound },
+  { key: "works", label: "作品", icon: Video },
+  { key: "records", label: "记录", icon: History },
 ];
 
 const displayName = computed(() => props.user?.nickname || "Admin");
@@ -66,7 +66,7 @@ onBeforeUnmount(() => {
           class="grid size-10 shrink-0 place-items-center"
           :class="active === menu.key ? 'text-primary' : 'text-ink-muted'"
         >
-          <AppIcon :name="menu.icon" :size="20" />
+          <component :is="menu.icon" :size="20" :stroke-width="1.8" aria-hidden="true" />
         </span>
         <span class="max-[1180px]:hidden">{{ menu.label }}</span>
       </button>

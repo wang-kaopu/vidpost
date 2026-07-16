@@ -55,4 +55,10 @@ withDefaults(
   color: #1d2733;
   font-weight: 700;
 }
+
+.data-table :deep(svg),
+.data-table :deep(.platform-logo) {
+  transform: scale(0.8);
+  transform-origin: center;
+}
 </style>

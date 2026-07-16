@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { Plus, RefreshCw, Search, Trash2 } from "lucide-vue-next";
 import { PLATFORMS, type Platform } from "@shared/electron-api";
-import AppIcon from "./AppIcon.vue";
 import PlatformLogo from "./PlatformLogo.vue";
 import PlatformPickerDialog from "./PlatformPickerDialog/PlatformPickerDialog.vue";
 import CapsuleButton from "./ui/CapsuleButton.vue";
@@ -517,19 +517,19 @@ useDialogLayer(() => accountDialogVisible.value);
 
           <div class="mt-5 flex justify-end gap-2 border-t border-border pt-4">
             <CapsuleButton variant="quiet" size="sm" type="button" @click="handleReset">
-              <AppIcon name="refresh" :size="14" /> 重置
+              <RefreshCw :size="14" aria-hidden="true" /> 重置
             </CapsuleButton>
             <CapsuleButton variant="primary" size="sm" type="button" @click="handleSearch(); close()">
-              <AppIcon name="search" :size="14" /> 搜索
+              <Search :size="14" aria-hidden="true" /> 搜索
             </CapsuleButton>
           </div>
         </FilterPopover>
         <CapsuleButton variant="success" type="button" :disabled="pingingAll" @click="handlePingAllAccounts">
-          <AppIcon name="refresh" :size="18" />
+          <RefreshCw :size="18" aria-hidden="true" />
           <span>{{ pingingAll ? "检测中..." : "检测本页账号" }}</span>
         </CapsuleButton>
         <CapsuleButton variant="primary" type="button" @click="openPlatformDialog">
-          <AppIcon name="plus" :size="18" />
+          <Plus :size="18" aria-hidden="true" />
           <span>绑定账号</span>
         </CapsuleButton>
     </template>
@@ -648,7 +648,7 @@ useDialogLayer(() => accountDialogVisible.value);
                 :disabled="Boolean(renameDialogLoading || deletingAccountId || pingingAccountId || pingingAll)"
                 @click="close(); handleDeleteAccount(item)"
               >
-                <AppIcon name="trash" :size="14" /> 删除
+                <Trash2 :size="14" aria-hidden="true" /> 删除
               </button>
             </ActionMenu>
           </td>

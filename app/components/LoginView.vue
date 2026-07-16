@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from "vue";
-import AppIcon from "./AppIcon.vue";
+import { Phone, ShieldCheck } from "lucide-vue-next";
 import CapsuleButton from "./ui/CapsuleButton.vue";
 import CircleCheckbox from "./ui/CircleCheckbox.vue";
 import TextInput from "./ui/TextInput.vue";
@@ -76,13 +76,13 @@ const submit = () => {
       </div>
 
       <label class="mb-[18px] flex min-h-14 items-center gap-2.5 rounded-[14px] border-[1.5px] border-border bg-surface px-[18px] transition focus-within:border-primary focus-within:ring-3 focus-within:ring-primary/10">
-        <span class="inline-flex text-ink-faint"><AppIcon name="phone" :size="22" /></span>
+        <span class="inline-flex text-ink-faint"><Phone :size="22" :stroke-width="1.8" aria-hidden="true" /></span>
         <TextInput v-model="form.phone" variant="bare" size="lg" type="tel" maxlength="11" placeholder="请输入手机号" />
       </label>
 
       <div class="grid grid-cols-[1.1fr_0.75fr] gap-3.5 max-sm:grid-cols-1">
         <label class="flex min-h-14 items-center gap-2.5 rounded-[14px] border-[1.5px] border-border bg-surface px-[18px] transition focus-within:border-primary focus-within:ring-3 focus-within:ring-primary/10">
-          <span class="inline-flex text-ink-faint"><AppIcon name="shield" :size="22" /></span>
+          <span class="inline-flex text-ink-faint"><ShieldCheck :size="22" :stroke-width="1.8" aria-hidden="true" /></span>
           <TextInput v-model="form.code" variant="bare" size="lg" type="text" maxlength="6" placeholder="请输入验证码" />
         </label>
         <CapsuleButton

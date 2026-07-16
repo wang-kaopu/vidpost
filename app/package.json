@@ -10,7 +10,6 @@
     "preview": "vite preview --host 127.0.0.1 --port 4173 --strictPort"
   },
   "devDependencies": {
-    "@ant-design/icons-vue": "^7.0.1",
     "@tailwindcss/vite": "^4.3.2",
     "@vitejs/plugin-vue": "^6.0.1",
     "@vue/compiler-sfc": "^3.5.22",
@@ -21,5 +20,8 @@
     "vite": "^7.1.12",
     "vue": "^3.5.22",
     "vue-tsc": "^3.0.0"
+  },
+  "dependencies": {
+    "lucide-vue-next": "^0.577.0"
   }
 }

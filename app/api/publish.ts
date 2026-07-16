@@ -27,6 +27,7 @@ export interface PublishTaskReviewState {
 }
 
 export interface PublishTaskAttributes {
+  error_msg?: string | null;
   error_message?: string | null;
   failure_detail?: {
     detail?: string | null;
@@ -49,6 +50,9 @@ export interface PublishTask {
   video_url?: string | null;
   scheduled_at?: string | null;
   link?: string | null;
+  reason?: string | null;
+  status_reason?: string | null;
+  error_msg?: string | null;
   video_type?: "talking_head_video" | "ai_ad_video" | "ai_sora2_video" | "social_commerce_video" | null;
   user_id?: string;
   created_at?: string;

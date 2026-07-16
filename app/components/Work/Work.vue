@@ -3,6 +3,7 @@ defineOptions({ name: "WorkView" });
 
 import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from "vue";
 import { message } from "ant-design-vue";
+import { CirclePlay, RefreshCw, Search } from "lucide-vue-next";
 import {
   PLATFORMS,
   type BasePublishInput,
@@ -11,10 +12,6 @@ import {
   type PublishInput,
   type SohuChannel,
 } from "@shared/electron-api";
-import {
-  PlayCircleOutlined,
-} from "@ant-design/icons-vue";
-import AppIcon from "../AppIcon.vue";
 import CapsuleButton from "../ui/CapsuleButton.vue";
 import SelectField from "../ui/SelectField.vue";
 import TextInput from "../ui/TextInput.vue";
@@ -866,10 +863,10 @@ useDialogLayer(() => previewVisible.value);
 
           <div class="mt-5 flex justify-end gap-2 border-t border-border pt-4">
             <CapsuleButton variant="quiet" size="sm" type="button" @click="handleReset">
-              <AppIcon name="refresh" :size="14" /> 重置
+              <RefreshCw :size="14" aria-hidden="true" /> 重置
             </CapsuleButton>
             <CapsuleButton variant="primary" size="sm" type="button" @click="handleSearch(); close()">
-              <AppIcon name="search" :size="14" /> 搜索
+              <Search :size="14" aria-hidden="true" /> 搜索
             </CapsuleButton>
           </div>
         </FilterPopover>
@@ -885,7 +882,7 @@ useDialogLayer(() => previewVisible.value);
               <template v-if="item.status === '已完成'">
                 <img :src="getCoverUrl(item)" :alt="item.title" />
                 <div class="play-icon">
-                  <PlayCircleOutlined />
+                  <CirclePlay :size="44" :stroke-width="1.7" aria-hidden="true" />
                 </div>
               </template>
             </div>

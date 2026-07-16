@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { ListFilter } from "lucide-vue-next";
 import CapsuleButton from "./CapsuleButton.vue";
 import PopoverPanel from "./PopoverPanel.vue";
 
@@ -65,11 +66,7 @@ defineExpose({ close });
       :aria-expanded="open"
       @click="toggle"
     >
-      <svg class="size-[17px]" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <path d="M4 6H20" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
-        <path d="M7 12H17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
-        <path d="M10 18H14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
-      </svg>
+      <ListFilter :size="17" :stroke-width="1.8" aria-hidden="true" />
       <span>{{ props.label }}</span>
       <span
         v-if="props.activeCount > 0"
@@ -88,7 +85,7 @@ defineExpose({ close });
       <PopoverPanel
         v-if="open"
         :id="props.panelId"
-        class="absolute top-[calc(100%+12px)] right-0 z-50 w-[min(720px,calc(100vw-140px))] p-5"
+        class="absolute top-[calc(100%+12px)] right-0 z-[100] w-[min(720px,calc(100vw-140px))] p-5"
         role="dialog"
         :aria-label="panelLabel"
         v-bind="$attrs"

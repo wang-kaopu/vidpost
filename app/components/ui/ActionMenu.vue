@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, type CSSProperties } from "vue";
+import { EllipsisVertical } from "lucide-vue-next";
 import PopoverPanel from "./PopoverPanel.vue";
 
 /**
@@ -95,11 +96,7 @@ onBeforeUnmount(() => {
       :aria-expanded="open"
       @click="toggle"
     >
-      <svg class="size-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-        <circle cx="12" cy="5" r="1.7" />
-        <circle cx="12" cy="12" r="1.7" />
-        <circle cx="12" cy="19" r="1.7" />
-      </svg>
+      <EllipsisVertical :size="20" aria-hidden="true" />
     </button>
 
     <Teleport to="body">

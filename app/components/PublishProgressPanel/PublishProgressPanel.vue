@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ChevronDown, ChevronUp } from "lucide-vue-next";
 import PlatformLogo from "../PlatformLogo.vue";
 import IconButton from "../ui/IconButton.vue";
 import type { PublishProgressPhase, PublishProgressTask } from "@/publish-progress";
@@ -52,9 +53,7 @@ const phasePresentation: Record<PublishProgressPhase, PhasePresentation> = {
           :aria-expanded="!collapsed"
           @click="$emit('toggle-collapsed')"
         >
-          <svg aria-hidden="true" viewBox="0 0 24 24">
-            <path :d="collapsed ? 'M6 9L12 15L18 9' : 'M6 15L12 9L18 15'" />
-          </svg>
+          <component :is="collapsed ? ChevronDown : ChevronUp" :size="18" aria-hidden="true" />
         </IconButton>
         <IconButton
           size="sm"

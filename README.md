@@ -36,9 +36,26 @@ npm install -D tailwindcss @tailwindcss/vite --workspace app
 
 新增通用交互优先扩展 `components/ui` 中已有组件；只有业务结构和行为无法归入现有基础组件时才新建组件。UI 小组件不得直接请求接口、读取 Electron API 或依赖具体业务类型。
 
+`DataList` 统一将表格中的 SVG 图标和平台 Logo 按原尺寸的 80% 居中显示，并保留原布局占位，业务页面不再单独调整表格图标尺寸。
+
 具有独立 CSS 文件的业务组件按组件名建立目录，并在目录内只维护同名 Vue 与 CSS，例如 `components/Work/Work.vue` 和 `components/Work/Work.css`。没有独立 CSS 的简单组件继续直接放在 `components/` 或 `components/ui/` 下。
 
-账号、作品和记录页的筛选条件统一收纳在标题栏“筛选”按钮的轻量浮层中。浮层支持按钮切换、点击外部或按 `Esc` 关闭；按钮上的数字表示当前启用的筛选条件数量。
+界面图标统一使用 Lucide 官方 Vue 包，不维护自定义 SVG 图标组件，也不在 Vue 模板中手写图标路径。依赖安装和基础用法如下：
+
+```bash
+npm install lucide-vue-next --workspace app
+```
+
+```vue
+<script setup lang="ts">
+import { Search, Trash2 } from "lucide-vue-next";
+</script>
+
+<Search :size="18" aria-hidden="true" />
+<Trash2 :size="16" aria-hidden="true" />
+```
+
+账号、作品和记录页的筛选条件统一收纳在标题栏“筛选”按钮的轻量浮层中。浮层支持按钮切换、点击外部或按 `Esc` 关闭；按钮上的数字表示当前启用的筛选条件数量。筛选浮层允许越过短内容面板的底边显示，不受 `PanelShell` 高度裁切。
 
 ## 开发与验证
 
@@ -176,6 +193,12 @@ Bilibili、百家号、抖音和搜狐的 `xx-video.ts` 是稳定门面，只实
 抖音、百家号、Bilibili 和搜狐投稿成功后由 Electron 主进程注册独立监控：首轮在 30 秒后执行，之后每 30 秒查询一次，最多等待 2 小时。定时投稿的截止时间为平台计划发布时间加 2 小时；立即投稿以投稿成功时间为基准。应用重启后会恢复带 `platform_work_id` 的 `reviewing` 和 `running` 任务；搜狐活跃任务缺少 ID 时可从投稿响应 `data` 或旧审核记录 `raw.id` 回填。退出时清理所有计时器和在途请求。
 
 四个平台的审核查询均使用账号 storage-state 中的 Cookie 直连平台 HTTP 接口，不再启动 Playwright browser/context，也不使用标题、链接或发布时间匹配。平台审核失败映射为 `non_public`；发布过程被中断、记录无法恢复和审核超时映射为 `failed`。网络错误、HTTP 错误及响应结构错误不改变任务状态，只写入 `review_state.sync_error` 并在下一轮重试。已经取得平台终态但远程任务写回失败时只重试写回，不重复请求平台。状态变化通过主进程 IPC 通知记录页刷新，记录页不建立自己的轮询计时器。
+
+记录页在状态胶囊后显示信息图标，并通过悬浮或键盘聚焦提示状态原因。提示依次读取任务状态原因、审核原因、同步错误、发布失败详情和 `error_msg`，不使用带问号的系统帮助光标。
+
+记录页不单独占用“账号 ID”和“预约发布时间”列；每条记录通过操作列的纵向三点轻菜单查看记录 ID、账号 ID、预约时间并执行删除操作。
+
+记录页在状态右侧单独显示任务创建时间，并按当前系统本地时区格式化为年月日和时分。
 
 上传实现复用 `axios-retry`、`crc-32`、`file-type`、`mp4box`、`p-limit` 和 `sharp`，搜狐迁移没有新增依赖。抖音隐藏网络窗口脚本由 `npm run build:electron` 生成到 `.build/douyin-publish-renderer.js`。
 
