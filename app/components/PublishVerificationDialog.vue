@@ -163,7 +163,8 @@ useDialogLayer(() => props.visible && Boolean(props.request));
 .verification-summary-row + .verification-summary-row {
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px solid rgba(216, 227, 239, 0.9);
+  border-top: 1px solid rgba(255, 255, 255, 0.62);
+  box-shadow: inset 0 1px 0 rgba(43, 67, 92, 0.045);
 }
 
 .verification-summary-row strong {
@@ -178,6 +179,7 @@ useDialogLayer(() => props.visible && Boolean(props.request));
   gap: 14px;
   margin-top: 8px;
   padding-top: 18px;
-  border-top: 1px solid #eef2f7;
+  border-top: 1px solid rgba(255, 255, 255, 0.62);
+  box-shadow: inset 0 1px 0 rgba(43, 67, 92, 0.045);
 }
 </style>

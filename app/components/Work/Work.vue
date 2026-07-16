@@ -861,7 +861,7 @@ useDialogLayer(() => previewVisible.value);
             </fieldset>
           </div>
 
-          <div class="mt-5 flex justify-end gap-2 border-t border-border pt-4">
+          <div class="mt-5 flex justify-end gap-2 border-t border-white/58 pt-4 shadow-[inset_0_1px_0_rgba(43,67,92,0.045)]">
             <CapsuleButton variant="quiet" size="sm" type="button" @click="handleReset">
               <RefreshCw :size="14" aria-hidden="true" /> 重置
             </CapsuleButton>

@@ -69,19 +69,19 @@ const submit = () => {
 
 <template>
   <div class="grid min-h-screen place-items-center px-6 py-12">
-    <div class="w-full max-w-[480px] rounded-3xl border border-white/80 bg-white/90 px-12 py-11 shadow-[0_28px_80px_rgba(146,167,194,0.28)] backdrop-blur-xl max-sm:px-6">
+    <div class="w-full max-w-[480px] rounded-[30px] border border-white/60 bg-glass px-12 py-11 shadow-[inset_0_1px_0_rgba(255,255,255,0.86),inset_0_-1px_0_rgba(30,65,102,0.08),0_28px_72px_rgba(17,48,81,0.2)] backdrop-blur-[34px] backdrop-saturate-[165%] max-sm:px-6">
       <div class="mb-9 text-center">
         <h1 class="m-0 text-[clamp(2rem,4vw,2.625rem)] leading-[1.1] font-bold tracking-[-0.04em] text-ink">欢迎登录</h1>
         <p class="mt-2.5 mb-0 text-base text-ink-faint">使用手机号快速登录</p>
       </div>
 
-      <label class="mb-[18px] flex min-h-14 items-center gap-2.5 rounded-[14px] border-[1.5px] border-border bg-surface px-[18px] transition focus-within:border-primary focus-within:ring-3 focus-within:ring-primary/10">
+      <label class="mb-[18px] flex min-h-14 items-center gap-2.5 rounded-2xl border border-white/62 bg-white/58 px-[18px] shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] backdrop-blur-[14px] transition focus-within:border-primary focus-within:ring-3 focus-within:ring-primary/10">
         <span class="inline-flex text-ink-faint"><Phone :size="22" :stroke-width="1.8" aria-hidden="true" /></span>
         <TextInput v-model="form.phone" variant="bare" size="lg" type="tel" maxlength="11" placeholder="请输入手机号" />
       </label>
 
       <div class="grid grid-cols-[1.1fr_0.75fr] gap-3.5 max-sm:grid-cols-1">
-        <label class="flex min-h-14 items-center gap-2.5 rounded-[14px] border-[1.5px] border-border bg-surface px-[18px] transition focus-within:border-primary focus-within:ring-3 focus-within:ring-primary/10">
+        <label class="flex min-h-14 items-center gap-2.5 rounded-2xl border border-white/62 bg-white/58 px-[18px] shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] backdrop-blur-[14px] transition focus-within:border-primary focus-within:ring-3 focus-within:ring-primary/10">
           <span class="inline-flex text-ink-faint"><ShieldCheck :size="22" :stroke-width="1.8" aria-hidden="true" /></span>
           <TextInput v-model="form.code" variant="bare" size="lg" type="text" maxlength="6" placeholder="请输入验证码" />
         </label>

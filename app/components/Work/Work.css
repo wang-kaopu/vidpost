@@ -1,9 +1,9 @@
 .blank-state { display: flex; min-height: 240px; align-items: center; justify-content: center; color: #7d8897; font-size: 15px; text-align: center; }
 .blank-state p { margin: 0; color: #6a7788; font-size: 18px; }
-.work-card { position: relative; padding: 16px; border-radius: 26px; background: linear-gradient(180deg, rgba(255,255,255,.96), rgba(246,250,255,.88)); box-shadow: inset 0 0 0 1px rgba(219,229,241,.9), 0 18px 38px rgba(163,180,205,.18); cursor: pointer; transition: transform 180ms ease, box-shadow 180ms ease; }
-.work-card:hover { transform: translateY(-2px); box-shadow: inset 0 0 0 1px rgba(197,215,235,1), 0 22px 42px rgba(163,180,205,.22); }
-.work-card.selected, .work-card.is-selected { box-shadow: inset 0 0 0 2px rgba(74,144,226,.7), 0 22px 44px rgba(95,151,220,.22); }
-.work-cover { position: relative; overflow: hidden; border-radius: 20px; aspect-ratio: 16 / 9; background: linear-gradient(135deg, #d9e9fb, #eef5ff); }
+.work-card { position: relative; padding: 16px; border: 1px solid rgba(255,255,255,.56); border-radius: 26px; background: rgba(255,255,255,.58); box-shadow: inset 0 1px 0 rgba(255,255,255,.74); cursor: pointer; transition: transform 180ms ease, background 180ms ease, border-color 180ms ease; }
+.work-card:hover { background: rgba(255,255,255,.7); border-color: rgba(255,255,255,.78); }
+.work-card.selected, .work-card.is-selected { border-color: rgba(0,113,227,.72); box-shadow: inset 0 0 0 1px rgba(0,113,227,.38), inset 0 1px 0 rgba(255,255,255,.78); }
+.work-cover { position: relative; overflow: hidden; border-radius: 20px; aspect-ratio: 16 / 9; background: rgba(225,236,247,.74); }
 .work-cover img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .work-cover.portrait { aspect-ratio: 9 / 16; }
 .work-cover.landscape { aspect-ratio: 16 / 9; }
@@ -18,13 +18,13 @@
 .play-icon { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.22); color: #fff; font-size: 44px; opacity: 0; transition: opacity 160ms ease; }
 .work-cover:hover .play-icon { opacity: 1; }
 .load-status { display: flex; min-height: 56px; align-items: center; justify-content: center; padding: 8px 24px 0; color: #7d8897; font-size: 13px; }
-.batch-action-bar { position: fixed; bottom: 28px; left: 50%; z-index: 20; display: flex; max-width: calc(100vw - 48px); transform: translateX(-50%); align-items: center; gap: 18px; padding: 14px 16px 14px 20px; border-radius: 999px; background: rgba(255,255,255,.72); box-shadow: inset 0 0 0 1px rgba(255,255,255,.7), 0 22px 42px rgba(142,163,190,.28); backdrop-filter: blur(24px) saturate(140%); }
+.batch-action-bar { position: fixed; bottom: 28px; left: 50%; z-index: 20; display: flex; max-width: calc(100vw - 48px); transform: translateX(-50%); align-items: center; gap: 18px; padding: 14px 16px 14px 20px; border: 1px solid rgba(255,255,255,.64); border-radius: 999px; background: rgba(255,255,255,.7); box-shadow: inset 0 1px 0 rgba(255,255,255,.84), 0 18px 44px rgba(17,48,81,.2); backdrop-filter: blur(30px) saturate(170%); }
 .batch-info { min-width: 0; overflow: hidden; color: #435267; font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
-.batch-count { color: #2f7ce8; font-weight: 700; }
+.batch-count { color: #0071e3; font-weight: 700; }
 .slide-up-enter-active, .slide-up-leave-active { transition: opacity 180ms ease, transform 180ms ease; }
 .slide-up-enter-from, .slide-up-leave-to { transform: translate(-50%, 12px); opacity: 0; }
 .video-preview-mask { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 24px; background: rgba(24,35,52,.36); backdrop-filter: blur(10px) saturate(116%); }
-.video-preview-dialog { display: flex; width: min(960px, 100%); height: min(720px, calc(100vh - 48px)); flex-direction: column; overflow: hidden; border-radius: 24px; background: rgba(255,255,255,.96); box-shadow: 0 28px 80px rgba(84,110,144,.3); }
+.video-preview-dialog { display: flex; width: min(960px, 100%); height: min(720px, calc(100vh - 48px)); flex-direction: column; overflow: hidden; border: 1px solid rgba(255,255,255,.62); border-radius: 24px; background: rgba(255,255,255,.78); box-shadow: inset 0 1px 0 rgba(255,255,255,.88), 0 30px 80px rgba(17,43,72,.28); backdrop-filter: blur(38px) saturate(170%); }
 .video-preview-header { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 22px 14px; }
 .video-preview-header h3 { margin: 0; color: #1d2733; font-size: 20px; }
 .video-preview-body { display: flex; min-height: 0; flex: 1; align-items: center; justify-content: center; padding: 0 22px 22px; }

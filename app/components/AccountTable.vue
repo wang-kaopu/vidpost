@@ -515,7 +515,7 @@ useDialogLayer(() => accountDialogVisible.value);
             </label>
           </div>
 
-          <div class="mt-5 flex justify-end gap-2 border-t border-border pt-4">
+          <div class="mt-5 flex justify-end gap-2 border-t border-white/58 pt-4 shadow-[inset_0_1px_0_rgba(43,67,92,0.045)]">
             <CapsuleButton variant="quiet" size="sm" type="button" @click="handleReset">
               <RefreshCw :size="14" aria-hidden="true" /> 重置
             </CapsuleButton>
@@ -613,7 +613,7 @@ useDialogLayer(() => accountDialogVisible.value);
                 v-if="accountBackendPlatforms.has(item.platformKey)"
                 type="button"
                 role="menuitem"
-                class="flex h-10 w-full items-center rounded-lg px-3 text-left text-[13px] text-ink-muted transition hover:bg-surface-muted hover:text-ink disabled:cursor-not-allowed disabled:opacity-45"
+                class="flex h-10 w-full items-center rounded-2xl px-3 text-left text-[13px] text-ink-muted transition hover:bg-surface-muted hover:text-ink disabled:cursor-not-allowed disabled:opacity-45"
                 :disabled="
                   Boolean(
                     renameDialogLoading || deletingAccountId || pingingAccountId || pingingAll || backendWindowVisible,
@@ -626,7 +626,7 @@ useDialogLayer(() => accountDialogVisible.value);
               <button
                 type="button"
                 role="menuitem"
-                class="flex h-10 w-full items-center rounded-lg px-3 text-left text-[13px] text-ink-muted transition hover:bg-surface-muted hover:text-ink disabled:cursor-not-allowed disabled:opacity-45"
+                class="flex h-10 w-full items-center rounded-2xl px-3 text-left text-[13px] text-ink-muted transition hover:bg-surface-muted hover:text-ink disabled:cursor-not-allowed disabled:opacity-45"
                 :disabled="Boolean(renameDialogLoading || deletingAccountId || pingingAccountId || pingingAll)"
                 @click="close(); openRenameDialog(item)"
               >
@@ -635,7 +635,7 @@ useDialogLayer(() => accountDialogVisible.value);
               <button
                 type="button"
                 role="menuitem"
-                class="flex h-10 w-full items-center rounded-lg px-3 text-left text-[13px] text-ink-muted transition hover:bg-surface-muted hover:text-ink disabled:cursor-not-allowed disabled:opacity-45"
+                class="flex h-10 w-full items-center rounded-2xl px-3 text-left text-[13px] text-ink-muted transition hover:bg-surface-muted hover:text-ink disabled:cursor-not-allowed disabled:opacity-45"
                 :disabled="Boolean(renameDialogLoading || deletingAccountId || pingingAccountId || pingingAll)"
                 @click="close(); handlePingAccount(item)"
               >
@@ -644,7 +644,7 @@ useDialogLayer(() => accountDialogVisible.value);
               <button
                 type="button"
                 role="menuitem"
-                class="flex h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-[13px] text-danger transition hover:bg-danger-soft disabled:cursor-not-allowed disabled:opacity-45"
+                class="flex h-10 w-full items-center gap-2 rounded-2xl px-3 text-left text-[13px] text-danger transition hover:bg-danger-soft disabled:cursor-not-allowed disabled:opacity-45"
                 :disabled="Boolean(renameDialogLoading || deletingAccountId || pingingAccountId || pingingAll)"
                 @click="close(); handleDeleteAccount(item)"
               >
@@ -818,29 +818,29 @@ useDialogLayer(() => accountDialogVisible.value);
 
 .pager-info { color: #697789; font-size: 14px; }
 .pager-numbers { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.pager-button { display: inline-flex; align-items: center; justify-content: center; min-height: 38px; padding: 0 14px; border: 1px solid rgba(184, 204, 227, 0.9); border-radius: 12px; background: rgba(255, 255, 255, 0.92); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75), 0 10px 20px rgba(118, 146, 178, 0.12); color: #48617f; font-size: 14px; font-weight: 600; transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease, color 160ms ease, border-color 160ms ease; }
-.pager-button:hover:not(:disabled) { transform: translateY(-1px); border-color: rgba(132, 171, 214, 0.96); background: rgba(244, 249, 255, 0.98); color: #2d5f98; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82), 0 14px 26px rgba(99, 140, 190, 0.18); }
+.pager-button { display: inline-flex; align-items: center; justify-content: center; min-height: 38px; padding: 0 14px; border: 1px solid rgba(255,255,255,.58); border-radius: 999px; background: rgba(255,255,255,.5); box-shadow: inset 0 1px 0 rgba(255,255,255,.74); color: #48617f; font-size: 14px; font-weight: 600; transition: transform 160ms ease, background 160ms ease, color 160ms ease, border-color 160ms ease; }
+.pager-button:hover:not(:disabled) { border-color: rgba(255,255,255,.78); background: rgba(255,255,255,.68); color: #0066cc; }
 .pager-number-button { min-width: 38px; padding: 0 12px; }
 .pager-nav-button { min-width: 76px; }
-.pager-button.active { border-color: transparent; background: linear-gradient(135deg, #4d9cff, #2d79dd); color: #fff; box-shadow: 0 12px 24px rgba(77, 156, 255, 0.24); }
+.pager-button.active { border-color: transparent; background: #0071e3; color: #fff; box-shadow: none; }
 .pager-button.active:hover:not(:disabled) { color: #fff; }
 .pager-button:disabled { cursor: not-allowed; opacity: 0.5; transform: none; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 8px 18px rgba(118, 146, 178, 0.08); }
 
 .platform-dialog-mask { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 24px; background: rgba(24, 35, 52, 0.22); backdrop-filter: blur(10px) saturate(116%); }
 .account-backend-mask { cursor: wait; }
-.account-backend-mask-status { padding: 12px 18px; border-radius: 14px; background: rgba(255, 255, 255, 0.94); box-shadow: 0 14px 36px rgba(45, 61, 82, 0.16); color: #536274; font-size: 14px; }
+.account-backend-mask-status { padding: 12px 18px; border-radius: 16px; background: rgba(255, 255, 255, 0.94); box-shadow: 0 14px 36px rgba(45, 61, 82, 0.16); color: #536274; font-size: 14px; }
 .dialog-surface { will-change: transform, opacity; }
-.tag-dialog { width: min(420px, calc(100vw - 48px)); padding: 24px; border-radius: 20px; background: rgba(255, 255, 255, 0.96); box-shadow: 0 28px 80px rgba(84, 110, 144, 0.24); }
+.tag-dialog { width: min(420px, calc(100vw - 48px)); padding: 24px; border: 1px solid rgba(255,255,255,.62); border-radius: 20px; background: rgba(255,255,255,.78); box-shadow: inset 0 1px 0 rgba(255,255,255,.86), 0 28px 72px rgba(17,43,72,.24); backdrop-filter: blur(34px) saturate(170%); }
 .tag-dialog-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
 .tag-dialog-header h3 { margin: 0; color: #1f2937; font-size: 18px; font-weight: 600; }
 .tag-dialog-body { margin-bottom: 24px; }
 .tag-dialog-field { position: relative; }
-.tag-dialog-field :deep(input) { width: 100%; height: 44px; padding: 0 60px 0 14px; border: 1px solid #dce3eb; border-radius: 12px; background: #fff; color: #1f2937; font-size: 14px; outline: none; transition: border-color 0.2s, box-shadow 0.2s; }
+.tag-dialog-field :deep(input) { width: 100%; height: 44px; padding: 0 60px 0 14px; border: 1px solid #dce3eb; border-radius: 16px; background: #fff; color: #1f2937; font-size: 14px; outline: none; transition: border-color 0.2s, box-shadow 0.2s; }
 .tag-dialog-field :deep(input:focus) { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12); }
 .tag-dialog-field :deep(input::placeholder) { color: #9ca3af; }
 .tag-dialog-char-count { position: absolute; top: 50%; right: 12px; transform: translateY(-50%); color: #9ca3af; font-size: 12px; pointer-events: none; }
 .tag-dialog-footer { display: flex; justify-content: flex-end; gap: 12px; }
-.tag-dialog-footer :deep(button) { min-height: 44px; flex-shrink: 0; padding: 0 22px; border-radius: 12px; font-size: 15px; font-weight: 600; }
+.tag-dialog-footer :deep(button) { min-height: 44px; flex-shrink: 0; padding: 0 22px; border-radius: 16px; font-size: 15px; font-weight: 600; }
 .tag-dialog-error { margin-top: 10px; color: #d86e65; font-size: 13px; }
 
 .dialog-layer-enter-active,

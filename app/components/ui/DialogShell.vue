@@ -36,11 +36,11 @@ function handleMaskClick(): void {
     <Transition name="dialog-layer" appear>
       <div
         v-if="props.visible"
-        class="fixed inset-0 z-50 grid place-items-center bg-[rgba(24,35,52,0.22)] p-6 backdrop-blur-[10px] backdrop-saturate-[116%]"
+        class="fixed inset-0 z-50 grid place-items-center bg-[rgba(17,36,58,0.26)] p-6 backdrop-blur-[8px] backdrop-saturate-[118%]"
         @click.self="handleMaskClick"
       >
         <section
-          class="dialog-surface max-h-[min(760px,calc(100vh-48px))] overflow-auto rounded-[30px] bg-white/96 px-[30px] pt-[30px] pb-[26px] shadow-[0_28px_80px_rgba(84,110,144,0.24)] will-change-[transform,opacity] max-[900px]:rounded-3xl max-[900px]:px-[18px] max-[900px]:pt-6 max-[900px]:pb-5"
+          class="dialog-surface max-h-[min(760px,calc(100vh-48px))] overflow-auto rounded-[30px] border border-white/60 bg-glass-strong px-[30px] pt-[30px] pb-[26px] shadow-[inset_0_1px_0_rgba(255,255,255,0.88),inset_0_-1px_0_rgba(30,65,102,0.08),0_30px_80px_rgba(17,43,72,0.24)] backdrop-blur-[38px] backdrop-saturate-[170%] will-change-[transform,opacity] max-[900px]:rounded-3xl max-[900px]:px-[18px] max-[900px]:pt-6 max-[900px]:pb-5"
           :class="{
             'w-[min(920px,100%)]': props.width === 'default',
             'w-[min(1100px,100%)] max-h-[min(820px,calc(100vh-48px))] overflow-visible max-[900px]:w-[min(1100px,calc(100vw-24px))]': props.width === 'wide',

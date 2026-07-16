@@ -9,8 +9,11 @@ const ALLOWED_GLOBAL_CLASSES = new Set(['rm-dialog-open', 'workspace'])
  * @returns 去重并排序后的违规 class 名称
  */
 export function findDisallowedGlobalClassSelectors(css: string): string[] {
-  const withoutComments = css.replace(/\/\*[\s\S]*?\*\//g, '')
-  const classNames = [...withoutComments.matchAll(/\.(-?[_a-zA-Z]+[_a-zA-Z0-9-]*)/g)]
+  const withoutCommentsOrUrls = css
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    // 资源扩展名不是选择器，扫描前移除 url() 可避免把 .webp 等误判为 class。
+    .replace(/url\([^)]*\)/g, '')
+  const classNames = [...withoutCommentsOrUrls.matchAll(/\.(-?[_a-zA-Z]+[_a-zA-Z0-9-]*)/g)]
     .map((match) => match[1])
     .filter((className) => !ALLOWED_GLOBAL_CLASSES.has(className))
 

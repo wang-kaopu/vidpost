@@ -17,14 +17,14 @@ withDefaults(
 </script>
 
 <template>
-  <section class="mx-9 overflow-hidden rounded-2xl border border-border bg-surface">
+  <section class="mx-9 overflow-hidden rounded-2xl border border-white/58 bg-white/56 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] backdrop-blur-[18px]">
     <div class="overflow-x-auto">
       <table class="data-table w-full border-collapse text-sm" :class="tableClass" :style="{ minWidth }">
         <slot name="columns" />
-        <thead class="border-b border-border bg-surface-muted text-xs font-semibold text-ink-muted">
+        <thead class="bg-white/34 text-xs font-semibold text-ink-muted">
           <slot name="head" />
         </thead>
-        <tbody class="[&>tr]:border-b [&>tr]:border-border/70 [&>tr]:transition-colors [&>tr:hover]:bg-surface-muted/70">
+        <tbody class="[&>tr]:transition-colors [&>tr:hover]:bg-white/32">
           <slot />
           <tr v-if="empty">
             <td class="px-4 py-16 text-center text-ink-muted" :colspan="columns">
@@ -45,7 +45,8 @@ withDefaults(
 .data-table :deep(th),
 .data-table :deep(td) {
   padding: 18px 12px;
-  border-bottom: 1px solid #edf1f5;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.62);
+  box-shadow: inset 0 -1px 0 rgba(43, 67, 92, 0.045);
   text-align: left;
   font-size: 16px;
   vertical-align: middle;

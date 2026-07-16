@@ -17,7 +17,7 @@ const toneClasses = {
 </script>
 
 <template>
-  <div class="grid size-10 shrink-0 place-items-center rounded-xl" :class="toneClasses[tone]">
+  <div class="grid size-10 shrink-0 place-items-center rounded-2xl" :class="toneClasses[tone]">
     <slot />
   </div>
 </template>

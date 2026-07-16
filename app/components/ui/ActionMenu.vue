@@ -89,7 +89,7 @@ onBeforeUnmount(() => {
     <button
       ref="triggerRef"
       type="button"
-      class="grid size-9 place-items-center rounded-xl text-ink-muted transition hover:bg-surface-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      class="grid size-9 place-items-center rounded-2xl text-ink-muted transition hover:bg-surface-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       :aria-label="props.label || '更多操作'"
       aria-haspopup="menu"
       :aria-controls="props.panelId"
@@ -115,7 +115,7 @@ onBeforeUnmount(() => {
           role="menu"
           :aria-label="props.label || '更多操作'"
         >
-          <PopoverPanel class="w-40 rounded-xl p-1.5 shadow-lg">
+          <PopoverPanel class="w-40 rounded-2xl p-1.5 shadow-lg">
             <slot :close="close" />
           </PopoverPanel>
         </div>

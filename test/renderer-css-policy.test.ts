@@ -9,6 +9,7 @@ import {
 test('renderer CSS policy accepts the approved global class selectors', () => {
   const css = `@import "tailwindcss";
 @theme { --color-primary: #3f8cff; }
+:root { background-image: url("/backgrounds/liquid-glass.webp"); }
 .workspace { transform: none; }
 body.rm-dialog-open .workspace { filter: none; }
 `

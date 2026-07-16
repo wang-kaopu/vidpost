@@ -52,14 +52,15 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <aside class="flex h-screen flex-col overflow-hidden border-r border-[#bbcdde]/55 bg-[linear-gradient(180deg,rgba(219,238,249,0.72),rgba(230,241,248,0.84))] px-4 pt-[86px] pb-5 backdrop-blur-xl max-[1180px]:px-3">
+  <aside class="relative flex h-screen flex-col overflow-hidden bg-[rgba(224,227,231,0.26)] px-4 pt-[86px] pb-5 shadow-[inset_-1px_0_0_rgba(255,255,255,0.48)] backdrop-blur-[38px] backdrop-saturate-[118%] after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-2 after:bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.34))] after:content-[''] max-[1180px]:px-3">
     <nav class="mt-[22px] flex flex-col gap-2">
       <button
         v-for="menu in menus"
         :key="menu.key"
-        class="flex min-h-[50px] items-center gap-3 rounded-2xl px-4 text-left text-base text-[#1d2733] transition hover:bg-white/50 max-[1180px]:justify-center max-[1180px]:px-0"
-        :class="{ 'bg-white/80 shadow-[inset_0_0_0_1px_rgba(197,215,229,0.6)]': active === menu.key }"
+        class="flex min-h-[50px] items-center gap-3 rounded-2xl border border-transparent px-4 text-left text-base text-ink transition hover:bg-white/42 active:scale-[0.97] max-[1180px]:justify-center max-[1180px]:px-0"
+        :class="{ 'border-white/58 bg-white/42 shadow-[inset_0_1px_0_rgba(255,255,255,0.74)]': active === menu.key }"
         type="button"
+        :aria-current="active === menu.key ? 'page' : undefined"
         @click="emit('select', menu.key)"
       >
         <span
@@ -72,10 +73,10 @@ onBeforeUnmount(() => {
       </button>
     </nav>
 
-    <div ref="cardRef" class="relative mt-auto border-t border-[#b4c5d4]/55 px-2.5 py-3.5">
+    <div ref="cardRef" class="relative mt-auto border-t border-white/58 px-2.5 py-3.5 shadow-[inset_0_1px_0_rgba(43,67,92,0.045)]">
       <div class="flex items-center gap-3">
         <button
-          class="grid size-[42px] shrink-0 place-items-center rounded-full bg-[linear-gradient(135deg,#d7e7f7,#f7fbff)] font-bold text-[#45617f]"
+          class="grid size-[42px] shrink-0 place-items-center rounded-full border border-white/62 bg-white/54 font-bold text-[#36597e] shadow-[inset_0_1px_0_rgba(255,255,255,0.82)] backdrop-blur-[14px] transition active:scale-[0.96]"
           type="button"
           :aria-expanded="menuOpen"
           aria-label="打开账号菜单"
@@ -95,7 +96,7 @@ onBeforeUnmount(() => {
         leave-to-class="translate-y-1.5 opacity-0"
       >
         <PopoverPanel v-if="menuOpen" class="absolute bottom-[calc(100%+10px)] left-2.5 p-1.5">
-          <button class="min-h-9 rounded-lg px-3 text-sm text-ink-muted transition hover:bg-surface-muted hover:text-ink" type="button" @click.stop="handleLogout">
+          <button class="min-h-9 rounded-2xl px-3 text-sm text-ink-muted transition hover:bg-surface-muted hover:text-ink" type="button" @click.stop="handleLogout">
             退出登录
           </button>
         </PopoverPanel>

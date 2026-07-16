@@ -1,6 +1,6 @@
 .notification-center { position: fixed; right: 28px; bottom: 28px; z-index: 120; display: flex; flex-direction: column; align-items: flex-end; pointer-events: none; }
 .notification-center-shell, .notification-center-fab { pointer-events: auto; }
-.notification-center-shell { display: flex; width: min(388px, calc(100vw - 40px)); max-height: min(720px, calc(100vh - 56px)); flex-direction: column; gap: 16px; overflow: hidden; padding: 18px; border-radius: 28px; background: rgba(255,255,255,.8); box-shadow: inset 0 1px 0 rgba(255,255,255,.78), 0 24px 56px rgba(142,163,190,.28); backdrop-filter: blur(24px) saturate(140%); }
+.notification-center-shell { display: flex; width: min(388px, calc(100vw - 40px)); max-height: min(720px, calc(100vh - 56px)); flex-direction: column; gap: 16px; overflow: hidden; padding: 18px; border: 1px solid rgba(255,255,255,.62); border-radius: 28px; background: rgba(255,255,255,.72); box-shadow: inset 0 1px 0 rgba(255,255,255,.86), 0 22px 52px rgba(17,48,81,.22); backdrop-filter: blur(34px) saturate(170%); }
 .notification-center-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .notification-center-header strong, .notification-center-empty strong { display: block; color: #1f2530; font-size: 22px; letter-spacing: -.03em; }
 .notification-center-kicker { margin: 0 0 6px; color: #6f7f93; font-size: 12px; letter-spacing: .16em; text-transform: uppercase; }
@@ -8,8 +8,8 @@
 .notification-center-list { display: flex; min-height: 0; flex: 1 1 auto; flex-direction: column; gap: 12px; overflow-y: auto; padding-right: 4px; scrollbar-color: rgba(151,170,193,.42) transparent; scrollbar-width: thin; }
 .notification-center-list::-webkit-scrollbar { width: 8px; }
 .notification-center-list::-webkit-scrollbar-thumb { border-radius: 999px; background: rgba(151,170,193,.42); }
-.notification-toast { position: relative; display: grid; grid-template-columns: 4px minmax(0, 1fr) auto; gap: 14px; padding: 16px 16px 16px 0; border-radius: 22px; background: linear-gradient(180deg, rgba(255,255,255,.98), rgba(245,249,255,.94)); box-shadow: inset 0 0 0 1px rgba(219,229,240,.92), 0 14px 30px rgba(149,169,193,.14); }
-.notification-toast-accent { margin: 2px 0 2px 14px; border-radius: 999px; background: #67a6ff; }
+.notification-toast { position: relative; display: grid; grid-template-columns: 4px minmax(0, 1fr) auto; gap: 14px; padding: 16px 16px 16px 0; border: 1px solid rgba(255,255,255,.58); border-radius: 22px; background: rgba(255,255,255,.62); box-shadow: inset 0 1px 0 rgba(255,255,255,.72); }
+.notification-toast-accent { margin: 2px 0 2px 14px; border-radius: 999px; background: #0071e3; }
 .notification-toast.is-success .notification-toast-accent { background: #41b37b; }
 .notification-toast.is-warning .notification-toast-accent { background: #f0a93b; }
 .notification-toast.is-error .notification-toast-accent { background: #df6d66; }
@@ -21,15 +21,15 @@
 .notification-toast p, .notification-center-empty p { margin: 8px 0 0; color: #5f7084; font-size: 14px; line-height: 1.55; }
 .notification-toast-footer { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
 .notification-toast-action, .notification-toast-state { display: inline-flex; min-height: 30px; align-items: center; padding: 0 12px; border-radius: 999px; font-size: 12px; font-weight: 700; }
-.notification-toast-action { background: rgba(234,243,255,.98); box-shadow: inset 0 0 0 1px rgba(195,217,246,.98); color: #2d79dd; }
+.notification-toast-action { background: rgba(234,243,255,.82); box-shadow: inset 0 0 0 1px rgba(0,113,227,.18); color: #0071e3; }
 .notification-toast-state { background: rgba(241,246,252,.92); color: #75879a; }
 .notification-toast-dismiss { align-self: flex-start; margin: 12px 12px 0 0; font-size: 20px; line-height: 1; }
 .notification-toast.is-unread { transform: translateY(-1px); }
 .notification-center-empty { padding: 22px 6px 8px; }
-.notification-center-fab { position: relative; display: grid; width: 58px; height: 58px; place-items: center; border-radius: 20px; background: rgba(255,255,255,.88); box-shadow: inset 0 1px 0 rgba(255,255,255,.78), 0 18px 36px rgba(142,163,190,.26); backdrop-filter: blur(22px) saturate(140%); }
-.notification-center-fab-core { display: grid; width: 28px; height: 28px; place-items: center; border-radius: 999px; background: linear-gradient(180deg, rgba(240,246,255,.96), rgba(227,237,251,.94)); box-shadow: inset 0 0 0 1px rgba(200,216,238,.9); }
-.notification-center-fab-dot { width: 10px; height: 10px; border-radius: 999px; background: linear-gradient(135deg, #4d9cff, #2f7ce8); box-shadow: 0 0 0 6px rgba(77,156,255,.14); }
-.notification-center-fab-badge { position: absolute; top: -4px; right: -4px; display: inline-flex; min-width: 24px; height: 24px; align-items: center; justify-content: center; padding: 0 7px; border-radius: 999px; background: linear-gradient(135deg, #2d79dd, #66a8ff); box-shadow: inset 0 1px 0 rgba(255,255,255,.24), 0 10px 18px rgba(77,156,255,.26); color: #fff; font-size: 11px; font-weight: 700; }
+.notification-center-fab { position: relative; display: grid; width: 58px; height: 58px; place-items: center; border: 1px solid rgba(255,255,255,.62); border-radius: 50%; background: rgba(255,255,255,.7); box-shadow: inset 0 1px 0 rgba(255,255,255,.84), 0 16px 36px rgba(17,48,81,.2); backdrop-filter: blur(30px) saturate(170%); }
+.notification-center-fab-core { display: grid; width: 28px; height: 28px; place-items: center; border-radius: 999px; background: rgba(234,243,255,.78); box-shadow: inset 0 0 0 1px rgba(0,113,227,.16); }
+.notification-center-fab-dot { width: 10px; height: 10px; border-radius: 999px; background: #0071e3; box-shadow: 0 0 0 6px rgba(0,113,227,.12); }
+.notification-center-fab-badge { position: absolute; top: -4px; right: -4px; display: inline-flex; min-width: 24px; height: 24px; align-items: center; justify-content: center; padding: 0 7px; border-radius: 999px; background: #0071e3; box-shadow: inset 0 1px 0 rgba(255,255,255,.24); color: #fff; font-size: 11px; font-weight: 700; }
 .notification-center-shell-enter-active, .notification-center-shell-leave-active { transition: opacity 180ms ease, transform 180ms ease; }
 .notification-center-shell-enter-from, .notification-center-shell-leave-to { transform: translateY(10px); opacity: 0; }
 @media (max-width: 900px) {

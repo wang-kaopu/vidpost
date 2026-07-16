@@ -1,5 +1,5 @@
 .data-table { width: 100%; margin: 0; border-collapse: collapse; table-layout: fixed; }
-.data-table th, .data-table td { padding: 18px 12px; border-bottom: 1px solid #edf1f5; text-align: left; font-size: 16px; vertical-align: middle; }
+.data-table th, .data-table td { padding: 18px 12px; border-bottom: 1px solid rgba(255,255,255,.62); box-shadow: inset 0 -1px 0 rgba(43,67,92,.045); text-align: left; font-size: 16px; vertical-align: middle; }
 .data-table th { color: #1d2733; font-weight: 700; }
 .platform-table-shell { display: flex; flex-direction: column; gap: 14px; max-height: calc(min(820px, calc(100vh - 48px)) - 120px); overflow: visible; padding-bottom: 28px; }
 .platform-table-caption { color: #5f6d7f; font-size: 15px; }
@@ -19,10 +19,10 @@
 .platform-account-chip :deep(.platform-logo-fallback) { font-size: 12px; }
 .platform-account-chip-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .platform-add-button { min-height: 34px; padding: 0 12px; border-radius: 999px; white-space: nowrap; }
-.platform-account-dropdown { position: absolute; top: calc(100% + 8px); left: 0; z-index: 80; min-width: 240px; max-width: min(320px, 100%); max-height: 240px; overflow: auto; padding: 8px; border: 1px solid #d8e0eb; border-radius: 14px; background: rgba(255, 255, 255, 0.98); box-shadow: 0 18px 36px rgba(105, 122, 146, 0.18); }
+.platform-account-dropdown { position: absolute; top: calc(100% + 8px); left: 0; z-index: 80; min-width: 240px; max-width: min(320px, 100%); max-height: 240px; overflow: auto; padding: 8px; border: 1px solid rgba(255,255,255,.62); border-radius: 16px; background: rgba(255,255,255,.78); box-shadow: inset 0 1px 0 rgba(255,255,255,.84), 0 16px 36px rgba(17,48,81,.18); backdrop-filter: blur(28px) saturate(165%); }
 .platform-account-dropdown--up { top: auto; bottom: calc(100% + 8px); }
 .platform-account-dropdown--right { right: 0; left: auto; }
-.platform-account-dropdown-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; border-radius: 12px; background: transparent; color: #1d2733; text-align: left; }
+.platform-account-dropdown-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; border-radius: 16px; background: transparent; color: #1d2733; text-align: left; }
 .platform-account-dropdown-item:hover { background: #f5f8fc; }
 .platform-account-dropdown-item.selected { background: rgba(90, 157, 245, 0.1); }
 .platform-account-dropdown-item:disabled { cursor: not-allowed; opacity: 0.55; }
@@ -33,19 +33,19 @@
 .platform-account-dropdown-main strong { color: #1d2733; font-size: 14px; }
 .platform-account-dropdown-main small { color: #7c8798; font-size: 12px; }
 .platform-account-dropdown-empty { padding: 10px 12px; color: #7c8798; font-size: 13px; }
-.platform-dialog-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 8px; padding-top: 18px; border-top: 1px solid #eef2f7; }
+.platform-dialog-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 8px; padding-top: 18px; border-top: 1px solid rgba(255,255,255,.62); box-shadow: inset 0 1px 0 rgba(43,67,92,.045); }
 .platform-dialog-footer--table { margin-top: 8px; padding: 18px 0 0; }
 .platform-dialog-footer-copy { margin: 0; color: #5f6d7f; font-size: 15px; }
 .platform-dialog-footer-copy strong { color: #1f2937; }
 .platform-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 20px; }
 .platform-grid--selectable { margin-bottom: 20px; }
-.platform-card { position: relative; display: flex; width: 100%; min-height: 172px; flex-direction: column; align-items: center; gap: 10px; padding: 24px 18px; border: 1px solid rgba(210, 223, 236, 0.92); border-radius: 26px; background: radial-gradient(circle at top, rgba(109, 176, 255, 0.14), transparent 52%), linear-gradient(180deg, rgba(255,255,255,.96), rgba(245,249,253,.94)); box-shadow: 0 16px 34px rgba(176,193,216,.18); transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease; }
-.platform-card:hover:not(:disabled) { transform: translateY(-2px); border-color: rgba(88,149,224,.5); box-shadow: 0 18px 38px rgba(140,170,208,.24); }
-.platform-card.selected { transform: translateY(-1px); border-color: rgba(59,130,246,.78); box-shadow: inset 0 0 0 1px rgba(120,181,255,.68), 0 20px 42px rgba(88,149,224,.24); }
+.platform-card { position: relative; display: flex; width: 100%; min-height: 172px; flex-direction: column; align-items: center; gap: 10px; padding: 24px 18px; border: 1px solid rgba(255,255,255,.58); border-radius: 26px; background: rgba(255,255,255,.58); box-shadow: inset 0 1px 0 rgba(255,255,255,.76); transition: background 160ms ease, border-color 160ms ease; }
+.platform-card:hover:not(:disabled) { border-color: rgba(255,255,255,.8); background: rgba(255,255,255,.7); }
+.platform-card.selected { border-color: rgba(0,113,227,.76); box-shadow: inset 0 0 0 1px rgba(0,113,227,.34), inset 0 1px 0 rgba(255,255,255,.8); }
 .platform-card:disabled { cursor: not-allowed; opacity: .72; }
 .platform-card-check { position: absolute; top: 14px; right: 14px; display: grid; width: 24px; height: 24px; place-items: center; border-radius: 50%; background: rgba(255,255,255,.86); box-shadow: inset 0 0 0 1px rgba(209,221,235,.96), 0 6px 16px rgba(102,125,150,.12); transition: background 160ms ease, box-shadow 160ms ease; }
 .platform-card-check span { width: 9px; height: 5px; transform: rotate(-45deg) translateY(-1px); border-bottom: 2px solid transparent; border-left: 2px solid transparent; }
-.platform-card-check.checked { background: linear-gradient(135deg, #5aa7ff, #2f7ce8); box-shadow: 0 10px 20px rgba(77,145,230,.26); }
+.platform-card-check.checked { background: #0071e3; box-shadow: none; }
 .platform-card-check.checked span { border-bottom-color: #fff; border-left-color: #fff; }
 .platform-card :deep(.platform-logo) { width: 72px; height: 72px; border-radius: 22px; }
 .platform-card :deep(.platform-logo img) { width: 48px; height: 48px; }

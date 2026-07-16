@@ -141,14 +141,14 @@ watch(
 
 <template>
   <div
-    class="flex min-h-10 flex-wrap items-center gap-1.5 rounded-xl border border-border bg-surface px-2.5 py-1.5 transition focus-within:border-primary focus-within:ring-3 focus-within:ring-primary/10"
-    :class="{ 'cursor-not-allowed bg-surface-muted opacity-60': disabled }"
+    class="flex min-h-10 flex-wrap items-center gap-1.5 rounded-2xl border border-white/62 bg-white/64 px-2.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] backdrop-blur-[14px] transition focus-within:border-primary focus-within:ring-3 focus-within:ring-primary/10"
+    :class="{ 'cursor-not-allowed bg-white/38 opacity-60': disabled }"
   >
     <div
       v-for="(tag, index) in modelValue"
       :key="`${tag}-${index}`"
       :ref="(el) => syncChipRefs(el as HTMLDivElement | null, index)"
-      class="inline-flex min-h-7 max-w-full items-center gap-1 rounded-lg bg-primary-soft px-2 text-xs font-semibold text-primary outline-none focus:ring-2 focus:ring-primary/20"
+      class="inline-flex min-h-7 max-w-full items-center gap-1 rounded-2xl bg-primary-soft px-2 text-xs font-semibold text-primary outline-none focus:ring-2 focus:ring-primary/20"
       :tabindex="disabled ? -1 : 0"
       @keydown="onChipKeydown(index, $event)"
     >

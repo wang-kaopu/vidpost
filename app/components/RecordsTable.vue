@@ -359,7 +359,7 @@ onUnmounted(() => {
             </fieldset>
           </div>
 
-          <div class="mt-5 flex justify-end gap-2 border-t border-border pt-4">
+          <div class="mt-5 flex justify-end gap-2 border-t border-white/58 pt-4 shadow-[inset_0_1px_0_rgba(43,67,92,0.045)]">
             <CapsuleButton variant="quiet" size="sm" type="button" @click="resetFilters">
               <RefreshCw :size="14" aria-hidden="true" /> 重置
             </CapsuleButton>
@@ -459,7 +459,7 @@ onUnmounted(() => {
                 :panel-id="`record-actions-${item.id}`"
                 :label="`${item.title || item.id}的记录操作`"
               >
-                <div role="presentation" class="border-b border-border px-3 py-2.5 text-left">
+                <div role="presentation" class="border-b border-white/58 px-3 py-2.5 text-left shadow-[inset_0_-1px_0_rgba(43,67,92,0.045)]">
                   <span class="block text-[11px] font-semibold text-ink-faint">记录 ID</span>
                   <strong class="mt-1 block text-xs font-medium text-ink">{{ item.id }}</strong>
                   <span class="mt-2.5 block text-[11px] font-semibold text-ink-faint">账号 ID</span>
@@ -472,7 +472,7 @@ onUnmounted(() => {
                 <button
                   type="button"
                   role="menuitem"
-                  class="flex h-10 w-full items-center rounded-lg px-3 text-left text-[13px] text-danger transition hover:bg-danger-soft"
+                  class="flex h-10 w-full items-center rounded-2xl px-3 text-left text-[13px] text-danger transition hover:bg-danger-soft"
                   :aria-label="`删除发布记录 ${item.title || item.id}`"
                   @click="close(); handleDelete(item)"
                 >

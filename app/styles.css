@@ -1,17 +1,20 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "PingFang SC", "SF Pro Text", "SF Pro Display", "Microsoft YaHei", sans-serif;
-  --color-canvas: #f3f7fb;
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --color-canvas: #f5f6f7;
   --color-surface: #ffffff;
-  --color-surface-muted: #f6f8fb;
-  --color-border: #e3e8f0;
-  --color-ink: #1f2530;
-  --color-ink-muted: #708196;
-  --color-ink-faint: #aab3c2;
-  --color-primary: #3f8cff;
-  --color-primary-strong: #2877eb;
-  --color-primary-soft: #edf5ff;
+  --color-surface-muted: #f5f6f8;
+  --color-glass: rgba(255, 255, 255, 0.62);
+  --color-glass-strong: rgba(255, 255, 255, 0.78);
+  --color-glass-muted: rgba(255, 255, 255, 0.44);
+  --color-border: #d9dde2;
+  --color-ink: #1d1d1f;
+  --color-ink-muted: #617388;
+  --color-ink-faint: #8c9caf;
+  --color-primary: #0071e3;
+  --color-primary-strong: #0066cc;
+  --color-primary-soft: #eaf3ff;
   --color-success: #36b37e;
   --color-success-strong: #23865f;
   --color-success-soft: #eaf8f1;
@@ -24,13 +27,11 @@
 
 :root {
   color-scheme: light;
-  color: #1f2530;
+  color: #1d1d1f;
   background:
-    radial-gradient(circle at top left, rgba(164, 214, 255, 0.6), transparent 30%),
-    radial-gradient(circle at bottom left, rgba(255, 207, 169, 0.35), transparent 20%),
-    radial-gradient(circle at top right, rgba(245, 222, 255, 0.4), transparent 26%),
-    linear-gradient(135deg, #edf3fb 0%, #f8fbff 44%, #f4f7fb 100%);
-  font-family: "PingFang SC", "SF Pro Display", "Microsoft YaHei", sans-serif;
+    linear-gradient(rgba(253, 254, 254, 0.9), rgba(252, 253, 254, 0.92)),
+    #eef2f6 url("/backgrounds/liquid-glass.webp") center center / cover fixed no-repeat;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Microsoft YaHei", sans-serif;
 }
 
 * {
@@ -47,6 +48,7 @@ body,
 body {
   min-height: 100vh;
   overflow: hidden;
+  background: transparent;
 }
 
 button,

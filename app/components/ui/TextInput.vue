@@ -35,9 +35,9 @@ function updateValue(event: Event): void {
     :class="[
       props.size === 'lg' ? 'text-base' : 'text-[13px]',
       props.variant === 'surface'
-        ? 'h-10 min-h-10 rounded-xl border bg-surface px-3.5 focus:border-primary focus:ring-3 focus:ring-primary/10 disabled:bg-surface-muted'
+        ? 'h-10 min-h-10 rounded-2xl border bg-white/64 px-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] backdrop-blur-[14px] focus:border-primary focus:ring-3 focus:ring-primary/10 disabled:bg-white/38'
         : 'h-auto min-h-0 border-0 bg-transparent px-0',
-      props.variant === 'surface' && (props.invalid ? 'border-danger focus:border-danger focus:ring-danger/10' : 'border-border'),
+      props.variant === 'surface' && (props.invalid ? 'border-danger focus:border-danger focus:ring-danger/10' : 'border-white/62'),
     ]"
     :value="props.modelValue"
     v-bind="$attrs"
