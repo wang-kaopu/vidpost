@@ -1,6 +1,13 @@
 <script setup lang="ts">
-// 空实现
 import { computed, ref, watch } from "vue";
+import {
+  Alert as AAlert,
+  Button as AButton,
+  Descriptions as ADescriptions,
+  DescriptionsItem as ADescriptionsItem,
+  Input as AInput,
+  Modal as AModal,
+} from "ant-design-vue";
 import { useDialogLayer } from "../composables/useDialogLayer";
 
 interface VerificationRequest {
@@ -55,6 +62,7 @@ const expiresText = computed(() => {
 });
 const canSubmit = computed(() => !props.submitting && /^\d{4,8}$/.test(code.value.trim()));
 
+/** 校验验证码格式并提交当前平台验证请求。 */
 const handleSubmit = (): void => {
   if (!canSubmit.value) {
     return;
@@ -75,63 +83,56 @@ useDialogLayer(() => props.visible && Boolean(props.request));
 </script>
 
 <template>
-  <teleport to="body">
-    <transition name="dialog-layer" appear>
-      <div v-if="visible && request" class="platform-dialog-mask">
-        <section class="platform-dialog verification-dialog dialog-surface">
-          <header class="platform-dialog-header">
-            <div>
-              <h2>输入验证码</h2>
-              <p>{{ request.prompt }}</p>
-            </div>
-          </header>
+  <AModal
+    :open="visible && Boolean(request)"
+    :width="520"
+    :footer="null"
+    centered
+    :closable="false"
+    :mask-closable="false"
+  >
+    <div v-if="request" class="pt-1 text-[#1d1d1f]">
+      <header>
+        <h2 class="m-0 text-[24px] leading-tight font-semibold tracking-[-0.02em]">输入验证码</h2>
+        <p class="mt-2 mb-0 text-sm leading-5 text-[#6e6e73]">{{ request.prompt }}</p>
+      </header>
 
-          <div class="verification-dialog-body">
-            <div class="verification-summary-card">
-              <div class="verification-summary-row">
-                <span>平台</span>
-                <strong>{{ request.platform }}</strong>
-              </div>
-              <div class="verification-summary-row">
-                <span>账号</span>
-                <strong>{{ accountName }}</strong>
-              </div>
-              <div class="verification-summary-row">
-                <span>标题</span>
-                <strong>{{ title }}</strong>
-              </div>
-              <div class="verification-summary-row">
-                <span>剩余时间</span>
-                <strong>{{ expiresText }}</strong>
-              </div>
-            </div>
+      <ADescriptions class="mt-6" :column="1" size="small" bordered>
+        <ADescriptionsItem label="平台">{{ request.platform }}</ADescriptionsItem>
+        <ADescriptionsItem label="账号">{{ accountName }}</ADescriptionsItem>
+        <ADescriptionsItem label="标题">{{ title }}</ADescriptionsItem>
+        <ADescriptionsItem label="剩余时间">
+          <strong class="font-semibold text-[#d76e00]">{{ expiresText }}</strong>
+        </ADescriptionsItem>
+      </ADescriptions>
 
-            <label class="field verification-field">
-              <input
-                v-model="code"
-                type="text"
-                inputmode="numeric"
-                maxlength="8"
-                placeholder="请输入短信验证码"
-                @keyup.enter="handleSubmit"
-              />
-            </label>
+      <label class="mt-6 block space-y-2 text-sm font-semibold">
+        <span>短信验证码</span>
+        <AInput
+          v-model:value="code"
+          size="large"
+          inputmode="numeric"
+          :maxlength="8"
+          placeholder="请输入 4–8 位验证码"
+          autofocus
+          @press-enter="handleSubmit"
+        />
+      </label>
 
-            <p v-if="errorMessage" class="platform-dialog-state platform-dialog-state-error">
-              {{ errorMessage }}
-            </p>
-          </div>
+      <AAlert v-if="errorMessage" class="mt-4" :message="errorMessage" type="error" show-icon />
 
-          <footer class="platform-dialog-footer verification-dialog-footer">
-            <button class="ghost-button compact" type="button" :disabled="submitting" @click="emit('cancel')">
-              取消
-            </button>
-            <button class="platform-confirm-button" :class="{ active: canSubmit }" type="button" :disabled="!canSubmit" @click="handleSubmit">
-              {{ submitting ? "提交中..." : "提交验证码" }}
-            </button>
-          </footer>
-        </section>
-      </div>
-    </transition>
-  </teleport>
+      <footer class="mt-6 flex justify-end gap-3 border-t border-[#e5e5e7] pt-4">
+        <AButton shape="round" :disabled="submitting" @click="emit('cancel')">取消</AButton>
+        <AButton
+          type="primary"
+          shape="round"
+          :loading="submitting"
+          :disabled="!canSubmit"
+          @click="handleSubmit"
+        >
+          提交验证码
+        </AButton>
+      </footer>
+    </div>
+  </AModal>
 </template>

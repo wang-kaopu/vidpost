@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { CloseOutlined, DownOutlined, UpOutlined } from "@ant-design/icons-vue";
+import { Button as AButton, Progress as AProgress } from "ant-design-vue";
 import PlatformLogo from "./PlatformLogo.vue";
 import type { PublishProgressPhase, PublishProgressTask } from "@/publish-progress";
 
@@ -27,88 +29,139 @@ const phasePresentation: Record<PublishProgressPhase, PhasePresentation> = {
   scheduled: { label: "预约完成，等待平台发布", progress: 100, tone: "success" },
   failed: { label: "发布失败", progress: 100, tone: "error" },
 };
+
+/**
+ * 将发布阶段映射为克制的业务语义色。
+ *
+ * @param phase - 当前发布阶段
+ * @returns Ant Progress 使用的进度条颜色
+ */
+function resolveStrokeColor(phase: PublishProgressPhase): string {
+  const tone = phasePresentation[phase].tone;
+  if (tone === "success") {
+    return "#248a3d";
+  }
+  if (tone === "error") {
+    return "#d70015";
+  }
+  if (tone === "neutral") {
+    return "#a1a1a6";
+  }
+  return "#0066cc";
+}
+
+/**
+ * 将发布阶段映射为对应的状态文字样式。
+ *
+ * @param phase - 当前发布阶段
+ * @returns Tailwind 状态类名
+ */
+function resolveStatusClass(phase: PublishProgressPhase): string {
+  const tone = phasePresentation[phase].tone;
+  if (tone === "success") {
+    return "text-emerald-700";
+  }
+  if (tone === "error") {
+    return "text-red-700";
+  }
+  if (tone === "neutral") {
+    return "text-[#7a7a7a]";
+  }
+  return "text-[#0066cc]";
+}
 </script>
 
 <template>
   <aside
-    class="publish-progress-panel"
-    :class="{ 'is-collapsed': collapsed }"
+    class="fixed right-6 bottom-6 z-40 w-[360px] overflow-hidden rounded-[18px] border border-black/10 bg-white/90 backdrop-blur-xl"
     aria-live="polite"
     aria-label="发布进度"
   >
-    <header class="publish-progress-header">
-      <div class="publish-progress-heading-copy">
-        <strong>发布进度</strong>
-        <span>共 {{ items.length }} 个任务</span>
+    <header class="flex h-16 items-center justify-between px-5">
+      <div class="min-w-0">
+        <strong class="block text-[15px] leading-5 font-semibold text-[#1d1d1f]">发布进度</strong>
+        <span class="mt-0.5 block text-xs text-[#7a7a7a]">共 {{ items.length }} 个任务</span>
       </div>
-      <div class="publish-progress-header-actions">
-        <button
-          type="button"
-          class="publish-progress-icon-button publish-progress-collapse"
+      <div class="flex items-center gap-1">
+        <a-button
+          type="text"
+          shape="circle"
           :aria-label="collapsed ? '展开发布进度' : '折叠发布进度'"
           :title="collapsed ? '展开发布进度' : '折叠发布进度'"
           :aria-expanded="!collapsed"
           @click="$emit('toggle-collapsed')"
         >
-          <svg aria-hidden="true" viewBox="0 0 24 24">
-            <path :d="collapsed ? 'M6 9L12 15L18 9' : 'M6 15L12 9L18 15'" />
-          </svg>
-        </button>
-        <button
-          type="button"
-          class="publish-progress-icon-button publish-progress-close"
+          <template #icon>
+            <DownOutlined v-if="collapsed" />
+            <UpOutlined v-else />
+          </template>
+        </a-button>
+        <a-button
+          type="text"
+          shape="circle"
           aria-label="关闭发布进度"
           title="关闭发布进度"
           @click="$emit('close')"
         >
-          ×
-        </button>
+          <template #icon><CloseOutlined /></template>
+        </a-button>
       </div>
     </header>
 
-    <div class="publish-progress-content" :class="{ 'is-collapsed': collapsed }" :aria-hidden="collapsed">
-      <div class="publish-progress-content-inner">
-        <div class="publish-progress-list">
-          <article
-            v-for="item in items"
-            :key="item.id"
-            class="publish-progress-item"
-            :class="`is-${phasePresentation[item.phase].tone}`"
-          >
-            <div class="publish-progress-item-heading">
-              <PlatformLogo :platform="item.platformLabel" />
-              <div class="publish-progress-item-copy">
-                <div class="publish-progress-platform-line">
-                  <strong>{{ item.platformLabel }}</strong>
-                  <span :title="item.accountName">{{ item.accountName }}</span>
-                </div>
-                <p :title="item.title">{{ item.title }}</p>
+    <Transition name="progress-content">
+      <div v-if="!collapsed" class="max-h-[420px] overflow-y-auto border-t border-black/5 px-5 py-1">
+        <article v-for="item in items" :key="item.id" class="border-b border-black/5 py-4 last:border-b-0">
+          <div class="flex items-start gap-3">
+            <PlatformLogo :platform="item.platformLabel" />
+            <div class="min-w-0 flex-1">
+              <div class="flex items-baseline justify-between gap-3">
+                <strong class="truncate text-sm font-semibold text-[#1d1d1f]">{{ item.platformLabel }}</strong>
+                <span class="max-w-32 truncate text-xs text-[#7a7a7a]" :title="item.accountName">
+                  {{ item.accountName }}
+                </span>
               </div>
+              <p class="mt-1 mb-0 truncate text-sm text-[#555558]" :title="item.title">{{ item.title }}</p>
             </div>
+          </div>
 
-            <div class="publish-progress-status-line">
-              <span>{{ phasePresentation[item.phase].label }}</span>
-            </div>
-            <div
-              class="publish-progress-track"
-              role="progressbar"
-              aria-valuemin="0"
-              aria-valuemax="100"
-              :aria-valuenow="phasePresentation[item.phase].progress"
-              :aria-label="`${item.platformLabel} ${item.title}：${phasePresentation[item.phase].label}`"
-            >
-              <span
-                class="publish-progress-bar"
-                :class="{ 'is-moving': phasePresentation[item.phase].tone === 'active' }"
-                :style="{ width: `${phasePresentation[item.phase].progress}%` }"
-              ></span>
-            </div>
-            <p v-if="item.phase === 'failed' && item.errorMessage" class="publish-progress-error">
-              {{ item.errorMessage }}
-            </p>
-          </article>
-        </div>
+          <div class="mt-3 flex items-center justify-between gap-3">
+            <span class="text-xs" :class="resolveStatusClass(item.phase)">
+              {{ phasePresentation[item.phase].label }}
+            </span>
+            <span class="text-xs tabular-nums text-[#7a7a7a]">{{ phasePresentation[item.phase].progress }}%</span>
+          </div>
+          <a-progress
+            class="!mt-1 !mb-0"
+            :percent="phasePresentation[item.phase].progress"
+            :stroke-color="resolveStrokeColor(item.phase)"
+            :show-info="false"
+            size="small"
+          />
+          <p v-if="item.phase === 'failed' && item.errorMessage" class="mt-2 mb-0 text-xs leading-5 text-red-700">
+            {{ item.errorMessage }}
+          </p>
+        </article>
       </div>
-    </div>
+    </Transition>
   </aside>
 </template>
+
+<style scoped>
+.progress-content-enter-active,
+.progress-content-leave-active {
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.progress-content-enter-from,
+.progress-content-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress-content-enter-active,
+  .progress-content-leave-active {
+    transition: none;
+  }
+}
+</style>

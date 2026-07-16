@@ -1,5 +1,16 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue";
+import {
+  Alert as AAlert,
+  Button as AButton,
+  Empty as AEmpty,
+  Input as AInput,
+  Modal as AModal,
+  Select as ASelect,
+  Switch as ASwitch,
+  Tag as ATag,
+} from "ant-design-vue";
+import { DeleteOutlined } from "@ant-design/icons-vue";
 import { useDialogLayer } from "../composables/useDialogLayer";
 import {
   getScheduledPublishBounds,
@@ -102,6 +113,7 @@ const canConfirm = computed(() => totalPlanCount.value > 0 && props.groups.every
 
 const globalTitle = ref("");
 const globalSummary = ref("");
+/** 将全局标题和简介覆盖到当前全部发布计划。 */
 const applyAll = (): void => {
   emit("apply-all", {
     title: globalTitle.value,
@@ -162,252 +174,202 @@ useDialogLayer(() => props.visible);
 </script>
 
 <template>
-  <teleport to="body">
-    <transition name="dialog-layer" appear>
-      <div v-if="visible" class="platform-dialog-mask" @click.self="emit('close')">
-        <section class="platform-dialog platform-dialog--table publish-plan-dialog dialog-surface">
-          <header class="platform-dialog-header">
+  <AModal
+    :open="visible"
+    :width="1040"
+    :footer="null"
+    centered
+    destroy-on-close
+    @cancel="emit('close')"
+  >
+    <div class="flex min-h-0 flex-col pt-1 text-[#1d1d1f]">
+      <header class="pr-8">
+        <h2 class="m-0 text-[24px] leading-tight font-semibold tracking-[-0.02em]">发布计划</h2>
+        <p class="mt-2 mb-0 text-sm text-[#6e6e73]">
+          {{ description || `已生成 ${totalPlanCount} 条待发布计划` }}
+        </p>
+      </header>
+
+      <AEmpty
+        v-if="!groups.length"
+        class="py-12"
+        description="暂无可生成的发布计划"
+        :image="null"
+      />
+      <div v-else class="mt-6 max-h-[72vh] min-h-0 space-y-6 overflow-y-auto pr-2">
+        <AAlert v-if="errorMessage" :message="errorMessage" type="error" show-icon />
+
+        <section class="rounded-[18px] border border-[#d9d9dd] bg-[#f5f5f7] p-5">
+          <div class="flex items-center justify-between gap-4">
             <div>
-              <h2>发布计划</h2>
-              <p>{{ description || `已生成 ${totalPlanCount} 条待发布计划` }}</p>
+              <h3 class="m-0 text-[17px] font-semibold">全局设置</h3>
+              <p class="mt-1 mb-0 text-xs text-[#6e6e73]">快速将同一标题和简介应用到全部计划</p>
             </div>
-            <button class="platform-dialog-close" type="button" aria-label="关闭" @click="emit('close')">
-              ×
-            </button>
+            <AButton shape="round" @click="applyAll">应用到全部</AButton>
+          </div>
+          <div class="mt-4 grid grid-cols-2 gap-4">
+            <label class="space-y-2 text-sm font-semibold">
+              <span>标题</span>
+              <AInput v-model:value="globalTitle" placeholder="输入统一标题" />
+            </label>
+            <label class="space-y-2 text-sm font-semibold">
+              <span>简介</span>
+              <AInput.TextArea v-model:value="globalSummary" :auto-size="{ minRows: 1, maxRows: 3 }" placeholder="输入统一简介" />
+            </label>
+          </div>
+        </section>
+
+        <section v-for="group in groups" :key="group.platform" class="space-y-3">
+          <header class="flex items-center gap-2">
+            <h3 class="m-0 text-[18px] font-semibold tracking-[-0.01em]">{{ group.platform }}</h3>
+            <ATag class="m-0 rounded-full border-0 bg-[#ededf0] px-2.5 text-[#515154]">{{ group.rows.length }} 条</ATag>
           </header>
 
-          <div v-if="!groups.length" class="platform-dialog-state">
-            暂无可生成的发布计划
-          </div>
-          <div v-else class="publish-plan-shell">
-            <p v-if="errorMessage" class="platform-dialog-state platform-dialog-state-error">
-              {{ errorMessage }}
-            </p>
-
-        <section class="publish-plan-global-card">
-          <div class="publish-plan-global-head">
-            <strong>全局设置</strong>
-          </div>
-
-          <div class="publish-plan-global-grid">
-            <label class="publish-plan-field publish-plan-field--title">
-              <span>标题</span>
-              <input
-                :value="globalTitle"
-                type="text"
-                placeholder="标题"
-                @input="globalTitle = ($event.target as HTMLInputElement).value"
-              />
-            </label>
-            <label class="publish-plan-field publish-plan-field--summary">
-              <span>简介</span>
-              <textarea
-                :value="globalSummary"
-                placeholder="简介"
-                @input="globalSummary = ($event.target as HTMLTextAreaElement).value"
-              />
-            </label>
-          </div>
-
-          <div class="publish-plan-global-actions">
-            <button class="blue-button publish-plan-apply-button" type="button" @click="applyAll">应用到全部</button>
-          </div>
-        </section>
-
-        <section v-for="group in groups" :key="group.platform" class="publish-plan-group">
-          <div class="publish-plan-group-header">
-            <h3>{{ group.platform }}</h3>
-            <span>{{ group.rows.length }} 条</span>
-          </div>
-
-          <table class="data-table publish-plan-table">
-            <thead>
-              <tr>
-                <th class="publish-plan-col-cover">封面</th>
-                <th class="publish-plan-col-title">标题</th>
-                <th class="publish-plan-col-video-category">视频类别</th>
-                <th class="publish-plan-col-account-name">发布账号</th>
-                <th class="publish-plan-col-platform-option">平台选项</th>
-                <th class="publish-plan-col-summary">简介</th>
-                <th class="publish-plan-col-scheduled-at">定时发布</th>
-                <th class="publish-plan-col-actions"></th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="row in group.rows" :key="row.id">
-                <td>
-                  <div class="publish-plan-cover">
-                    <img v-if="row.coverUrl" :src="row.coverUrl" :alt="row.coverAlt" />
-                    <span v-else class="publish-plan-cover-empty">无封面</span>
-                  </div>
-                </td>
-                <td>
-                  <input
-                    class="publish-plan-table-input"
-                    :value="row.title"
-                    type="text"
-                    placeholder="输入标题"
-                    @input="emit('update-row-field', { rowId: row.id, field: 'title', value: ($event.target as HTMLInputElement).value })"
-                  />
-                </td>
-                <td>
-                  <span class="publish-plan-text-cell" :title="row.videoCategory">{{ row.videoCategory }}</span>
-                </td>
-                <td>
-                  <span class="publish-plan-text-cell" :title="row.accountName">{{ row.accountName }}</span>
-                </td>
-                <td>
-                  <label v-if="row.platformKey === 'bilibili'" class="publish-plan-platform-option">
-                    <select
-                      :value="row.humanTypeId ?? ''"
-                      :disabled="row.humanTypesLoading || Boolean(row.humanTypesError) || !row.humanTypes.length"
-                      @change="emit('update-row-field', {
-                        rowId: row.id,
-                        field: 'humanTypeId',
-                        value: Number(($event.target as HTMLSelectElement).value) || null,
-                      })"
-                    >
-                      <option value="" disabled>选择投稿分区</option>
-                      <option v-for="type in row.humanTypes" :key="type.id" :value="type.id">
-                        {{ type.id }} {{ type.name }}
-                      </option>
-                    </select>
-                    <small v-if="row.humanTypesLoading">正在加载投稿分区…</small>
-                    <small v-if="row.humanTypesError" class="platform-option-error">{{ row.humanTypesError }}</small>
-                  </label>
-                  <label v-else-if="row.platformKey === 'sohu'" class="publish-plan-platform-option">
-                    <select
-                      :value="row.channelId ?? ''"
-                      :disabled="row.sohuChannelsLoading || Boolean(row.sohuChannelsError) || !row.sohuChannels.length"
-                      @change="emit('update-row-field', {
-                        rowId: row.id,
-                        field: 'channelId',
-                        value: Number(($event.target as HTMLSelectElement).value) || null,
-                      })"
-                    >
-                      <option value="" disabled>选择一级频道</option>
-                      <option v-for="channel in row.sohuChannels" :key="channel.id" :value="channel.id">
-                        {{ channel.name }}
-                      </option>
-                    </select>
-                    <select
-                      :value="row.videoChannelId ?? ''"
-                      :disabled="row.sohuChannelsLoading || Boolean(row.sohuChannelsError) || !row.channelId"
-                      @change="emit('update-row-field', {
-                        rowId: row.id,
-                        field: 'videoChannelId',
-                        value: Number(($event.target as HTMLSelectElement).value) || null,
-                      })"
-                    >
-                      <option value="" disabled>选择二级频道</option>
-                      <option
-                        v-for="videoChannel in row.sohuChannels.find((channel) => channel.id === row.channelId)?.videoChannels || []"
-                        :key="videoChannel.id"
-                        :value="videoChannel.id"
-                      >
-                        {{ videoChannel.name }}
-                      </option>
-                    </select>
-                    <small v-if="row.sohuChannelsLoading">正在加载搜狐频道…</small>
-                    <small v-if="row.sohuChannelsError" class="platform-option-error">{{ row.sohuChannelsError }}</small>
-                  </label>
-                  <label v-else-if="row.platformKey === 'douyin'" class="publish-plan-platform-option">
-                    <select
-                      :value="row.visibility"
-                      @change="emit('update-row-field', {
-                        rowId: row.id,
-                        field: 'visibility',
-                        value: ($event.target as HTMLSelectElement).value,
-                      })"
-                    >
-                      <option value="public">公开</option>
-                      <option value="friends">朋友可见</option>
-                      <option value="self">仅自己可见</option>
-                    </select>
-                  </label>
-                  <span v-else class="publish-plan-text-cell">—</span>
-                </td>
-                <td>
-                  <input
-                    class="publish-plan-table-input"
-                    :value="row.summary"
-                    type="text"
-                    placeholder="输入简介"
-                    @input="emit('update-row-field', { rowId: row.id, field: 'summary', value: ($event.target as HTMLInputElement).value })"
-                  />
-                </td>
-                <td>
-                  <div
-                    class="publish-plan-table-timing"
-                    :class="{
-                      active: isRowTimedPublishEnabled(row.scheduledAt),
-                      'is-disabled': !getRowScheduleState(row).supported,
-                    }"
-                  >
-                    <div class="publish-plan-table-timing-head">
-                      <button
-                        class="publish-plan-switch-control"
-                        :class="{ active: isRowTimedPublishEnabled(row.scheduledAt) }"
-                        type="button"
-                        :aria-pressed="isRowTimedPublishEnabled(row.scheduledAt)"
-                        :disabled="!getRowScheduleState(row).supported"
-                        @click="toggleRowTimedPublish(row)"
-                      >
-                        <span />
-                      </button>
-                      <span
-                        class="publish-plan-table-timing-status"
-                        :class="{ active: isRowTimedPublishEnabled(row.scheduledAt) }"
-                      >
-                        {{ isRowTimedPublishEnabled(row.scheduledAt) ? "定时发布" : "立即发布" }}
-                      </span>
-                    </div>
-                    <label v-if="isRowTimedPublishEnabled(row.scheduledAt) && getRowScheduleState(row).bounds" class="publish-plan-row-schedule">
-                      <input
-                        :value="toDatetimeLocalValue(row.scheduledAt)"
-                        type="datetime-local"
-                        :min="getRowScheduleState(row).bounds?.min"
-                        :max="getRowScheduleState(row).bounds?.max"
-                        @input="emit('update-row-field', {
-                          rowId: row.id,
-                          field: 'scheduledAt',
-                          value: normalizeScheduledAtInput(($event.target as HTMLInputElement).value),
-                        })"
-                      />
-                    </label>
-                    <span v-if="!getRowScheduleState(row).supported" class="publish-plan-immediate-text">当前平台仅支持立即发布</span>
-                    <small v-else-if="getRowScheduleState(row).error" class="publish-plan-schedule-error">
-                      {{ getRowScheduleState(row).error }}
-                    </small>
-                  </div>
-                </td>
-                <td>
-                  <button
-                    class="platform-remove-button danger-text"
-                    type="button"
-                    @click="emit('remove', { workId: row.workId, accountId: row.accountId })"
-                  >
-                    删除
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </section>
-
-            <footer class="platform-dialog-footer platform-dialog-footer--table publish-plan-footer">
-              <p class="platform-dialog-footer-copy">
-                共 <strong>{{ totalPlanCount }}</strong> 条发布计划
-              </p>
-              <div class="publish-plan-footer-actions">
-                <button class="platform-confirm-button" :class="{ active: canConfirm && !submitting }" type="button" :disabled="!canConfirm || submitting" @click="emit('confirm')">
-                  {{ submitting ? "发布中..." : "确定发布" }}
-                </button>
+          <article
+            v-for="row in group.rows"
+            :key="row.id"
+            class="rounded-[18px] border border-[#e0e0e0] bg-white p-5"
+          >
+            <div class="grid grid-cols-[104px_minmax(0,1fr)_auto] gap-4">
+              <div class="h-[104px] overflow-hidden rounded-lg bg-[#f5f5f7]">
+                <img v-if="row.coverUrl" :src="row.coverUrl" :alt="row.coverAlt" class="h-full w-full object-cover" />
+                <span v-else class="flex h-full items-center justify-center text-xs text-[#7a7a7a]">无封面</span>
               </div>
-            </footer>
-          </div>
+              <div class="min-w-0 self-center">
+                <div class="flex flex-wrap items-center gap-2">
+                  <strong class="text-[15px] font-semibold">{{ row.accountName }}</strong>
+                  <ATag class="m-0 rounded-full">{{ group.platform }}</ATag>
+                </div>
+                <p class="mt-2 mb-0 truncate text-sm text-[#6e6e73]" :title="row.videoCategory">{{ row.videoCategory }}</p>
+                <p class="mt-1 mb-0 text-xs text-[#7a7a7a]">
+                  {{ isRowTimedPublishEnabled(row.scheduledAt) ? "定时发布" : "立即发布" }}
+                </p>
+              </div>
+              <AButton
+                type="text"
+                danger
+                aria-label="删除此发布计划"
+                @click="emit('remove', { workId: row.workId, accountId: row.accountId })"
+              >
+                <template #icon><DeleteOutlined /></template>
+              </AButton>
+            </div>
+
+            <div class="mt-5 grid grid-cols-2 gap-4 border-t border-[#eeeeef] pt-5">
+              <label class="space-y-2 text-sm font-semibold">
+                <span>标题</span>
+                <AInput
+                  :value="row.title"
+                  placeholder="输入标题"
+                  @update:value="emit('update-row-field', { rowId: row.id, field: 'title', value: String($event) })"
+                />
+              </label>
+              <label class="space-y-2 text-sm font-semibold">
+                <span>简介</span>
+                <AInput.TextArea
+                  :value="row.summary"
+                  :auto-size="{ minRows: 1, maxRows: 3 }"
+                  placeholder="输入简介"
+                  @update:value="emit('update-row-field', { rowId: row.id, field: 'summary', value: String($event) })"
+                />
+              </label>
+
+              <div class="space-y-2 text-sm font-semibold">
+                <span>平台选项</span>
+                <div v-if="row.platformKey === 'bilibili'" class="space-y-2">
+                  <ASelect
+                    class="w-full"
+                    :value="row.humanTypeId ?? undefined"
+                    :loading="row.humanTypesLoading"
+                    :disabled="row.humanTypesLoading || Boolean(row.humanTypesError) || !row.humanTypes.length"
+                    placeholder="选择投稿分区"
+                    :options="row.humanTypes.map((type) => ({ label: `${type.id} ${type.name}`, value: type.id }))"
+                    @update:value="emit('update-row-field', { rowId: row.id, field: 'humanTypeId', value: Number($event) || null })"
+                  />
+                  <AAlert v-if="row.humanTypesError" :message="row.humanTypesError" type="error" show-icon />
+                </div>
+                <div v-else-if="row.platformKey === 'sohu'" class="grid grid-cols-2 gap-2">
+                  <ASelect
+                    :value="row.channelId ?? undefined"
+                    :loading="row.sohuChannelsLoading"
+                    :disabled="row.sohuChannelsLoading || Boolean(row.sohuChannelsError) || !row.sohuChannels.length"
+                    placeholder="一级频道"
+                    :options="row.sohuChannels.map((channel) => ({ label: channel.name, value: channel.id }))"
+                    @update:value="emit('update-row-field', { rowId: row.id, field: 'channelId', value: Number($event) || null })"
+                  />
+                  <ASelect
+                    :value="row.videoChannelId ?? undefined"
+                    :disabled="row.sohuChannelsLoading || Boolean(row.sohuChannelsError) || !row.channelId"
+                    placeholder="二级频道"
+                    :options="(row.sohuChannels.find((channel) => channel.id === row.channelId)?.videoChannels || []).map((channel) => ({ label: channel.name, value: channel.id }))"
+                    @update:value="emit('update-row-field', { rowId: row.id, field: 'videoChannelId', value: Number($event) || null })"
+                  />
+                  <AAlert v-if="row.sohuChannelsError" class="col-span-2" :message="row.sohuChannelsError" type="error" show-icon />
+                </div>
+                <ASelect
+                  v-else-if="row.platformKey === 'douyin'"
+                  class="w-full"
+                  :value="row.visibility"
+                  :options="[
+                    { label: '公开', value: 'public' },
+                    { label: '朋友可见', value: 'friends' },
+                    { label: '仅自己可见', value: 'self' },
+                  ]"
+                  @update:value="emit('update-row-field', { rowId: row.id, field: 'visibility', value: String($event) })"
+                />
+                <span v-else class="block py-2 text-sm font-normal text-[#7a7a7a]">无需额外设置</span>
+              </div>
+
+              <div class="space-y-2 text-sm font-semibold">
+                <span>发布时间</span>
+                <div class="flex min-h-8 items-center gap-3">
+                  <ASwitch
+                    :checked="isRowTimedPublishEnabled(row.scheduledAt)"
+                    :disabled="!getRowScheduleState(row).supported"
+                    @change="toggleRowTimedPublish(row)"
+                  />
+                  <span class="font-normal text-[#515154]">
+                    {{ isRowTimedPublishEnabled(row.scheduledAt) ? "定时发布" : "立即发布" }}
+                  </span>
+                  <input
+                    v-if="isRowTimedPublishEnabled(row.scheduledAt) && getRowScheduleState(row).bounds"
+                    class="h-8 rounded-lg border border-[#d9d9dd] bg-white px-3 text-sm font-normal outline-none focus:border-[#0066cc] focus:ring-2 focus:ring-[#0066cc]/20"
+                    :value="toDatetimeLocalValue(row.scheduledAt)"
+                    type="datetime-local"
+                    :min="getRowScheduleState(row).bounds?.min"
+                    :max="getRowScheduleState(row).bounds?.max"
+                    @input="emit('update-row-field', {
+                      rowId: row.id,
+                      field: 'scheduledAt',
+                      value: normalizeScheduledAtInput(($event.target as HTMLInputElement).value),
+                    })"
+                  />
+                </div>
+                <p v-if="!getRowScheduleState(row).supported" class="m-0 text-xs font-normal text-[#7a7a7a]">
+                  当前平台仅支持立即发布
+                </p>
+                <p v-else-if="getRowScheduleState(row).error" class="m-0 text-xs font-normal text-[#d70015]">
+                  {{ getRowScheduleState(row).error }}
+                </p>
+              </div>
+            </div>
+          </article>
         </section>
+
+        <footer class="sticky bottom-0 flex items-center justify-between border-t border-[#e5e5e7] bg-white/90 py-4 backdrop-blur-xl">
+          <p class="m-0 text-sm text-[#6e6e73]">共 <strong class="text-[#1d1d1f]">{{ totalPlanCount }}</strong> 条发布计划</p>
+          <AButton
+            type="primary"
+            shape="round"
+            size="large"
+            :loading="submitting"
+            :disabled="!canConfirm || submitting"
+            @click="emit('confirm')"
+          >
+            确定发布
+          </AButton>
+        </footer>
       </div>
-    </transition>
-  </teleport>
+    </div>
+  </AModal>
 </template>

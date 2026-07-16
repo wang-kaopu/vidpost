@@ -23,7 +23,23 @@ const fallbackText = computed(() => props.platform.trim().slice(0, 1) || "?");
 
 <template>
   <span class="platform-logo" :title="platform" :aria-label="platform">
-    <img v-if="src" :src="src" :alt="platform" />
-    <span v-else class="platform-logo-fallback">{{ fallbackText }}</span>
+    <img v-if="src" :src="src" alt="" />
+    <span v-else class="platform-logo-fallback" aria-hidden="true">{{ fallbackText }}</span>
   </span>
 </template>
+
+<style scoped>
+@reference "../styles.css";
+
+.platform-logo {
+  @apply inline-flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-black/5 bg-[#fafafc];
+}
+
+.platform-logo img {
+  @apply size-6 object-contain;
+}
+
+.platform-logo-fallback {
+  @apply text-xs font-semibold text-[#333];
+}
+</style>

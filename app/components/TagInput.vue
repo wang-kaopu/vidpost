@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { nextTick, ref, watch } from "vue";
+import { nextTick, ref } from "vue";
+import { Input as AInput, Tag as ATag } from "ant-design-vue";
+import type { InputRef } from "ant-design-vue";
 
 interface Props {
   modelValue: string[];
@@ -17,160 +19,83 @@ const emit = defineEmits<{
   cancel: [];
 }>();
 
-const inputRef = ref<HTMLInputElement | null>(null);
-const chipRefs = ref<(HTMLDivElement | null)[]>([]);
+const inputRef = ref<InputRef>();
 const draft = ref("");
 
-const syncChipRefs = (element: HTMLDivElement | null, index: number) => {
-  chipRefs.value[index] = element;
-};
+/** 统一标签内的多余空格，避免视觉相同的重复标签。 */
+const normalizeTag = (value: string): string => value.trim().replace(/\s+/g, " ");
 
-const focusInput = () => {
-  inputRef.value?.focus();
-};
-
-const focusChip = (index: number) => {
-  chipRefs.value[index]?.focus();
-};
-
-const normalizeTag = (value: string) => value.trim().replace(/\s+/g, " ");
-
-const commitDraft = (value = draft.value) => {
+/** 提交当前标签草稿，并在完成后继续保持输入焦点。 */
+const commitDraft = (value = draft.value): void => {
   const nextTag = normalizeTag(value);
-  if (!nextTag) {
-    return;
-  }
-
+  if (!nextTag) return;
   if (!props.modelValue.includes(nextTag)) {
     emit("update:modelValue", [...props.modelValue, nextTag]);
   }
-
   draft.value = "";
-  void nextTick(focusInput);
+  void nextTick(() => inputRef.value?.focus());
 };
 
-const removeTag = (index: number) => {
-  const nextTags = props.modelValue.filter((_, currentIndex) => currentIndex !== index);
-  emit("update:modelValue", nextTags);
-
-  void nextTick(() => {
-    if (nextTags.length === 0) {
-      focusInput();
-      return;
-    }
-
-    focusChip(Math.min(index, nextTags.length - 1));
-  });
+/** 删除指定标签，关闭按钮由 Ant Tag 提供完整键盘语义。 */
+const removeTag = (index: number): void => {
+  emit("update:modelValue", props.modelValue.filter((_, currentIndex) => currentIndex !== index));
 };
 
-const onInputKeydown = (event: KeyboardEvent) => {
-  if (props.disabled) {
-    return;
-  }
-
-  if (event.key === "Enter" || event.key === ",") {
+/** 处理逗号提交与 Escape 取消，保留原有快速录入习惯。 */
+const handleKeydown = (event: KeyboardEvent): void => {
+  if (props.disabled) return;
+  if (event.key === ",") {
     event.preventDefault();
     commitDraft();
-    return;
   }
-
   if (event.key === "Escape") {
     event.preventDefault();
     emit("cancel");
-    return;
-  }
-
-  if (event.key === "Backspace" && !draft.value && props.modelValue.length > 0) {
-    event.preventDefault();
-    focusChip(props.modelValue.length - 1);
-    return;
-  }
-
-  if (event.key === "ArrowLeft" && !draft.value && props.modelValue.length > 0) {
-    event.preventDefault();
-    focusChip(props.modelValue.length - 1);
   }
 };
-
-const onChipKeydown = (index: number, event: KeyboardEvent) => {
-  if (props.disabled) {
-    return;
-  }
-
-  if (event.key === "Backspace" || event.key === "Delete") {
-    event.preventDefault();
-    removeTag(index);
-    return;
-  }
-
-  if (event.key === "Escape") {
-    event.preventDefault();
-    emit("cancel");
-    return;
-  }
-
-  if (event.key === "ArrowLeft") {
-    event.preventDefault();
-    if (index > 0) {
-      focusChip(index - 1);
-    } else {
-      focusInput();
-    }
-    return;
-  }
-
-  if (event.key === "ArrowRight") {
-    event.preventDefault();
-    if (index < props.modelValue.length - 1) {
-      focusChip(index + 1);
-    } else {
-      focusInput();
-    }
-  }
-};
-
-watch(
-  () => props.modelValue.length,
-  () => {
-    if (chipRefs.value.length > props.modelValue.length) {
-      chipRefs.value.length = props.modelValue.length;
-    }
-  },
-);
 </script>
 
 <template>
-  <div class="tag-input" :class="{ disabled }">
-    <div
+  <div class="tag-input" :class="{ 'tag-input--disabled': disabled }">
+    <ATag
       v-for="(tag, index) in modelValue"
       :key="`${tag}-${index}`"
-      :ref="(el) => syncChipRefs(el as HTMLDivElement | null, index)"
-      class="tag-chip"
-      :tabindex="disabled ? -1 : 0"
-      @keydown="onChipKeydown(index, $event)"
-    >
-      <span class="tag-chip-label">{{ tag }}</span>
-      <button
-        class="tag-chip-remove"
-        type="button"
-        :disabled="disabled"
-        :aria-label="`删除标签 ${tag}`"
-        @click.stop="removeTag(index)"
-      >
-        ×
-      </button>
-    </div>
-
-    <input
-      ref="inputRef"
-      v-model="draft"
-      class="tag-input-field"
-      type="text"
+      closable
       :disabled="disabled"
-      :placeholder="placeholder"
-      @keydown="onInputKeydown"
+      @close.prevent="removeTag(index)"
+    >
+      {{ tag }}
+    </ATag>
+    <AInput
+      ref="inputRef"
+      v-model:value="draft"
+      class="tag-input-field"
+      variant="borderless"
+      :disabled="disabled"
+      :placeholder="modelValue.length ? '' : placeholder"
+      @press-enter="commitDraft()"
+      @keydown="handleKeydown"
       @blur="draft = draft.trim()"
-      @change="draft = draft.trim()"
     />
   </div>
 </template>
+
+<style scoped>
+@reference "../styles.css";
+
+.tag-input {
+  @apply flex min-h-11 w-full flex-wrap items-center gap-1 rounded-xl border border-black/10 bg-white px-3 py-1.5 transition-colors focus-within:border-[#0066cc] focus-within:ring-2 focus-within:ring-[#0066cc]/15;
+}
+
+.tag-input--disabled {
+  @apply cursor-not-allowed bg-[#f5f5f7] opacity-60;
+}
+
+.tag-input-field {
+  @apply min-w-28 flex-1 p-0;
+}
+
+:deep(.ant-tag) {
+  @apply m-0 rounded-full border-0 bg-[#f5f5f7] px-2.5 py-1 text-xs text-[#333];
+}
+</style>

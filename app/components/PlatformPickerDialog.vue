@@ -1,5 +1,15 @@
 <script setup lang="ts">
-import { computed, reactive } from "vue";
+import { computed } from "vue";
+import {
+  Alert as AAlert,
+  Button as AButton,
+  Empty as AEmpty,
+  Modal as AModal,
+  Select as ASelect,
+  Spin as ASpin,
+  Tag as ATag,
+} from "ant-design-vue";
+import { CheckOutlined, CloseOutlined } from "@ant-design/icons-vue";
 import PlatformLogo from "./PlatformLogo.vue";
 import type { AccountItem, PlatformItem } from "@/types";
 import { useDialogLayer } from "../composables/useDialogLayer";
@@ -8,13 +18,14 @@ type PlatformDialogTableRow = {
   id: string;
   title: string;
   category: string;
+  coverUrl?: string;
+  coverAlt?: string;
 };
 
-type PlatformDialogTableAccount = Pick<AccountItem, "id" | "platform" | "nickname" | "status" | "rawStatus" | "disabledReason">;
-type DropdownPlacement = {
-  vertical: "up" | "down";
-  horizontal: "left" | "right";
-};
+type PlatformDialogTableAccount = Pick<
+  AccountItem,
+  "id" | "platform" | "nickname" | "status" | "rawStatus" | "disabledReason"
+>;
 
 const props = withDefaults(
   defineProps<{
@@ -61,272 +72,226 @@ const emit = defineEmits<{
   "update:activeTableRowId": [value: string];
 }>();
 
-const dropdownPlacements = reactive<Record<string, DropdownPlacement>>({});
 const selectedSet = computed(() => new Set(props.selectedPlatformKeys));
 const isTableLayout = computed(() => props.layout === "table");
-const hasTableContent = computed(() => props.tableRows.length > 0);
-const selectedTableAccountCount = computed(() => {
-  const ids = new Set(Object.values(props.tableRowAccountSelections).flat());
-  return ids.size;
-});
-const canConfirm = computed(
-  () =>
-    isTableLayout.value
-      ? props.tableRows.some((row) => (props.tableRowAccountSelections[row.id] || []).length > 0)
-      : props.selectionMode === "multiple" && !props.loading && props.selectedPlatformKeys.length > 0,
+const selectedTableAccountCount = computed(
+  () => new Set(Object.values(props.tableRowAccountSelections).flat()).size,
 );
 const loginSuccessTableAccountOptions = computed(() =>
-  props.tableAccountOptions.filter((account) => account.rawStatus === "login_success" || account.rawStatus === "online"),
+  props.tableAccountOptions.filter(
+    (account) => account.rawStatus === "login_success" || account.rawStatus === "online",
+  ),
+);
+const accountSelectOptions = computed(() =>
+  loginSuccessTableAccountOptions.value.map((account) => ({
+    disabled: Boolean(account.disabledReason),
+    label: `${account.platform} · ${account.nickname}`,
+    title: account.disabledReason || `${account.platform} · ${account.nickname}`,
+    value: account.id,
+  })),
+);
+const canConfirm = computed(() =>
+  isTableLayout.value
+    ? props.tableRows.some((row) => (props.tableRowAccountSelections[row.id] || []).length > 0)
+    : props.selectionMode === "multiple" && !props.loading && props.selectedPlatformKeys.length > 0,
 );
 
 useDialogLayer(() => props.visible);
 
-const isSelected = (platformKey: string) => selectedSet.value.has(platformKey);
-const getSelectedAccountIds = (rowId: string) => props.tableRowAccountSelections[rowId] || [];
-const getSelectedAccounts = (rowId: string) => {
-  const selectedIds = new Set(getSelectedAccountIds(rowId));
-  return loginSuccessTableAccountOptions.value.filter((account) => selectedIds.has(account.id) && !account.disabledReason);
-};
-const isTableDropdownOpen = (rowId: string) => props.activeTableRowId === rowId;
-const isAccountSelected = (rowId: string, accountId: string) => getSelectedAccountIds(rowId).includes(accountId);
-const getDropdownPlacement = (rowId: string): DropdownPlacement =>
-  dropdownPlacements[rowId] || { vertical: "down", horizontal: "left" };
-
-const togglePlatform = (platform: PlatformItem) => {
+/** 切换平台选择；单选模式会立即进入账号创建流程。 */
+const togglePlatform = (platform: PlatformItem): void => {
   if (props.selectionMode === "single") {
     emit("select", platform);
     return;
   }
 
   const nextKeys = new Set(props.selectedPlatformKeys);
-  if (nextKeys.has(platform.key)) {
-    nextKeys.delete(platform.key);
-  } else {
-    nextKeys.add(platform.key);
-  }
-
+  if (nextKeys.has(platform.key)) nextKeys.delete(platform.key);
+  else nextKeys.add(platform.key);
   emit("update:selectedPlatformKeys", Array.from(nextKeys));
 };
 
-const toggleTableDropdown = (rowId: string, event: MouseEvent) => {
-  if (props.activeTableRowId === rowId) {
-    emit("update:activeTableRowId", "");
-    return;
-  }
-
-  const trigger = event.currentTarget;
-  if (!(trigger instanceof HTMLElement)) {
-    emit("update:activeTableRowId", rowId);
-    return;
-  }
-
-  const rect = trigger.getBoundingClientRect();
-  const dropdownWidth = 320;
-  const dropdownHeight = 248;
-  const gutter = 16;
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
-  const spaceBelow = viewportHeight - rect.bottom - gutter;
-  const spaceAbove = rect.top - gutter;
-  const spaceRight = viewportWidth - rect.left - gutter;
-  const spaceLeft = rect.right - gutter;
-
-  dropdownPlacements[rowId] = {
-    vertical: spaceBelow < dropdownHeight && spaceAbove > spaceBelow ? "up" : "down",
-    horizontal: spaceRight < dropdownWidth && spaceLeft > spaceRight ? "right" : "left",
-  };
-  emit("update:activeTableRowId", rowId);
-};
-
-const toggleTableAccount = (rowId: string, accountId: string) => {
-  const account = loginSuccessTableAccountOptions.value.find((item) => item.id === accountId);
-  if (account?.disabledReason) return;
-  const nextSelections = { ...props.tableRowAccountSelections };
-  const nextIds = new Set(nextSelections[rowId] || []);
-  if (nextIds.has(accountId)) {
-    nextIds.delete(accountId);
-  } else {
-    nextIds.add(accountId);
-  }
-
-  nextSelections[rowId] = Array.from(nextIds);
-  emit("update:tableRowAccountSelections", nextSelections);
+/** 更新单个作品对应的发布账号，保留其他作品的账号映射。 */
+const updateTableAccounts = (rowId: string, value: unknown): void => {
+  const accountIds = Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+  emit("update:tableRowAccountSelections", {
+    ...props.tableRowAccountSelections,
+    [rowId]: accountIds,
+  });
   emit("update:activeTableRowId", "");
 };
 
-const removeTableAccount = (rowId: string, accountId: string) => {
-  const nextSelections = { ...props.tableRowAccountSelections };
-  nextSelections[rowId] = (nextSelections[rowId] || []).filter((id) => id !== accountId);
-  emit("update:tableRowAccountSelections", nextSelections);
+/** 从指定作品的发布账号集合中移除一个账号。 */
+const removeTableAccount = (rowId: string, accountId: string): void => {
+  updateTableAccounts(
+    rowId,
+    (props.tableRowAccountSelections[rowId] || []).filter((id) => id !== accountId),
+  );
 };
 
-const clearTableRowAccounts = (rowId: string) => {
-  const nextSelections = { ...props.tableRowAccountSelections, [rowId]: [] };
-  emit("update:tableRowAccountSelections", nextSelections);
-  if (props.activeTableRowId === rowId) {
-    emit("update:activeTableRowId", "");
-  }
+/** 返回已为作品选择且仍可发布的账号。 */
+const getSelectedAccounts = (rowId: string): PlatformDialogTableAccount[] => {
+  const selectedIds = new Set(props.tableRowAccountSelections[rowId] || []);
+  return loginSuccessTableAccountOptions.value.filter(
+    (account) => selectedIds.has(account.id) && !account.disabledReason,
+  );
 };
 
-const handleConfirm = () => {
-  if (!canConfirm.value) {
-    return;
-  }
-
+/** 根据当前布局提交平台集合或逐作品账号映射。 */
+const handleConfirm = (): void => {
+  if (!canConfirm.value) return;
   if (isTableLayout.value) {
     emit("confirmTable", props.tableRowAccountSelections);
     return;
   }
-
-  emit(
-    "confirm",
-    props.platforms.filter((platform) => props.selectedPlatformKeys.includes(platform.key)),
-  );
+  emit("confirm", props.platforms.filter((platform) => props.selectedPlatformKeys.includes(platform.key)));
 };
 </script>
 
 <template>
-  <teleport to="body">
-    <transition name="dialog-layer" appear>
-      <div v-if="visible" class="platform-dialog-mask" @click.self="emit('close')">
-        <section class="platform-dialog dialog-surface" :class="{ 'platform-dialog--table': isTableLayout }">
-          <header class="platform-dialog-header">
-            <div>
-              <h2>{{ title }}</h2>
-              <p>{{ description }}</p>
-            </div>
-            <button class="platform-dialog-close" type="button" aria-label="关闭" @click="emit('close')">
-              ×
-            </button>
-          </header>
+  <AModal
+    :open="visible"
+    :width="isTableLayout ? 920 : 680"
+    :footer="null"
+    centered
+    destroy-on-close
+    @cancel="emit('close')"
+  >
+    <div class="flex min-h-0 flex-col pt-1 text-[#1d1d1f]">
+      <header class="pr-8">
+        <h2 class="m-0 text-[24px] leading-tight font-semibold tracking-[-0.02em]">{{ title }}</h2>
+        <p class="mt-2 mb-0 text-sm leading-5 text-[#6e6e73]">{{ description }}</p>
+      </header>
 
-          <div v-if="loading" class="platform-dialog-state">正在加载平台列表...</div>
-          <div v-else-if="errorMessage" class="platform-dialog-state platform-dialog-state-error">
-            {{ errorMessage }}
-          </div>
-          <div v-else-if="isTableLayout && !hasTableContent" class="platform-dialog-state">
-            {{ emptyMessage }}
-          </div>
-          <div v-else-if="!isTableLayout && !platforms.length" class="platform-dialog-state">
-            {{ emptyMessage }}
-          </div>
-          <template v-else-if="!isTableLayout">
-            <div class="platform-grid" :class="{ 'platform-grid--selectable': selectionMode === 'multiple' }">
-              <button
-                v-for="platform in platforms"
-                :key="platform.id"
-                class="platform-card"
-                :class="{
-                  selected: selectionMode === 'multiple' && isSelected(platform.key),
-                  busy: busyPlatformKey === platform.key,
-                }"
-                type="button"
-                :disabled="Boolean(loading || (selectionMode === 'single' && busyPlatformKey))"
-                @click="togglePlatform(platform)"
+      <div class="mt-6 min-h-0">
+        <div v-if="loading" class="flex min-h-52 items-center justify-center">
+          <ASpin tip="正在加载平台列表…" />
+        </div>
+        <AAlert v-else-if="errorMessage" :message="errorMessage" type="error" show-icon />
+        <AEmpty
+          v-else-if="isTableLayout ? !tableRows.length : !platforms.length"
+          :description="emptyMessage"
+          :image="null"
+        />
+
+        <template v-else-if="!isTableLayout">
+          <div class="grid grid-cols-3 gap-3 sm:grid-cols-4">
+            <button
+              v-for="platform in platforms"
+              :key="platform.id"
+              class="relative flex min-h-28 flex-col items-center justify-center gap-3 rounded-[18px] border bg-white px-4 py-5 transition duration-150 active:scale-95 disabled:cursor-wait disabled:opacity-60"
+              :class="selectedSet.has(platform.key) ? 'border-[#0066cc] ring-1 ring-[#0066cc]' : 'border-[#e0e0e0] hover:border-[#b8b8bd]'"
+              type="button"
+              :disabled="Boolean(loading || (selectionMode === 'single' && busyPlatformKey))"
+              @click="togglePlatform(platform)"
+            >
+              <span
+                v-if="selectionMode === 'multiple'"
+                class="absolute top-3 right-3 flex size-6 items-center justify-center rounded-full border"
+                :class="selectedSet.has(platform.key) ? 'border-[#0066cc] bg-[#0066cc] text-white' : 'border-[#d2d2d7] bg-white text-transparent'"
               >
-                <span v-if="selectionMode === 'multiple'" class="platform-card-check" :class="{ checked: isSelected(platform.key) }">
-                  <span />
-                </span>
-                <PlatformLogo :platform="platform.label" />
-                <strong>{{ busyPlatformKey === platform.key ? busyLabel : platform.label }}</strong>
-              </button>
-            </div>
+                <CheckOutlined class="text-xs" />
+              </span>
+              <PlatformLogo :platform="platform.label" />
+              <strong class="text-sm font-semibold">
+                {{ busyPlatformKey === platform.key ? busyLabel : platform.label }}
+              </strong>
+            </button>
+          </div>
+        </template>
 
-            <footer v-if="selectionMode === 'multiple'" class="platform-dialog-footer">
-              <p class="platform-dialog-footer-copy">
-                已选择 <strong>{{ selectedPlatformKeys.length }}</strong> 个平台
-              </p>
-              <button class="platform-confirm-button" :class="{ active: canConfirm }" type="button" :disabled="!canConfirm" @click="handleConfirm">
-                {{ confirmLabel }}
-              </button>
-            </footer>
-          </template>
-          <template v-else>
-            <div class="platform-table-shell">
-              <div class="platform-table-caption">全局设置（为每一条视频设置一批账号）</div>
+        <template v-else>
+          <div class="max-h-[58vh] space-y-3 overflow-y-auto pr-1">
+            <article
+              v-for="row in tableRows"
+              :key="row.id"
+              class="grid grid-cols-[96px_minmax(0,1fr)] gap-4 rounded-[18px] border border-[#e0e0e0] bg-white p-4"
+            >
+              <div class="h-24 overflow-hidden rounded-lg bg-[#f5f5f7]">
+                <img
+                  v-if="row.coverUrl"
+                  :src="row.coverUrl"
+                  :alt="row.coverAlt || row.title"
+                  class="h-full w-full object-cover"
+                />
+                <div v-else class="flex h-full items-center justify-center text-xs text-[#7a7a7a]">无封面</div>
+              </div>
 
-              <table class="data-table platform-table">
-                <thead>
-                  <tr>
-                    <th class="platform-table-col-title">标题</th>
-                    <th class="platform-table-col-category">视频类别</th>
-                    <th class="platform-table-col-accounts">发布账号</th>
-                    <th class="platform-table-col-actions">操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="row in props.tableRows" :key="row.id">
-                    <td class="platform-table-title" :title="row.title">{{ row.title }}</td>
-                    <td class="platform-table-category">{{ row.category }}</td>
-                    <td class="platform-table-accounts-cell">
-                      <div class="platform-table-accounts-wrap">
-                        <div class="platform-table-accounts">
-                          <button
-                            v-for="account in getSelectedAccounts(row.id)"
-                            :key="account.id"
-                            class="platform-account-chip selected"
-                            type="button"
-                            :title="`${account.platform} · ${account.nickname}`"
-                            @click="removeTableAccount(row.id, account.id)"
-                          >
-                            <PlatformLogo :platform="account.platform" />
-                            <span class="platform-account-chip-label">{{ account.nickname }}</span>
-                          </button>
-                          <button class="blue-button platform-add-button" type="button" @click="toggleTableDropdown(row.id, $event)">
-                            添加账号
-                          </button>
-                        </div>
-                        <div
-                          v-if="isTableDropdownOpen(row.id)"
-                          class="platform-account-dropdown"
-                          :class="{
-                            'platform-account-dropdown--up': getDropdownPlacement(row.id).vertical === 'up',
-                            'platform-account-dropdown--right': getDropdownPlacement(row.id).horizontal === 'right',
-                          }"
-                        >
-                          <button
-                            v-for="account in loginSuccessTableAccountOptions"
-                            :key="account.id"
-                            class="platform-account-dropdown-item"
-                            :class="{ selected: isAccountSelected(row.id, account.id) }"
-                            type="button"
-                            :disabled="Boolean(account.disabledReason)"
-                            :title="account.disabledReason || `${account.platform} · ${account.nickname}`"
-                            @click="toggleTableAccount(row.id, account.id)"
-                          >
-                            <PlatformLogo :platform="account.platform" />
-                            <span class="platform-account-dropdown-main">
-                              <strong>{{ account.nickname }}</strong>
-                              <small>{{ account.disabledReason || account.platform }}</small>
-                            </span>
-                          </button>
-                          <div v-if="!loginSuccessTableAccountOptions.length" class="platform-account-dropdown-empty">
-                            暂无可用发布账号
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-                    <td class="platform-table-actions-cell">
-                      <button class="platform-remove-button danger-text" type="button" @click="clearTableRowAccounts(row.id)">
-                        删除
-                      </button>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+              <div class="min-w-0">
+                <div class="flex items-start justify-between gap-4">
+                  <div class="min-w-0">
+                    <h3 class="m-0 truncate text-[15px] font-semibold" :title="row.title">{{ row.title }}</h3>
+                    <p class="mt-1 mb-0 text-xs text-[#7a7a7a]">{{ row.category }}</p>
+                  </div>
+                  <span class="shrink-0 text-xs text-[#7a7a7a]">
+                    已选 {{ (tableRowAccountSelections[row.id] || []).length }} 个
+                  </span>
+                </div>
 
-              <footer v-if="selectionMode === 'multiple'" class="platform-dialog-footer platform-dialog-footer--table">
-                <p class="platform-dialog-footer-copy">
-                  已选择 <strong>{{ selectedTableAccountCount }}</strong> 个账号
-                </p>
-                <button class="platform-confirm-button" :class="{ active: canConfirm }" type="button" :disabled="!canConfirm" @click="handleConfirm">
-                  {{ confirmLabel }}
-                </button>
-              </footer>
-            </div>
-          </template>
-        </section>
+                <ASelect
+                  class="mt-3 w-full"
+                  mode="multiple"
+                  allow-clear
+                  show-search
+                  :max-tag-count="2"
+                  :options="accountSelectOptions"
+                  :value="tableRowAccountSelections[row.id] || []"
+                  placeholder="选择发布账号"
+                  option-filter-prop="label"
+                  @change="updateTableAccounts(row.id, $event)"
+                />
+
+                <div v-if="getSelectedAccounts(row.id).length" class="mt-3 flex flex-wrap gap-2">
+                  <ATag
+                    v-for="account in getSelectedAccounts(row.id)"
+                    :key="account.id"
+                    closable
+                    class="m-0 inline-flex items-center gap-1 rounded-full px-2.5 py-1"
+                    @close.prevent="removeTableAccount(row.id, account.id)"
+                  >
+                    <PlatformLogo :platform="account.platform" />
+                    <span>{{ account.nickname }}</span>
+                    <template #closeIcon><CloseOutlined /></template>
+                  </ATag>
+                </div>
+              </div>
+            </article>
+          </div>
+        </template>
       </div>
-    </transition>
-  </teleport>
+
+      <footer
+        v-if="selectionMode === 'multiple' && !(loading || errorMessage)"
+        class="mt-6 flex items-center justify-between border-t border-[#e5e5e7] pt-4"
+      >
+        <p class="m-0 text-sm text-[#6e6e73]">
+          已选择
+          <strong class="font-semibold text-[#1d1d1f]">
+            {{ isTableLayout ? selectedTableAccountCount : selectedPlatformKeys.length }}
+          </strong>
+          {{ isTableLayout ? "个账号" : "个平台" }}
+        </p>
+        <AButton type="primary" shape="round" size="large" :disabled="!canConfirm" @click="handleConfirm">
+          {{ confirmLabel }}
+        </AButton>
+      </footer>
+    </div>
+  </AModal>
 </template>
+
+<style scoped>
+:deep(.platform-logo) {
+  align-items: center;
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 24px;
+  justify-content: center;
+  width: 24px;
+}
+
+:deep(.platform-logo img) {
+  height: 100%;
+  object-fit: contain;
+  width: 100%;
+}
+</style>

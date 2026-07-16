@@ -1,8 +1,20 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from "vue";
-import AppIcon from "./AppIcon.vue";
+import { computed, onBeforeUnmount, reactive, ref } from "vue";
+import { LockOutlined, MobileOutlined } from "@ant-design/icons-vue";
+import {
+  Alert as AAlert,
+  Button as AButton,
+  Checkbox as ACheckbox,
+  Form as AForm,
+  FormItem as AFormItem,
+  Input as AInput,
+} from "ant-design-vue";
 import { sendCode } from "@/api/auth";
 import type { LoginForm } from "@/types";
+
+defineProps<{
+  errorMessage?: string;
+}>();
 
 const emit = defineEmits<{
   submit: [payload: LoginForm];
@@ -16,10 +28,10 @@ const form = reactive<LoginForm>({
 
 const sending = ref(false);
 const countdown = ref(0);
-const errorMessage = ref("");
+const sendCodeError = ref("");
 let countdownTimer: number | null = null;
 
-const canLogin = computed(() => form.phone.trim() && form.code.trim() && form.agreed);
+const canLogin = computed(() => Boolean(form.phone.trim() && form.code.trim() && form.agreed));
 const sendButtonText = computed(() => {
   if (countdown.value > 0) {
     return `${countdown.value}s 后重试`;
@@ -28,7 +40,13 @@ const sendButtonText = computed(() => {
 });
 const canSend = computed(() => form.phone.trim().length === 11 && countdown.value === 0 && !sending.value);
 
-const startCountdown = () => {
+/**
+ * 启动验证码重新发送倒计时，并确保同一时间只有一个计时器。
+ */
+function startCountdown(): void {
+  if (countdownTimer !== null) {
+    window.clearInterval(countdownTimer);
+  }
   countdown.value = 60;
   countdownTimer = window.setInterval(() => {
     countdown.value -= 1;
@@ -37,71 +55,116 @@ const startCountdown = () => {
       countdownTimer = null;
     }
   }, 1000);
-};
+}
 
-const handleSendCode = async () => {
+/**
+ * 请求手机验证码，并在成功后限制短时间内重复发送。
+ */
+async function handleSendCode(): Promise<void> {
   if (!canSend.value) {
     return;
   }
-  errorMessage.value = "";
+  sendCodeError.value = "";
   sending.value = true;
   try {
     await sendCode(form.phone.trim());
     startCountdown();
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : "验证码发送失败";
+    sendCodeError.value = error instanceof Error ? error.message : "验证码发送失败";
   } finally {
     sending.value = false;
   }
-};
+}
 
-const submit = () => {
+/**
+ * 提交经过基础完整性校验的登录信息。
+ */
+function submit(): void {
   if (!canLogin.value) {
     return;
   }
-  errorMessage.value = "";
+  sendCodeError.value = "";
   emit("submit", { ...form });
-};
+}
+
+onBeforeUnmount(() => {
+  if (countdownTimer !== null) {
+    window.clearInterval(countdownTimer);
+    countdownTimer = null;
+  }
+});
 </script>
 
 <template>
-  <div class="login-shell">
-    <div class="login-card">
-      <div class="login-header">
-        <h1>欢迎登录</h1>
-        <p>使用手机号快速登录</p>
-      </div>
+  <div class="flex min-h-screen items-center justify-center bg-[#f5f5f7] px-6 py-12">
+    <section class="w-full max-w-md rounded-[18px] border border-black/10 bg-white p-8" aria-labelledby="login-title">
+      <header class="mb-8 text-center">
+        <h1 id="login-title" class="m-0 text-[28px] leading-tight font-semibold tracking-[-0.02em] text-[#1d1d1f]">
+          欢迎登录
+        </h1>
+        <p class="mt-2 mb-0 text-[15px] leading-6 text-[#7a7a7a]">使用手机号快速登录</p>
+      </header>
 
-      <label class="field field-full">
-        <span class="field-icon"><AppIcon name="phone" :size="22" /></span>
-        <input v-model="form.phone" type="tel" maxlength="11" placeholder="请输入手机号" />
-      </label>
+      <a-form :model="form" layout="vertical" required-mark="optional" @finish="submit">
+        <a-form-item label="手机号" name="phone">
+          <a-input
+            v-model:value="form.phone"
+            class="!h-11 !rounded-full"
+            inputmode="numeric"
+            :maxlength="11"
+            autocomplete="tel"
+            placeholder="请输入手机号"
+          >
+            <template #prefix><MobileOutlined class="text-[#7a7a7a]" /></template>
+          </a-input>
+        </a-form-item>
 
-      <div class="field-row">
-        <label class="field">
-          <span class="field-icon"><AppIcon name="shield" :size="22" /></span>
-          <input v-model="form.code" type="text" maxlength="6" placeholder="请输入验证码" />
-        </label>
-        <button
-          class="ghost-button"
-          type="button"
-          :disabled="!canSend"
-          @click="handleSendCode"
+        <a-form-item label="验证码" name="code">
+          <div class="flex items-center gap-3">
+            <a-input
+              v-model:value="form.code"
+              class="!h-11 !rounded-full"
+              inputmode="numeric"
+              :maxlength="6"
+              autocomplete="one-time-code"
+              placeholder="请输入验证码"
+            >
+              <template #prefix><LockOutlined class="text-[#7a7a7a]" /></template>
+            </a-input>
+            <a-button
+              class="!h-11 !shrink-0 !rounded-full !px-5"
+              :disabled="!canSend"
+              :loading="sending"
+              @click="handleSendCode"
+            >
+              {{ sendButtonText }}
+            </a-button>
+          </div>
+        </a-form-item>
+
+        <a-alert
+          v-if="sendCodeError || errorMessage"
+          class="mb-4"
+          type="error"
+          show-icon
+          :message="sendCodeError || errorMessage"
+        />
+
+        <a-form-item class="!mb-5">
+          <a-checkbox v-model:checked="form.agreed">
+            我已阅读并同意《用户协议》和《隐私政策》
+          </a-checkbox>
+        </a-form-item>
+
+        <a-button
+          class="!h-11 !w-full !rounded-full"
+          type="primary"
+          html-type="submit"
+          :disabled="!canLogin"
         >
-          {{ sendButtonText }}
-        </button>
-      </div>
-
-      <p v-if="errorMessage" class="login-error">{{ errorMessage }}</p>
-
-      <label class="agreement">
-        <input v-model="form.agreed" type="checkbox" />
-        <span>我已阅读并同意《用户协议》和《隐私政策》</span>
-      </label>
-
-      <button class="primary-login" type="button" :disabled="!canLogin" @click="submit">
-        登 录
-      </button>
-    </div>
+          登录
+        </a-button>
+      </a-form>
+    </section>
   </div>
 </template>

@@ -2,6 +2,17 @@
 defineOptions({ name: "WorkView" });
 
 import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from "vue";
+import {
+  Button as AButton,
+  DatePicker as ADatePicker,
+  Empty as AEmpty,
+  Input as AInput,
+  Modal as AModal,
+  Popover as APopover,
+  Select as ASelect,
+  Skeleton as ASkeleton,
+  Spin as ASpin,
+} from "ant-design-vue";
 import { message } from "ant-design-vue";
 import {
   PLATFORMS,
@@ -12,9 +23,12 @@ import {
   type SohuChannel,
 } from "@shared/electron-api";
 import {
+  CheckOutlined,
+  FilterOutlined,
   PlayCircleOutlined,
+  ReloadOutlined,
+  SearchOutlined,
 } from "@ant-design/icons-vue";
-import AppIcon from "./AppIcon.vue";
 import { fetchWorkPublishPayload, fetchWorksPage } from "@/api/works";
 import { getPublishAccounts, normalizePublishAccount } from "@/api/publish";
 import { appConfig } from "@/config";
@@ -31,6 +45,8 @@ type SelectedWorkRow = {
   id: string;
   title: string;
   category: string;
+  coverUrl: string;
+  coverAlt: string;
 };
 
 type PublishPlanRow = {
@@ -85,6 +101,7 @@ const filterTitle = ref("");
 const filterType = ref("");
 const filterDateStart = ref("");
 const filterDateEnd = ref("");
+const filterPopoverOpen = ref(false);
 
 const videoTypeOptions = [
   { value: "talking_head_video", label: "真人口播视频" },
@@ -159,7 +176,12 @@ const selectedWorks = computed<SelectedWorkRow[]>(() =>
       id: item.id,
       title: item.title,
       category: item.platform,
+      coverUrl: item.cover,
+      coverAlt: item.title,
     })),
+);
+const activeFilterCount = computed(() =>
+  [filterType.value, filterDateStart.value, filterDateEnd.value].filter(Boolean).length,
 );
 const selectedWorkMap = computed(() => new Map(worksList.value.map((item) => [item.id, item])));
 const selectedLoginSuccessPublishAccounts = computed(() =>
@@ -620,7 +642,7 @@ const handlePublishPlanConfirm = async (): Promise<void> => {
   }
 };
 
-const columnCount = ref(5);
+const columnCount = ref(3);
 
 // 瀑布流列数据（最短列优先分配，减少高度差）
 const waterfallColumns = computed(() => {
@@ -638,8 +660,8 @@ const waterfallColumns = computed(() => {
   return columns;
 });
 
-// 格式化时间
-const formatTime = (value: string) => {
+/** 将后端时间格式化为适合卡片展示的本地时间。 */
+const formatTime = (value: string): string => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
     return value;
@@ -655,21 +677,23 @@ const formatTime = (value: string) => {
   return formatter.format(date).replace(/\//g, "-");
 };
 
-// 获取封面URL
-const getCoverUrl = (item: WorkItem) => item.cover;
+/** 返回作品封面地址。 */
+const getCoverUrl = (item: WorkItem): string => item.cover;
 
 const previewVisible = ref(false);
 const previewVideoUrl = ref("");
 const previewLoading = ref(false);
 const previewTitle = ref("");
 
-const closePreview = () => {
+/** 关闭深色视频预览并清理播放器状态。 */
+const closePreview = (): void => {
   previewVisible.value = false;
   previewVideoUrl.value = "";
   previewTitle.value = "";
 };
 
-const playVideo = async (item: WorkItem) => {
+/** 加载并播放已完成作品的视频。 */
+const playVideo = async (item: WorkItem): Promise<void> => {
   if (item.status === "生成中") {
     message.warning("视频还在生成中，请稍后查看");
     return;
@@ -764,31 +788,27 @@ async function reloadWorks(): Promise<void> {
   await setupObserver();
 }
 
-const handleSearch = () => {
+/** 使用当前关键词与高级筛选条件重新加载作品。 */
+const handleSearch = (): void => {
+  filterPopoverOpen.value = false;
   void reloadWorks();
 };
 
-const handleReset = () => {
+/** 清空作品筛选条件并重新加载列表。 */
+const handleReset = (): void => {
   filterTitle.value = "";
   filterType.value = "";
   filterDateStart.value = "";
   filterDateEnd.value = "";
+  filterPopoverOpen.value = false;
   void reloadWorks();
 };
 
-const onDateFocus = (e: Event) => {
-  const el = e.target as HTMLInputElement;
-  el.type = "date";
-};
-
-const onDateBlurStart = (e: Event) => {
-  const el = e.target as HTMLInputElement;
-  if (!filterDateStart.value) el.type = "text";
-};
-
-const onDateBlurEnd = (e: Event) => {
-  const el = e.target as HTMLInputElement;
-  if (!filterDateEnd.value) el.type = "text";
+/** 根据桌面窗口宽度调整瀑布流列数。 */
+const updateColumnCount = (): void => {
+  if (window.innerWidth >= 1400) columnCount.value = 5;
+  else if (window.innerWidth >= 1100) columnCount.value = 4;
+  else columnCount.value = 3;
 };
 
 watch(
@@ -799,144 +819,173 @@ watch(
 );
 
 onMounted(async () => {
+  updateColumnCount();
+  window.addEventListener("resize", updateColumnCount);
   await reloadWorks();
 });
 
 onBeforeUnmount(() => {
   cleanupObserver();
+  window.removeEventListener("resize", updateColumnCount);
 });
 
 useDialogLayer(() => previewVisible.value);
 </script>
 
 <template>
-  <section class="panel-card">
-    <header class="panel-header">
-      <div>
-        <h2>预定发布作品</h2>
-        <p class="panel-header-tip">勾选作品右下角方框，创建发布计划</p>
-      </div>
-    </header>
+  <section class="min-h-full text-[#1d1d1f]">
+    <h1 class="sr-only">预定发布作品</h1>
 
-    <!-- 筛选栏 -->
-    <div class="filter-section filter-inline works-filter">
-      <div class="filter-item">
-        <label>标题</label>
-        <div class="filter-input-wrap">
-          <AppIcon class="filter-search-icon" name="search" :size="14" />
-          <input v-model="filterTitle" type="text" placeholder="搜索标题" />
-        </div>
-      </div>
-      <div class="filter-item">
-        <label>视频类别</label>
-        <select v-model="filterType" :class="{ 'is-placeholder': !filterType }">
-          <option value="" disabled hidden>选择类别</option>
-          <option v-for="opt in videoTypeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-        </select>
-      </div>
-      <div class="filter-item filter-item--date">
-        <label>生成时间</label>
-        <div class="date-range">
-          <input
-            v-model="filterDateStart"
-            :type="filterDateStart ? 'date' : 'text'"
-            placeholder="开始日期"
-            @focus="onDateFocus"
-            @blur="onDateBlurStart"
-          />
-          <span>→</span>
-          <input
-            v-model="filterDateEnd"
-            :type="filterDateEnd ? 'date' : 'text'"
-            placeholder="结束日期"
-            @focus="onDateFocus"
-            @blur="onDateBlurEnd"
-          />
-        </div>
-      </div>
-      <div class="filter-actions">
-        <button class="search-btn" type="button" @click="handleSearch">
-          <AppIcon name="search" :size="14" /> 搜索
-        </button>
-        <button class="reset-btn" type="button" @click="handleReset">
-          <AppIcon name="refresh" :size="14" /> 重置
-        </button>
-      </div>
-    </div>
+    <div class="flex items-center gap-3 border-b border-[#e5e5e7] pb-4">
+      <AInput
+        v-model:value="filterTitle"
+        class="max-w-sm"
+        allow-clear
+        size="large"
+        placeholder="搜索作品标题"
+        @press-enter="handleSearch"
+      >
+        <template #prefix><SearchOutlined class="text-[#7a7a7a]" /></template>
+      </AInput>
 
-    <!-- 作品列表 -->
-    <div class="works-content">
-      <div class="waterfall-container">
-        <div v-for="(column, colIndex) in waterfallColumns" :key="colIndex" class="waterfall-column">
-          <div v-for="item in column" :key="item.id" class="work-card"
-            :class="{ 'is-selected': selectedWorkIds.has(item.id) }">
-            <div class="work-cover" :class="item.orientation" @click="playVideo(item)">
-              <template v-if="item.status === '已完成'">
-                <img :src="getCoverUrl(item)" :alt="item.title" />
-                <div class="play-icon">
-                  <PlayCircleOutlined />
-                </div>
-              </template>
-            </div>
-
-            <div class="work-card-body">
-              <div class="work-card-status">
-                <span
-                  :class="['status-tag', item.status === '已完成' ? 'completed' : item.status === '生成中' ? 'processing' : 'failed']">
-                  {{ item.status }}
-                </span>
-              </div>
-              <h3 class="work-card-title" :title="item.title">{{ item.title }}</h3>
-              <div class="work-card-meta">
-                <p class="work-card-time">{{ formatTime(item.updatedAt) }}</p>
-                <div v-if="item.status === '已完成'" class="work-card-check" @click.stop>
-                  <input type="checkbox" :checked="selectedWorkIds.has(item.id)" @change="toggleSelect(item.id)" />
-                </div>
+      <APopover v-model:open="filterPopoverOpen" placement="bottomLeft" trigger="click">
+        <template #content>
+          <div class="w-80 space-y-4 p-1">
+            <label class="block space-y-2 text-sm font-semibold">
+              <span>视频类别</span>
+              <ASelect
+                v-model:value="filterType"
+                class="w-full"
+                allow-clear
+                placeholder="全部类别"
+                :options="videoTypeOptions"
+              />
+            </label>
+            <div class="space-y-2 text-sm font-semibold">
+              <span>生成时间</span>
+              <div class="grid grid-cols-2 gap-2">
+                <ADatePicker v-model:value="filterDateStart" value-format="YYYY-MM-DD" placeholder="开始日期" />
+                <ADatePicker v-model:value="filterDateEnd" value-format="YYYY-MM-DD" placeholder="结束日期" />
               </div>
             </div>
-
+            <div class="flex justify-end gap-2 border-t border-[#eeeeef] pt-3">
+              <AButton type="text" @click="handleReset"><template #icon><ReloadOutlined /></template>重置</AButton>
+              <AButton type="primary" shape="round" @click="handleSearch">应用筛选</AButton>
+            </div>
           </div>
-        </div>
+        </template>
+        <AButton size="large" shape="round">
+          <template #icon><FilterOutlined /></template>
+          筛选{{ activeFilterCount ? ` (${activeFilterCount})` : "" }}
+        </AButton>
+      </APopover>
+
+      <AButton type="primary" shape="round" size="large" @click="handleSearch">
+        <template #icon><SearchOutlined /></template>
+        搜索
+      </AButton>
+    </div>
+
+    <div v-if="loading && worksList.length === 0" class="grid grid-cols-3 gap-4 py-6">
+      <div v-for="index in 6" :key="index" class="rounded-[18px] border border-[#e0e0e0] bg-white p-3">
+        <ASkeleton.Image active class="skeleton-cover" />
+        <ASkeleton active :paragraph="{ rows: 2 }" class="mt-4" />
       </div>
     </div>
 
-    <!-- 初次加载 -->
-    <div v-if="loading && worksList.length === 0" class="load-status">
-      <span>正在加载作品列表...</span>
+    <AEmpty
+      v-else-if="!loading && !loadError && worksList.length === 0"
+      class="py-20"
+      description="暂无作品"
+      :image="null"
+    />
+
+    <div v-else class="work-waterfall py-6">
+      <div v-for="(column, colIndex) in waterfallColumns" :key="colIndex" class="space-y-4">
+        <article
+          v-for="item in column"
+          :key="item.id"
+          class="overflow-hidden rounded-[18px] border bg-white transition duration-150"
+          :class="selectedWorkIds.has(item.id) ? 'border-[#0066cc] ring-1 ring-[#0066cc]' : 'border-[#e0e0e0]'"
+        >
+          <div
+            class="group relative cursor-pointer overflow-hidden bg-[#ececef]"
+            :class="item.orientation === 'landscape' ? 'aspect-video' : 'aspect-[3/4]'"
+            role="button"
+            tabindex="0"
+            :aria-label="`预览 ${item.title}`"
+            @click="playVideo(item)"
+            @keydown.enter="playVideo(item)"
+          >
+            <img
+              v-if="item.status === '已完成'"
+              :src="getCoverUrl(item)"
+              :alt="item.title"
+              class="h-full w-full object-cover transition duration-200 group-hover:scale-[1.02]"
+            />
+            <div v-else class="flex h-full items-center justify-center px-4 text-center text-sm text-[#6e6e73]">
+              {{ item.status === "生成中" ? "作品生成中…" : "作品生成失败" }}
+            </div>
+
+            <span
+              v-if="item.status === '已完成'"
+              class="absolute inset-0 flex items-center justify-center bg-black/0 text-white opacity-0 transition group-hover:bg-black/15 group-hover:opacity-100"
+            >
+              <PlayCircleOutlined class="text-4xl" />
+            </span>
+
+            <button
+              v-if="item.status === '已完成'"
+              class="absolute top-2 right-2 flex size-11 items-center justify-center rounded-full border backdrop-blur-xl transition active:scale-95"
+              :class="selectedWorkIds.has(item.id) ? 'border-[#0066cc] bg-[#0066cc] text-white' : 'border-white/70 bg-white/75 text-transparent hover:text-[#1d1d1f]'"
+              type="button"
+              :aria-label="selectedWorkIds.has(item.id) ? `取消选择 ${item.title}` : `选择 ${item.title}`"
+              :aria-pressed="selectedWorkIds.has(item.id)"
+              @click.stop="toggleSelect(item.id)"
+            >
+              <CheckOutlined />
+            </button>
+          </div>
+
+          <div class="p-4">
+            <span
+              class="inline-flex rounded-full px-2.5 py-1 text-xs"
+              :class="item.status === '已完成' ? 'bg-[#e8f6ed] text-[#18733a]' : item.status === '生成中' ? 'bg-[#fff4dc] text-[#8a5700]' : 'bg-[#fdebec] text-[#b42318]'"
+            >
+              {{ item.status }}
+            </span>
+            <h3 class="mt-3 mb-0 line-clamp-2 text-[15px] leading-5 font-semibold" :title="item.title">{{ item.title }}</h3>
+            <p class="mt-2 mb-0 text-xs text-[#7a7a7a]">{{ formatTime(item.updatedAt) }}</p>
+          </div>
+        </article>
+      </div>
     </div>
 
-    <!-- 初次加载错误 -->
-    <div v-else-if="loadError && worksList.length === 0 && !appConfig.isMockMode" class="load-status">
+    <div v-if="loadError && worksList.length === 0 && !appConfig.isMockMode" class="flex flex-col items-center gap-3 py-16 text-sm text-[#6e6e73]">
       <span>{{ loadError }}</span>
-      <button type="button" class="batch-btn" @click="reloadWorks">重新加载</button>
+      <AButton shape="round" @click="reloadWorks"><template #icon><ReloadOutlined /></template>重新加载</AButton>
     </div>
 
-    <!-- 分页加载状态 -->
-    <div v-else-if="!appConfig.isMockMode && worksList.length > 0" ref="sentinelRef" class="load-status">
-      <span v-if="loadingMore">加载中...</span>
+    <div v-else-if="!appConfig.isMockMode && worksList.length > 0" ref="sentinelRef" class="flex min-h-12 items-center justify-center pb-24 text-sm text-[#7a7a7a]">
+      <ASpin v-if="loadingMore" size="small" />
       <span v-else-if="loadError">{{ loadError }}</span>
-      <span v-else-if="isEnd" class="no-more">没有更多了</span>
-      <span v-else class="load-tip">下拉加载更多</span>
+      <span v-else-if="isEnd">没有更多了</span>
+      <span v-else>继续滚动加载更多</span>
     </div>
-
-    <!-- 空状态 -->
-    <div v-if="!loading && !loadError && worksList.length === 0" class="blank-state">
-      <p>暂无作品</p>
-    </div>
-
   </section>
 
-  <!-- 底部批量操作栏 -->
-  <transition name="slide-up">
-    <div v-if="hasSelected" class="batch-action-bar">
-      <div class="batch-info">
-        已选择 <span class="batch-count">{{ selectedWorkIds.size }}</span> 个作品
-        <span v-if="publishPlatformAccountSummary" style="margin-left: 12px; color: #2f7ce8;">{{
-          publishPlatformAccountSummary }}</span>
+  <transition name="work-batch-bar">
+    <div
+      v-if="hasSelected"
+      class="fixed bottom-6 left-1/2 z-40 flex max-w-[calc(100vw-48px)] -translate-x-1/2 items-center gap-5 rounded-full border border-white/80 bg-[#f5f5f7]/85 px-5 py-3 backdrop-blur-2xl"
+    >
+      <div class="min-w-0 text-sm whitespace-nowrap text-[#515154]">
+        已选择 <strong class="font-semibold text-[#1d1d1f]">{{ selectedWorkIds.size }}</strong> 个作品
+        <span v-if="publishPlatformAccountSummary" class="ml-3 hidden max-w-sm truncate text-[#0066cc] xl:inline-block">
+          {{ publishPlatformAccountSummary }}
+        </span>
       </div>
-      <button type="button" class="batch-btn" @click="openPublishPlatformAccountDialog">
-        创建发布计划
-      </button>
+      <AButton type="primary" shape="round" size="large" @click="openPublishPlatformAccountDialog">创建发布计划</AButton>
     </div>
   </transition>
 
@@ -954,22 +1003,62 @@ useDialogLayer(() => previewVisible.value);
     @close="closePublishPlanDialog" @remove="handlePublishPlanRemove" @update-row-field="handlePublishPlanFieldUpdate"
     @apply-all="handlePublishPlanApplyAll" @confirm="handlePublishPlanConfirm" />
 
-  <!-- 视频预览 -->
-  <teleport to="body">
-    <transition name="dialog-layer" appear>
-      <div v-if="previewVisible" class="video-preview-mask" @click.self="closePreview">
-        <div class="video-preview-dialog dialog-surface">
-          <div class="video-preview-header">
-            <h3>{{ previewTitle || '视频预览' }}</h3>
-            <button class="video-preview-close" type="button" @click="closePreview">×</button>
-          </div>
-          <div class="video-preview-body">
-            <div v-if="previewLoading" class="video-preview-loading">加载中...</div>
-            <video v-else-if="previewVideoUrl" :src="previewVideoUrl" controls autoplay
-              style="width: 100%; max-height: 70vh; display: block;"></video>
-          </div>
-        </div>
+  <AModal
+    :open="previewVisible"
+    :width="980"
+    :footer="null"
+    wrap-class-name="video-preview-modal"
+    centered
+    destroy-on-close
+    @cancel="closePreview"
+  >
+    <div class="pt-1 text-white">
+      <h3 class="m-0 truncate pr-10 text-[17px] font-semibold">{{ previewTitle || "视频预览" }}</h3>
+      <div class="mt-4 flex min-h-80 items-center justify-center overflow-hidden rounded-lg bg-black">
+        <ASpin v-if="previewLoading" tip="正在加载视频…" />
+        <video v-else-if="previewVideoUrl" :src="previewVideoUrl" controls autoplay class="max-h-[72vh] w-full"></video>
       </div>
-    </transition>
-  </teleport>
+    </div>
+  </AModal>
 </template>
+
+<style scoped>
+.work-waterfall {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(v-bind(columnCount), minmax(0, 1fr));
+}
+
+.skeleton-cover :deep(.ant-skeleton-image) {
+  height: 180px;
+  width: 100%;
+}
+
+.work-batch-bar-enter-active,
+.work-batch-bar-leave-active {
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.work-batch-bar-enter-from,
+.work-batch-bar-leave-to {
+  opacity: 0;
+  transform: translate(-50%, 8px);
+}
+
+:global(.video-preview-modal .ant-modal-content) {
+  background: #111113;
+  border: 1px solid #2d2d30;
+  color: #fff;
+}
+
+:global(.video-preview-modal .ant-modal-close) {
+  color: #fff;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .work-batch-bar-enter-active,
+  .work-batch-bar-leave-active {
+    transition: none;
+  }
+}
+</style>

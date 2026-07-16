@@ -6,5 +6,6 @@
   "semi": true,
   "trailingComma": "all",
   "arrowParens": "always",
-  "objectWrap": "collapse"
+  "objectWrap": "collapse",
+  "plugins": ["prettier-plugin-tailwindcss"]
 }

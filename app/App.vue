@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, provide, ref } from "vue";
+import { ConfigProvider as AConfigProvider } from "ant-design-vue";
 import LoginView from "./components/LoginView.vue";
-import SidebarNav from "./components/SidebarNav.vue";
+import AppHeader from "./components/AppHeader.vue";
 import AccountTable from "./components/AccountTable.vue";
 import RecordsTable from "./components/RecordsTable.vue";
 import AppContentTransition from "./components/AppContentTransition.vue";
@@ -15,6 +16,7 @@ import { createNotificationCenter, notificationCenterKey } from "./notifications
 import PublishProgressPanel from "./components/PublishProgressPanel.vue";
 import { createPublishProgressCenter, publishProgressCenterKey } from "./publish-progress";
 import type { LaunchIntent } from "@shared/electron-api";
+import { appTheme } from "./theme";
 
 type AppNotificationEventDetail = {
   title: string;
@@ -27,6 +29,7 @@ const activeMenu = ref<MenuKey>("accounts");
 const loggedIn = ref(false);
 const user = ref<User | null>(null);
 const loginError = ref("");
+const notificationOpen = ref(false);
 const pendingLaunchMenu = ref<MenuKey | null>(null);
 let tokenRefreshTimer: number | null = null;
 let removeLaunchIntentListener: (() => void) | null = null;
@@ -35,6 +38,9 @@ let removePublishProgressListener: (() => void) | null = null;
 let tokenRefreshFailureNotified = false;
 const notificationCenter = createNotificationCenter();
 const publishProgressCenter = createPublishProgressCenter();
+const unreadNotificationCount = computed(() => (
+  notificationCenter.items.value.filter((item) => item.unread).length
+));
 
 const pushSystemError = (title: string, message: string): void => {
   notificationCenter.push({
@@ -106,7 +112,7 @@ const login = async (payload: LoginForm) => {
     startTokenRefresh();
     consumePendingLaunchMenu();
   } catch {
-    loginError.value = "";
+    loginError.value = "登录没有成功，请检查手机号和验证码后重试";
     pushSystemError("登录失败", "登录没有成功，请检查手机号和验证码后重试");
   }
 };
@@ -120,6 +126,7 @@ const logout = async () => {
   clearSessionTokens();
   loggedIn.value = false;
   user.value = null;
+  notificationOpen.value = false;
   stopVerificationPolling();
   stopTokenRefresh();
 };
@@ -242,38 +249,62 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main class="app-root">
-    <LoginView v-if="!loggedIn" @submit="login" />
+  <a-config-provider :theme="appTheme">
+    <main class="h-screen overflow-hidden bg-[#f5f5f7] text-[#1d1d1f]">
+      <LoginView v-if="!loggedIn" :error-message="loginError" @submit="login" />
 
-    <div v-else class="workspace">
-      <SidebarNav :active="activeMenu" :user="user" @select="activeMenu = $event" @logout="logout" />
-      <section class="content-area">
-        <header v-if="activeMenu !== 'accounts' && activeMenu !== 'records' && activeMenu !== 'works'" class="workspace-header">
-          <div>
-            <h1>预定发布作品</h1>
-          </div>
-        </header>
-        <AppContentTransition :view="currentView" :view-key="activeMenu" />
-      </section>
-    </div>
+      <div v-else class="flex h-full min-w-[900px] flex-col">
+        <AppHeader
+          :active="activeMenu"
+          :user="user"
+          :unread-count="unreadNotificationCount"
+          @select="activeMenu = $event"
+          @open-notifications="notificationOpen = true"
+          @logout="logout"
+        />
+        <section class="min-h-0 flex-1 overflow-auto px-6 py-6 lg:px-8" aria-label="工作区">
+          <AppContentTransition :view="currentView" :view-key="activeMenu" />
+        </section>
+      </div>
 
-    <NotificationCenter
-      :items="notificationCenter.items.value"
-      title="系统通知"
-      empty-text="新的发布结果会显示在这里"
-      :default-collapsed="true"
-      @dismiss="dismissNotification"
-      @clear="clearNotifications"
-      @action="handleNotificationAction($event.id)"
-    />
-    <transition name="publish-progress-panel">
-      <PublishProgressPanel
-        v-if="publishProgressCenter.visible.value && publishProgressCenter.items.value.length > 0"
-        :items="publishProgressCenter.items.value"
-        :collapsed="publishProgressCenter.collapsed.value"
-        @toggle-collapsed="publishProgressCenter.toggleCollapsed"
-        @close="publishProgressCenter.close"
+      <NotificationCenter
+        v-model:open="notificationOpen"
+        :items="notificationCenter.items.value"
+        title="系统通知"
+        empty-text="新的发布结果会显示在这里"
+        @dismiss="dismissNotification"
+        @clear="clearNotifications"
+        @action="handleNotificationAction($event.id)"
       />
-    </transition>
-  </main>
+      <transition name="publish-progress-panel">
+        <PublishProgressPanel
+          v-if="publishProgressCenter.visible.value && publishProgressCenter.items.value.length > 0"
+          :items="publishProgressCenter.items.value"
+          :collapsed="publishProgressCenter.collapsed.value"
+          @toggle-collapsed="publishProgressCenter.toggleCollapsed"
+          @close="publishProgressCenter.close"
+        />
+      </transition>
+    </main>
+  </a-config-provider>
 </template>
+
+<style scoped>
+.publish-progress-panel-enter-active,
+.publish-progress-panel-leave-active {
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.publish-progress-panel-enter-from,
+.publish-progress-panel-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .publish-progress-panel-enter-active,
+  .publish-progress-panel-leave-active {
+    transition: none;
+  }
+}
+</style>
