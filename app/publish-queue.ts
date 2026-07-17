@@ -179,8 +179,9 @@ export function findFirstPublishQueueValidationError(items: PublishQueueItem[]):
     if (!settings.accountId || !settings.accountName || !settings.platform) {
       return `《${workTitle}》请先添加发布账号`;
     }
+    const validationTarget = `${settings.platformLabel} 账号「${settings.accountName}」视频 「${workTitle}」`;
     if (!settings.title.trim()) {
-      return `${settings.platformLabel}账号「${settings.accountName}」的发布标题不能为空`;
+      return `${validationTarget}的发布标题不能为空`;
     }
     if (
       settings.platform === "bilibili"
@@ -190,7 +191,7 @@ export function findFirstPublishQueueValidationError(items: PublishQueueItem[]):
         || settings.humanTypeId <= 0
       )
     ) {
-      return `Bilibili 账号「${settings.accountName}」必须选择投稿分区`;
+      return `${validationTarget}必须选择投稿分区`;
     }
     if (
       settings.platform === "sohu"
@@ -203,12 +204,12 @@ export function findFirstPublishQueueValidationError(items: PublishQueueItem[]):
         || settings.videoChannelId <= 0
       )
     ) {
-      return `搜狐账号「${settings.accountName}」必须选择一级频道和二级频道`;
+      return `${validationTarget}必须选择一级频道和二级频道`;
     }
 
     const scheduleError = validateScheduledAt(settings.platform, settings.scheduledAt);
     if (scheduleError) {
-      return `${settings.platformLabel}账号「${settings.accountName}」《${settings.title}》：${scheduleError}`;
+      return `${validationTarget}：${scheduleError}`;
     }
   }
   return "";

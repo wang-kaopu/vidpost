@@ -173,7 +173,7 @@ test("publish queue validation checks platform settings and schedule before acco
 
   assert.equal(
     findFirstPublishQueueValidationError(queue.items.value),
-    "Bilibili 账号「Bilibili 账号」必须选择投稿分区",
+    "哔哩哔哩 账号「Bilibili 账号」视频 「标题 1」必须选择投稿分区",
   );
 
   queue.updateSettings(queueId, {
