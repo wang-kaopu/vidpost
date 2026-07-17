@@ -1,7 +1,21 @@
 import { Buffer } from "node:buffer";
+import fs from "node:fs";
+import path from "node:path";
+
+import log4js, { type Logger as Log4jsLogger } from "log4js";
 
 const BINARY_PREVIEW_CHARACTERS = 100;
 const BINARY_PREVIEW_BYTES = 75;
+const LOG_BACKUP_COUNT = 6;
+const LOG_ROLLOVER_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+let electronFileLogger: Log4jsLogger | null = null;
+let rendererFileLogger: Log4jsLogger | null = null;
+let logDirectory: string | null = null;
+let rolloverStartedAt = 0;
+let rolloverPromise: Promise<void> | null = null;
+let rolloverTimer: NodeJS.Timeout | null = null;
+let loggerShuttingDown = false;
 
 export interface Logger {
   /** 输出 INFO 级别日志。 */
@@ -149,17 +163,156 @@ function formatLog(level: "INFO" | "ERROR", values: unknown[]): string {
   return `[${formatTimestamp(new Date())}] - [agenthunt] - [${level}] - ${values.map(formatValue).join(" ")}`;
 }
 
+/** 为两类日志配置只负责追加写入的 log4js appender。 */
+function configureFileAppenders(directory: string): void {
+  log4js.configure({
+    appenders: {
+      electronFile: {
+        type: "file",
+        filename: path.join(directory, "electron.log"),
+        backups: 0,
+        layout: { type: "messagePassThrough" },
+      },
+      rendererFile: {
+        type: "file",
+        filename: path.join(directory, "renderer.log"),
+        backups: 0,
+        layout: { type: "messagePassThrough" },
+      },
+    },
+    categories: {
+      default: { appenders: ["electronFile"], level: "info" },
+      electron: { appenders: ["electronFile"], level: "info" },
+      renderer: { appenders: ["rendererFile"], level: "info" },
+    },
+  });
+  electronFileLogger = log4js.getLogger("electron");
+  rendererFileLogger = log4js.getLogger("renderer");
+}
+
+/** 将一个当前日志文件轮转为 `.1`，并依次后移已有历史文件。 */
+function rotateLogFile(filename: string): void {
+  fs.rmSync(`${filename}.${LOG_BACKUP_COUNT}`, { force: true });
+  for (let index = LOG_BACKUP_COUNT - 1; index >= 1; index -= 1) {
+    const source = `${filename}.${index}`;
+    if (fs.existsSync(source)) fs.renameSync(source, `${filename}.${index + 1}`);
+  }
+  if (fs.existsSync(filename)) fs.renameSync(filename, `${filename}.1`);
+}
+
+/** 从现有当前日志文件推断本轮 24 小时窗口的开始时间。 */
+function resolveRolloverStartedAt(directory: string, now: number): number {
+  const createdAt: number[] = [];
+  for (const filename of ["electron.log", "renderer.log"]) {
+    try {
+      const stats = fs.statSync(path.join(directory, filename));
+      const filesystemCreatedAt = stats.birthtimeMs > 0 ? stats.birthtimeMs : stats.ctimeMs;
+      createdAt.push(Math.min(filesystemCreatedAt, stats.mtimeMs));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+  }
+  return createdAt.length > 0 ? Math.min(...createdAt) : now;
+}
+
+/** 关闭当前 log4js appender 并等待缓冲区写入完成。 */
+function closeFileAppenders(): Promise<void> {
+  if (!electronFileLogger && !rendererFileLogger) return Promise.resolve();
+  electronFileLogger = null;
+  rendererFileLogger = null;
+  return new Promise((resolve, reject) => {
+    log4js.shutdown((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
+/** 在一个 24 小时窗口结束时关闭文件、执行数字序号轮转并重新开始写入。 */
+async function rolloverLogFiles(directory: string): Promise<void> {
+  try {
+    await closeFileAppenders();
+    rotateLogFile(path.join(directory, "electron.log"));
+    rotateLogFile(path.join(directory, "renderer.log"));
+  } finally {
+    rolloverStartedAt = Date.now();
+    configureFileAppenders(directory);
+  }
+}
+
+/** 安排当前日志窗口满 24 小时后的轮转。 */
+function scheduleRollover(): void {
+  if (!logDirectory || loggerShuttingDown) return;
+  const directory = logDirectory;
+  rolloverTimer = setTimeout(() => {
+    rolloverTimer = null;
+    rolloverPromise = rolloverLogFiles(directory)
+      .catch((error) => logger.error("[logger] failed to rotate 24-hour logs:", error))
+      .finally(() => {
+        rolloverPromise = null;
+        scheduleRollover();
+      });
+  }, Math.max(1, rolloverStartedAt + LOG_ROLLOVER_INTERVAL_MS - Date.now()));
+  rolloverTimer.unref();
+}
+
+/** 配置 Electron 主进程和 renderer 的独立 24 小时数字序号日志文件。 */
+export function configureLogger(directory: string): void {
+  if (electronFileLogger || rendererFileLogger) throw new Error("Logger 已完成配置，不能重复初始化");
+  fs.mkdirSync(directory, { recursive: true });
+  const now = Date.now();
+  rolloverStartedAt = resolveRolloverStartedAt(directory, now);
+  if (now - rolloverStartedAt >= LOG_ROLLOVER_INTERVAL_MS) {
+    rotateLogFile(path.join(directory, "electron.log"));
+    rotateLogFile(path.join(directory, "renderer.log"));
+    rolloverStartedAt = now;
+  }
+  logDirectory = directory;
+  loggerShuttingDown = false;
+  configureFileAppenders(directory);
+  scheduleRollover();
+}
+
+/** 将 renderer 已安全格式化的日志写入独立文件。 */
+export function writeRendererLog(level: "info" | "error", message: string): void {
+  try {
+    rendererFileLogger?.[level](message);
+  } catch {
+    // renderer 日志写入失败不能中断主进程。
+  }
+}
+
+/** 等待轮转和剩余日志写入完成，并关闭文件句柄。 */
+export async function shutdownLogger(): Promise<void> {
+  loggerShuttingDown = true;
+  if (rolloverTimer) {
+    clearTimeout(rolloverTimer);
+    rolloverTimer = null;
+  }
+  if (rolloverPromise) await rolloverPromise;
+  await closeFileAppenders();
+  logDirectory = null;
+  rolloverStartedAt = 0;
+}
+
 export const logger: Logger = {
   info(...values): void {
     try {
-      console.info(formatLog("INFO", values));
+      const message = formatLog("INFO", values);
+      console.info(message);
+      electronFileLogger?.info(message);
     } catch {
       // 日志输出失败不能中断业务流程。
     }
   },
   error(...values): void {
     try {
-      console.error(formatLog("ERROR", values));
+      const message = formatLog("ERROR", values);
+      console.error(message);
+      electronFileLogger?.error(message);
     } catch {
       // 日志输出失败不能中断业务流程。
     }

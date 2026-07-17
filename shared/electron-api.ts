@@ -124,6 +124,18 @@ export interface PublishTaskProgressEvent {
   taskId: string;
 }
 
+/** renderer 通过 Electron 主进程持久化的日志内容。 */
+export interface RendererLogEntry {
+  level: "error" | "info";
+  message: string;
+}
+
+/** renderer 可调用的主进程日志接口。 */
+export interface ElectronLoggerAPI {
+  error(message: string): void;
+  info(message: string): void;
+}
+
 /** Electron 主窗口使用的全部 invoke 与事件频道。 */
 export const IPC_CHANNELS = {
   getBilibiliHumanTypes: "video:get-bilibili-human-types",
@@ -136,6 +148,7 @@ export const IPC_CHANNELS = {
   publish: "publish",
   publishTaskProgress: "publish-task-progress",
   publishTaskStateChanged: "publish-task-state-changed",
+  rendererLog: "logger:renderer",
 } as const;
 
 /** contextBridge 向正式 renderer 暴露的 Electron 能力。 */
@@ -143,6 +156,7 @@ export interface ElectronAPI {
   getBilibiliHumanTypes(payload: AccountOptionsInput): Promise<BilibiliHumanType[]>;
   getLaunchIntent(): Promise<LaunchIntent | null>;
   getSohuChannels(payload: AccountOptionsInput): Promise<SohuChannel[]>;
+  logger: ElectronLoggerAPI;
   login(platform: Platform): Promise<void>;
   onLaunchIntent(handler: (payload: LaunchIntent) => void): () => void;
   onPublishTaskProgress(handler: (payload: PublishTaskProgressEvent) => void): () => void;

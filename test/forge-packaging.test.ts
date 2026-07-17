@@ -78,13 +78,13 @@ test('forge packager declares the agenthunt custom protocol', () => {
   ])
 })
 
-test('forge packager replaces stale output and unpacks complete Sharp native packages', () => {
+test('forge packager replaces stale output and unpacks Sharp runtime packages', () => {
   assert.equal(forgeConfig.packagerConfig.overwrite, true)
   assert.notEqual(typeof forgeConfig.packagerConfig.asar, 'boolean')
   assert.equal(
     typeof forgeConfig.packagerConfig.asar === 'object'
       ? forgeConfig.packagerConfig.asar.unpack
       : undefined,
-    '**/node_modules/{playwright,playwright-core,@img/sharp-*}/**'
+    '**/node_modules/{playwright,playwright-core,sharp,@img}/**'
   )
 })

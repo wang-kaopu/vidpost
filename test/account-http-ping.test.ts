@@ -11,6 +11,12 @@ import { BilibiliAccount } from '@/src/infra/account/bilibili-account.ts'
 import { DouyinAccount } from '@/src/infra/account/douyin-account.ts'
 import { SohuAccount } from '@/src/infra/account/sohu-account.ts'
 
+interface TestRequestConfig {
+  headers: Record<string, string>
+  params?: unknown
+  signal?: unknown
+}
+
 const PLATFORM_CASES = [
   {
     account: () => new DouyinAccount(),
@@ -76,8 +82,8 @@ function axiosStatusError(status: number): Error {
 for (const platformCase of PLATFORM_CASES) {
   test(`${platformCase.platform} ping returns online profile and sends the stored Cookie with Chrome 138 UA`, async (t) => {
     const accountFile = createAccountFile(platformCase.cookie)
-    const calls: Array<{ config: Record<string, any>; url: string }> = []
-    t.mock.method(axios, 'get', async (url: string, config: Record<string, any>) => {
+    const calls: Array<{ config: TestRequestConfig; url: string }> = []
+    t.mock.method(axios, 'get', async (url: string, config: TestRequestConfig) => {
       calls.push({ config, url })
       return { data: platformCase.onlineBody }
     })
@@ -133,9 +139,9 @@ for (const platformCase of PLATFORM_CASES) {
 
 test('douyin ping enforces the 20 second outer timeout without passing a cancellation signal', async (t) => {
   const accountFile = createAccountFile(PLATFORM_CASES[0].cookie)
-  let requestConfig: Record<string, any> | undefined
+  let requestConfig: TestRequestConfig | undefined
   let timeoutCallback: (() => void) | undefined
-  t.mock.method(axios, 'get', async (_url: string, config: Record<string, any>) => {
+  t.mock.method(axios, 'get', async (_url: string, config: TestRequestConfig) => {
     requestConfig = config
     queueMicrotask(() => timeoutCallback?.())
     return new Promise(() => undefined)
@@ -157,8 +163,8 @@ test('douyin ping sends an empty msToken when the Cookie snapshot does not conta
     name: 'sessionid',
     value: 'douyin-session',
   })
-  let requestConfig: Record<string, any> | undefined
-  t.mock.method(axios, 'get', async (_url: string, config: Record<string, any>) => {
+  let requestConfig: TestRequestConfig | undefined
+  t.mock.method(axios, 'get', async (_url: string, config: TestRequestConfig) => {
     requestConfig = config
     return { data: { user: { nickname: '抖音账号' } } }
   })
@@ -169,13 +175,13 @@ test('douyin ping sends an empty msToken when the Cookie snapshot does not conta
 
 test('sohu ping checks authentication and then reads the nickname with fresh cache stamps', async (t) => {
   const accountFile = createSohuAccountFile()
-  const calls: Array<{ config: Record<string, any>; url: string }> = []
+  const calls: Array<{ config: TestRequestConfig; url: string }> = []
   let now = 1_000
   t.mock.method(Date, 'now', () => {
     now += 1
     return now
   })
-  t.mock.method(axios, 'get', async (url: string, config: Record<string, any>) => {
+  t.mock.method(axios, 'get', async (url: string, config: TestRequestConfig) => {
     calls.push({ config, url })
     return url.endsWith('/check/user')
       ? { data: { code: 2_000_000 } }
@@ -310,14 +316,14 @@ test('sohu ping propagates non-authentication HTTP errors', async (t) => {
 
 test('sohu ping enforces the 20 second outer timeout without passing a cancellation signal', async (t) => {
   const accountFile = createSohuAccountFile()
-  let requestConfig: Record<string, any> | undefined
+  let requestConfig: TestRequestConfig | undefined
   let timeoutCallback: (() => void) | undefined
   t.mock.method(globalThis, 'setTimeout', ((callback: () => void, delay: number) => {
     assert.equal(delay, 20_000)
     timeoutCallback = callback
     return 1
   }) as typeof setTimeout)
-  t.mock.method(axios, 'get', async (_url: string, config: Record<string, any>) => {
+  t.mock.method(axios, 'get', async (_url: string, config: TestRequestConfig) => {
     requestConfig = config
     queueMicrotask(() => timeoutCallback?.())
     return new Promise(() => undefined)

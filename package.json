@@ -34,6 +34,7 @@
     "crc-32": "^1.2.2",
     "electron-squirrel-startup": "^1.0.1",
     "file-type": "^22.0.1",
+    "log4js": "^6.9.1",
     "mp4box": "^2.4.1",
     "p-limit": "^7.3.0",
     "playwright": "^1.59.1",

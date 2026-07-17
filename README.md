@@ -121,7 +121,9 @@ Forge 的 ASAR 配置会整体解包 Playwright、Sharp 和 `@img` 运行时目�
 
 ## 日志规范
 
-项目源码统一通过 logger 输出控制台日志。Node、Electron 和脚本使用 `src/utils/logger.ts`，浏览器代码使用 `app/src/utils/logger.ts`；两个实现只暴露 `logger.info(...values)` 和 `logger.error(...values)`，业务代码禁止直接调用 `console.*`。
+项目源码统一通过 logger 输出日志。Node、Electron 和脚本使用 `src/utils/logger.ts`；浏览器代码继续通过 `app/src/utils/logger.ts` 保持相同的 `logger.info(...values)` 和 `logger.error(...values)` 调用方式，但格式化后会通过 `electronAPI.logger` 交给主进程持久化。业务代码禁止直接调用 `console.*`。
+
+Electron 使用 log4js 在用户主目录的 `~/.agenthunt/logs` 保存两组文件：主进程及 Node 业务写入 `electron.log`，正式 renderer 写入 `renderer.log`。应用通过 `app.getPath("home")` 构造绝对路径并交给 `app.setAppLogsPath()`，不依赖 shell 展开 `~`。每组当前日志累计写入 24 小时后按数字序号轮转，当前日志不带序号，最近的历史日志为 `.1`，最旧为 `.6`，因此每组固定保留 7 个日志窗口。应用重启时会从当前文件的创建时间继续计算剩余时长；若关闭时间已超过 24 小时，则在下次启动时立即补做一次轮转，但不会为关闭期间生成空日志文件。应用退出前会等待轮转和异步日志写入完成。renderer 只能向受限 IPC 发送已经安全格式化的日志文本，不能访问文件系统或 log4js。
 
 日志使用运行机器的本地时区和 24 小时制，格式固定为：
 
@@ -132,7 +134,7 @@ Forge 的 ASAR 配置会整体解包 Playwright、Sharp 和 `@img` 运行时目�
 
 对象会压缩为单行 JSON；普通字符串及错误堆栈中的换行保持不变，并且每次 logger 调用只添加一次前缀。`Buffer`、ArrayBuffer、TypedArray 和 DataView 会显示 Base64 编码后的前 100 个字符，同时记录类型、原始字节数和截断状态。Blob、File 只记录名称、MIME 和字节数；FormData 会展开字段并按相同规则描述其中的文件。
 
-平台协议日志可能包含 HTTP Header、Cookie、Token 和请求数据；部分平台会对身份 Header 做定向脱敏，但生产日志仍不得交给无关人员。ESLint 对业务源码启用 `no-console`，仅两个 logger 实现及其契约测试允许访问原生 console。
+平台协议日志可能包含 HTTP Header、Cookie、Token 和请求数据；部分平台会对身份 Header 做定向脱敏，但生产日志文件仍不得交给无关人员。ESLint 对业务源码启用 `no-console`，仅两个 logger 门面及其契约测试允许访问原生 console。
 
 ## 平台资源基础设施
 

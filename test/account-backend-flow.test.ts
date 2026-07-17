@@ -11,7 +11,7 @@ import {
 import type { BrowserIdentity } from "@/src/infra/browser-identity.ts";
 import { logger } from "@/src/utils/logger.ts";
 
-type Listener = (...args: any[]) => void;
+type Listener = (...args: unknown[]) => void;
 
 const TEST_IDENTITY: BrowserIdentity = {
   acceptLanguage: "zh-CN,zh;q=0.9",
@@ -43,7 +43,7 @@ function createBackendWindowHarness(options: { autoFinishLoad?: boolean; loadErr
       : listener;
     map.set(event, [...(map.get(event) ?? []), wrapped]);
   };
-  const emit = (map: Map<string, Listener[]>, event: string, ...args: any[]): void => {
+  const emit = (map: Map<string, Listener[]>, event: string, ...args: unknown[]): void => {
     for (const listener of [...(map.get(event) ?? [])]) {
       listener(...args);
     }

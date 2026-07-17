@@ -10,12 +10,24 @@ import {
   startTaskStateMonitor,
   TASK_STATE_MAX_WAIT_MS,
   TASK_STATE_POLL_INTERVAL_MS,
+  type TaskStateServiceRuntime,
 } from "@/src/service/task-state-service.ts";
 
 interface FakeTimer {
   callback: () => void;
   cancelled: boolean;
   delay: number;
+}
+
+interface TestTaskAttributes extends Record<string, unknown> {
+  failure_detail?: { reason?: string };
+  review_state?: { reason?: string; sync_error?: string };
+  review_state_clues?: { platform_work_id?: string };
+}
+
+interface TaskUpdate extends Record<string, unknown> {
+  attributes?: TestTaskAttributes;
+  status?: string;
 }
 
 /** 创建可手动推进的计时器运行时，测试无需真实等待三十秒。 */
@@ -70,14 +82,14 @@ test("query errors keep status unchanged, save sync_error, and retry after 30 se
       fetchPublishedState: async () => {
         throw new Error("network down");
       },
-    })) as any,
+    })) as unknown as TaskStateServiceRuntime["createVideo"],
     now: () => 0,
     onTaskChanged: (event) => events.push(event),
-    resolveAccountFilePath: (() => "/tmp/account.json") as any,
+    resolveAccountFilePath: (() => "/tmp/account.json") as TaskStateServiceRuntime["resolveAccountFilePath"],
     setTimeout: fake.setTimeoutFake,
     updatePublishTask: (async (_taskId, input) => {
       updates.push(input);
-    }) as any,
+    }) as TaskStateServiceRuntime["updatePublishTask"],
   });
 
   assert.equal(startTaskStateMonitor(createTask(1)), true);
@@ -86,14 +98,14 @@ test("query errors keep status unchanged, save sync_error, and retry after 30 se
 
   assert.equal(updates.length, 1);
   assert.equal("status" in updates[0], false);
-  assert.equal((updates[0].attributes as any).review_state.sync_error, "network down");
+  assert.equal((updates[0].attributes as TestTaskAttributes).review_state?.sync_error, "network down");
   assert.equal(events[0]?.syncError, "network down");
   assert.equal(fake.timers[0]?.delay, TASK_STATE_POLL_INTERVAL_MS);
 });
 
 test("tasks missing an account id save a clear query error before calling the platform", async () => {
   const fake = createFakeTimers();
-  const updates: Array<Record<string, any>> = [];
+  const updates: TaskUpdate[] = [];
   let queryCalls = 0;
   configureTaskStateServiceRuntime({
     clearTimeout: fake.clearTimeoutFake,
@@ -102,12 +114,12 @@ test("tasks missing an account id save a clear query error before calling the pl
         queryCalls += 1;
         return { status: "public", raw: {} };
       },
-    })) as any,
+    })) as unknown as TaskStateServiceRuntime["createVideo"],
     now: () => 0,
     setTimeout: fake.setTimeoutFake,
     updatePublishTask: (async (_taskId, input) => {
-      updates.push(input);
-    }) as any,
+      updates.push(input as TaskUpdate);
+    }) as TaskStateServiceRuntime["updatePublishTask"],
   });
 
   assert.equal(startTaskStateMonitor(createTask(16, { accountId: null })), true);
@@ -130,14 +142,14 @@ test("terminal backend failures retry the cached terminal without querying the p
         queryCalls += 1;
         return { status: "public", raw: { state: 0 }, matchedBy: "platform_work_id" };
       },
-    })) as any,
+    })) as unknown as TaskStateServiceRuntime["createVideo"],
     now: () => now,
-    resolveAccountFilePath: (() => "/tmp/account.json") as any,
+    resolveAccountFilePath: (() => "/tmp/account.json") as TaskStateServiceRuntime["resolveAccountFilePath"],
     setTimeout: fake.setTimeoutFake,
     updatePublishTask: (async () => {
       updateCalls += 1;
       if (updateCalls === 1) throw new Error("backend unavailable");
-    }) as any,
+    }) as TaskStateServiceRuntime["updatePublishTask"],
   });
 
   startTaskStateMonitor(createTask(2));
@@ -160,13 +172,13 @@ test("reviewing tasks become failed when the two-hour deadline is reached", asyn
   const updates: Array<Record<string, unknown>> = [];
   configureTaskStateServiceRuntime({
     clearTimeout: fake.clearTimeoutFake,
-    createVideo: (() => ({ fetchPublishedState: async () => ({ status: "reviewing", raw: { state: 141 } }) })) as any,
+    createVideo: (() => ({ fetchPublishedState: async () => ({ status: "reviewing", raw: { state: 141 } }) })) as unknown as TaskStateServiceRuntime["createVideo"],
     now: () => now,
-    resolveAccountFilePath: (() => "/tmp/account.json") as any,
+    resolveAccountFilePath: (() => "/tmp/account.json") as TaskStateServiceRuntime["resolveAccountFilePath"],
     setTimeout: fake.setTimeoutFake,
     updatePublishTask: (async (_taskId, input) => {
       updates.push(input);
-    }) as any,
+    }) as TaskStateServiceRuntime["updatePublishTask"],
   });
 
   startTaskStateMonitor(createTask(3));
@@ -177,7 +189,7 @@ test("reviewing tasks become failed when the two-hour deadline is reached", asyn
   now = TASK_STATE_MAX_WAIT_MS;
   await fake.runNext();
   assert.equal(updates[1]?.status, "failed");
-  assert.equal((updates[1].attributes as any).failure_detail.reason, "审核超时，请前往官方后台查看发布状态");
+  assert.equal((updates[1].attributes as TestTaskAttributes).failure_detail?.reason, "审核超时，请前往官方后台查看发布状态");
 });
 
 test("scheduled tasks use scheduledAt plus two hours as their deadline", () => {
@@ -194,7 +206,7 @@ test("scheduled tasks use scheduledAt plus two hours as their deadline", () => {
 
 test("startup recovery monitors tasks with ids and fails unrecoverable history", async () => {
   const fake = createFakeTimers();
-  const updates: Array<{ id: number; input: Record<string, any> }> = [];
+  const updates: Array<{ id: number; input: TaskUpdate }> = [];
   const reviewingWithId = createTask(5);
   const reviewingWithoutId = createTask(6, { attributes: {} });
   const runningWithId = createTask(7, { status: "running" });
@@ -205,12 +217,12 @@ test("startup recovery monitors tasks with ids and fails unrecoverable history",
       isEnd: true,
       lastId: 0,
       tasks: status === "reviewing" ? [reviewingWithId, reviewingWithoutId] : [runningWithId, runningWithoutId],
-    })) as any,
+    })) as unknown as TaskStateServiceRuntime["listPublishTasks"],
     now: () => 0,
     setTimeout: fake.setTimeoutFake,
     updatePublishTask: (async (id, input) => {
-      updates.push({ id: Number(id), input });
-    }) as any,
+      updates.push({ id: Number(id), input: input as TaskUpdate });
+    }) as TaskStateServiceRuntime["updatePublishTask"],
   });
 
   await recoverTaskStateMonitors();
@@ -241,7 +253,7 @@ test("monitor registration is idempotent per task and independent across tasks",
 
 test("startup recovery backfills active Sohu record.id evidence and monitors reviewing and running tasks", async () => {
   const fake = createFakeTimers();
-  const updates: Array<{ id: number; input: Record<string, any> }> = [];
+  const updates: Array<{ id: number; input: TaskUpdate }> = [];
   const reviewingFromPublishResponse = createTask(11, {
     platform: "sohu",
     attributes: {
@@ -270,12 +282,12 @@ test("startup recovery backfills active Sohu record.id evidence and monitors rev
       isEnd: true,
       lastId: 0,
       tasks: status === "reviewing" ? [reviewingFromPublishResponse, reviewingFromRawId] : [runningFromPublishResponse],
-    })) as any,
+    })) as unknown as TaskStateServiceRuntime["listPublishTasks"],
     now: () => 0,
     setTimeout: fake.setTimeoutFake,
     updatePublishTask: (async (id, input) => {
-      updates.push({ id: Number(id), input });
-    }) as any,
+      updates.push({ id: Number(id), input: input as TaskUpdate });
+    }) as TaskStateServiceRuntime["updatePublishTask"],
   });
 
   await recoverTaskStateMonitors();
@@ -298,7 +310,7 @@ test("startup recovery backfills active Sohu record.id evidence and monitors rev
 
 test("startup recovery does not treat Sohu clientNewsId as a compatible platform_work_id", async () => {
   const fake = createFakeTimers();
-  const updates: Array<{ id: number; input: Record<string, any> }> = [];
+  const updates: Array<{ id: number; input: TaskUpdate }> = [];
   const task = createTask(14, {
     platform: "sohu",
     attributes: {
@@ -312,12 +324,12 @@ test("startup recovery does not treat Sohu clientNewsId as a compatible platform
       isEnd: true,
       lastId: 0,
       tasks: status === "reviewing" ? [task] : [],
-    })) as any,
+    })) as unknown as TaskStateServiceRuntime["listPublishTasks"],
     now: () => 0,
     setTimeout: fake.setTimeoutFake,
     updatePublishTask: (async (id, input) => {
-      updates.push({ id: Number(id), input });
-    }) as any,
+      updates.push({ id: Number(id), input: input as TaskUpdate });
+    }) as TaskStateServiceRuntime["updatePublishTask"],
   });
 
   await recoverTaskStateMonitors();
@@ -330,7 +342,7 @@ test("startup recovery does not treat Sohu clientNewsId as a compatible platform
 
 test("expired active Sohu history is backfilled but fails by deadline without a platform query", async () => {
   const fake = createFakeTimers();
-  const updates: Array<Record<string, any>> = [];
+  const updates: TaskUpdate[] = [];
   let queryCalls = 0;
   const task = createTask(15, {
     platform: "sohu",
@@ -346,17 +358,17 @@ test("expired active Sohu history is backfilled but fails by deadline without a 
         queryCalls += 1;
         return { status: "public", raw: {} };
       },
-    })) as any,
+    })) as unknown as TaskStateServiceRuntime["createVideo"],
     listPublishTasks: (async ({ status }) => ({
       isEnd: true,
       lastId: 0,
       tasks: status === "reviewing" ? [task] : [],
-    })) as any,
+    })) as unknown as TaskStateServiceRuntime["listPublishTasks"],
     now: () => TASK_STATE_MAX_WAIT_MS + 1,
     setTimeout: fake.setTimeoutFake,
     updatePublishTask: (async (_id, input) => {
-      updates.push(input);
-    }) as any,
+      updates.push(input as TaskUpdate);
+    }) as TaskStateServiceRuntime["updatePublishTask"],
   });
 
   await recoverTaskStateMonitors();

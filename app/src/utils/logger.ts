@@ -148,14 +148,18 @@ function formatLog(level: 'INFO' | 'ERROR', values: unknown[]): string {
 export const logger: Logger = {
   info(...values): void {
     try {
-      console.info(formatLog('INFO', values))
+      const message = formatLog('INFO', values)
+      console.info(message)
+      if (typeof window !== 'undefined') window.electronAPI?.logger.info(message)
     } catch {
       // 日志输出失败不能中断业务流程。
     }
   },
   error(...values): void {
     try {
-      console.error(formatLog('ERROR', values))
+      const message = formatLog('ERROR', values)
+      console.error(message)
+      if (typeof window !== 'undefined') window.electronAPI?.logger.error(message)
     } catch {
       // 日志输出失败不能中断业务流程。
     }

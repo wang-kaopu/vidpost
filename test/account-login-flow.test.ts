@@ -6,7 +6,7 @@ import type { BrowserWindow } from "electron";
 import type { BrowserIdentity } from "@/src/infra/browser-identity.ts";
 import { runAccountLoginFlow, type AccountLoginFlowRuntime } from "@/src/infra/account/account-login-flow.ts";
 
-type Listener = (...args: any[]) => void;
+type Listener = (...args: unknown[]) => void;
 
 const TEST_IDENTITY: BrowserIdentity = {
   acceptLanguage: "zh-CN,zh;q=0.9",
@@ -37,7 +37,7 @@ function createLoginWindowHarness() {
       : listener;
     map.set(event, [...(map.get(event) ?? []), wrapped]);
   };
-  const emit = (map: Map<string, Listener[]>, event: string, ...args: any[]): void => {
+  const emit = (map: Map<string, Listener[]>, event: string, ...args: unknown[]): void => {
     for (const listener of [...(map.get(event) ?? [])]) {
       listener(...args);
     }

@@ -14,7 +14,20 @@ export const TASK_STATE_MAX_WAIT_MS = 2 * 60 * 60 * 1_000;
 
 const MONITORED_PLATFORMS = new Set<Platform>(["douyin", "baijiahao", "bilibili", "sohu"]);
 
-type PublishTask = Record<string, any>;
+/** 状态监控只依赖的发布任务字段。 */
+export interface PublishTaskStateInput {
+  accountId?: string | number | null;
+  attributes?: Record<string, unknown> | null;
+  id: number;
+  link?: string | null;
+  platform?: string | null;
+  scheduledAt?: string | null;
+  status?: string | null;
+  title?: string | null;
+  updatedAt?: string | null;
+}
+
+type PublishTask = PublishTaskStateInput;
 type TerminalStatus = "public" | "non_public" | typeof FAILED_STATUS;
 
 interface TerminalTaskState {
@@ -32,7 +45,7 @@ interface TaskMonitor {
   timer: ReturnType<typeof setTimeout> | null;
 }
 
-interface TaskStateServiceRuntime {
+export interface TaskStateServiceRuntime {
   clearTimeout: typeof clearTimeout;
   createVideo: typeof createVideo;
   listPublishTasks: typeof listPublishTasks;
@@ -57,9 +70,9 @@ const runtime: TaskStateServiceRuntime = {
 const taskMonitors = new Map<number, TaskMonitor>();
 
 /** 将未知值收窄为普通记录。 */
-function normalizeRecord(value: unknown): Record<string, any> | null {
+function normalizeRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  return value as Record<string, any>;
+  return value as Record<string, unknown>;
 }
 
 /** 将可选值规范化为非空字符串。 */
@@ -190,7 +203,8 @@ function buildFetchPayload(task: PublishTask, abortSignal?: AbortSignal): Publis
     attributes,
     link: task.link ?? null,
     publishResult: normalizeRecord(attributes?.publish_result),
-    publishedAt: normalizeRecord(attributes?.review_state_clues)?.published_at ?? task.updatedAt ?? null,
+    publishedAt:
+      normalizeString(normalizeRecord(attributes?.review_state_clues)?.published_at) ?? task.updatedAt ?? null,
     remoteTaskId: task.id ?? null,
     timeoutMs: TASK_STATE_POLL_INTERVAL_MS,
     title: task.title ?? null,
@@ -388,9 +402,12 @@ async function listAllTasksByStatus(status: string, limit = DEFAULT_LIST_LIMIT):
   let lastId = 0;
   while (true) {
     const response = await runtime.listPublishTasks({ status, lastId, limit });
-    const pageTasks = Array.isArray(response.tasks) ? response.tasks : [];
+    const responseTasks = Array.isArray(response.tasks) ? response.tasks : [];
+    const pageTasks = responseTasks.filter(
+      (task): task is (typeof task & { id: number }) => typeof task.id === "number" && Number.isInteger(task.id),
+    );
     tasks.push(...pageTasks);
-    if (response.isEnd || pageTasks.length === 0 || !Number.isInteger(response.lastId) || response.lastId <= lastId)
+    if (response.isEnd || responseTasks.length === 0 || !Number.isInteger(response.lastId) || response.lastId <= lastId)
       break;
     lastId = response.lastId;
   }

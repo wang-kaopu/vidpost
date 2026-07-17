@@ -66,7 +66,13 @@ function createLoginAccountResource(
 test('login verifies the saved account with ping before creating the remote account', async (t) => {
   useTemporaryHome(t)
   const events: string[] = []
-  const requests: Array<{ data: Record<string, any>; method: string; url: string }> = []
+  const requests: Array<{
+    data: Record<string, unknown> & {
+      attributes?: { browserPartition?: unknown; cookieFilePath?: unknown }
+    }
+    method: string
+    url: string
+  }> = []
   t.mock.method(apiClient, 'post', async (url: string, data: Record<string, unknown>) => {
     events.push('create')
     requests.push({ data, method: 'post', url })
@@ -145,7 +151,14 @@ test('login propagates ping errors before creating the remote account', async (t
 
 test('login uses the remote account id when ping returns no nickname', async (t) => {
   useTemporaryHome(t)
-  const requests: Array<{ data: Record<string, any>; method: string; url: string }> = []
+  const requests: Array<{
+    data: Record<string, unknown> & {
+      attributes?: { browserPartition?: unknown; cookieFilePath?: unknown }
+      nickname?: unknown
+    }
+    method: string
+    url: string
+  }> = []
   t.mock.method(apiClient, 'post', async (url: string, data: Record<string, unknown>) => {
     requests.push({ data, method: 'post', url })
     return { data: { code: 0, data: { account_id: 204 } } }

@@ -6,7 +6,7 @@ import { app, ipcMain, BrowserWindow, session, type IpcMainInvokeEvent } from "e
 import * as electron from "electron";
 import squirrelStartup from "electron-squirrel-startup";
 
-import { IPC_CHANNELS, type LaunchIntent } from "@shared/electron-api.ts";
+import { IPC_CHANNELS, type LaunchIntent, type RendererLogEntry } from "@shared/electron-api.ts";
 import { getBilibiliHumanTypes, getSohuChannels, login, openAccountBackend, publish, ping } from "@/src/funcs.ts";
 import {
   AGENTHUNT_PROTOCOL,
@@ -23,7 +23,7 @@ import {
 } from "@/src/service/task-state-service.ts";
 import { configureVideoRuntime, destroyVideoWindows } from "@/src/infra/video/video.ts";
 import { destroyAccountBackendWindow } from "@/src/infra/account/account-backend-window.ts";
-import { logger } from "@/src/utils/logger.ts";
+import { configureLogger, logger, shutdownLogger, writeRendererLog } from "@/src/utils/logger.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
@@ -38,6 +38,14 @@ let mainWindow: BrowserWindow | null = null;
 let pendingLaunchIntent: LaunchIntent | null = null;
 let electronCdpPort: number | null = null;
 let willQuitApp = false;
+let loggerShutdownStarted = false;
+
+/** 判断跨进程输入是否为有效的 renderer 日志。 */
+function isRendererLogEntry(value: unknown): value is RendererLogEntry {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<RendererLogEntry>;
+  return (candidate.level === "info" || candidate.level === "error") && typeof candidate.message === "string";
+}
 
 /**
  * 检测指定本地端口是否可用。
@@ -201,6 +209,10 @@ async function startApplication(): Promise<void> {
     registerIpcHandler(IPC_CHANNELS.getBilibiliHumanTypes, getBilibiliHumanTypes);
     registerIpcHandler(IPC_CHANNELS.getSohuChannels, getSohuChannels);
     registerIpcHandler(IPC_CHANNELS.getLaunchIntent, () => pendingLaunchIntent);
+    ipcMain.on(IPC_CHANNELS.rendererLog, (event, payload: unknown) => {
+      if (!mainWindow || event.sender !== mainWindow.webContents || !isRendererLogEntry(payload)) return;
+      writeRendererLog(payload.level, payload.message);
+    });
 
     // 注册自定义协议，优先使用 Electron 内置的注册方式
     const registration = resolveProtocolClientRegistration(process.argv, process.defaultApp);
@@ -220,6 +232,8 @@ async function startApplication(): Promise<void> {
 }
 
 if (hasSingletonLock) {
+  app.setAppLogsPath(path.join(app.getPath("home"), ".agenthunt", "logs"));
+  configureLogger(app.getPath("logs"));
   startApplication().catch((error) => {
     logger.error("[startup] failed to initialize application:", error);
     app.quit();
@@ -230,11 +244,18 @@ if (hasSingletonLock) {
     handleProtocolUrl(url);
   });
 
-  app.on("before-quit", () => {
+  app.on("before-quit", (event) => {
     willQuitApp = true;
     stopTaskStateMonitors();
     destroyAccountBackendWindow();
     destroyVideoWindows();
+    if (loggerShutdownStarted) return;
+
+    event.preventDefault();
+    loggerShutdownStarted = true;
+    void shutdownLogger()
+      .catch((error) => logger.error("[logger] failed to flush logs before quit:", error))
+      .finally(() => app.quit());
   });
 
   app.on("window-all-closed", () => {

@@ -10,6 +10,10 @@ import {
 
 // 将需要暴露给渲染进程的 API 通过 contextBridge 暴露出来
 const electronApi: ElectronAPI = {
+  logger: {
+    error: (message) => ipcRenderer.send(IPC_CHANNELS.rendererLog, { level: "error", message }),
+    info: (message) => ipcRenderer.send(IPC_CHANNELS.rendererLog, { level: "info", message }),
+  },
   login: async (platform) => {
     await ipcRenderer.invoke(IPC_CHANNELS.login, platform);
   },

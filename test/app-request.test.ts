@@ -6,7 +6,7 @@ import { createServer, type ViteDevServer } from "vite";
 
 const appRoot = path.resolve(process.cwd(), "app");
 let viteServer: ViteDevServer;
-let requestModule: any;
+let requestModule: Awaited<ReturnType<ViteDevServer["ssrLoadModule"]>>;
 
 test.before(async () => {
   viteServer = await createServer({

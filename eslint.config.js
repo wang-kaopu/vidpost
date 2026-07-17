@@ -12,7 +12,7 @@ export default tseslint.config(
     files: ["**/*.{js,mjs,cjs,ts,mts,cts,vue}"],
     languageOptions: { globals: { ...globals.node, ...globals.browser } },
     rules: {
-      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-explicit-any": "error",
       "@typescript-eslint/no-unused-vars": [
         "error",
         { argsIgnorePattern: "^_", caughtErrorsIgnorePattern: "^_", varsIgnorePattern: "^_" },
