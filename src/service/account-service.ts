@@ -32,6 +32,114 @@ import {
 } from "@/src/infra/browser-storage-state.ts";
 import { logger } from "@/src/utils/logger.ts";
 
+type AccountTask<T> = () => Promise<T>;
+
+interface AccountQueueState {
+  paused: boolean;
+  resume?: () => void;
+  resumePromise?: Promise<void>;
+  running: boolean;
+  tail: Promise<unknown>;
+}
+
+const accountQueues = new Map<string, AccountQueueState>();
+
+/** 获取账号发布队列，不存在时创建空队列。 */
+function getAccountQueueState(accountId: string): AccountQueueState {
+  const existing = accountQueues.get(accountId);
+  if (existing) {
+    return existing;
+  }
+
+  const created: AccountQueueState = {
+    paused: false,
+    running: false,
+    tail: Promise.resolve(),
+  };
+  accountQueues.set(accountId, created);
+  return created;
+}
+
+/**
+ * 将发布任务放入账号专属串行队列。
+ *
+ * 队列暂停时保留等待任务，直到账号状态更新成功后恢复执行。
+ *
+ * @param accountId - 全局唯一账号 ID
+ * @param task - 需要串行执行的发布任务
+ * @returns 发布任务执行结果
+ */
+export async function runInAccountQueue<T>(accountId: string, task: AccountTask<T>): Promise<T> {
+  const normalizedAccountId = String(accountId || "").trim();
+  if (!normalizedAccountId) {
+    throw new Error("发布任务缺少 accountId，无法定位账号发布队列");
+  }
+
+  const state = getAccountQueueState(normalizedAccountId);
+  const run = state.tail.then(async () => {
+    if (state.paused) {
+      await state.resumePromise;
+    }
+
+    state.running = true;
+    try {
+      return await task();
+    } catch (error) {
+      if (!state.paused) {
+        state.paused = true;
+        state.resumePromise = new Promise<void>((resolve) => {
+          state.resume = resolve;
+        });
+      }
+      throw error;
+    } finally {
+      state.running = false;
+    }
+  });
+
+  state.tail = run.catch(() => undefined);
+  return run;
+}
+
+/**
+ * 恢复指定账号暂停的发布队列。
+ *
+ * @param accountId - 全局唯一账号 ID
+ */
+export function resumeAccountPublishQueue(accountId: string | number): void {
+  const normalizedAccountId = String(accountId || "").trim();
+  if (!normalizedAccountId) {
+    return;
+  }
+
+  const state = accountQueues.get(normalizedAccountId);
+  if (!state?.paused) {
+    return;
+  }
+
+  state.paused = false;
+  state.resume?.();
+  state.resume = undefined;
+  state.resumePromise = undefined;
+}
+
+/** 清理测试中的账号发布队列状态。 */
+export function resetAccountQueuesForTest(): void {
+  accountQueues.clear();
+}
+
+/**
+ * 阻止发布任务执行期间探活或更新同一账号状态。
+ *
+ * @param accountId - 全局唯一账号 ID
+ */
+function assertAccountQueueNotRunning(accountId: string | number): void {
+  const normalizedAccountId = String(accountId || "").trim();
+  if (normalizedAccountId && accountQueues.get(normalizedAccountId)?.running) {
+    throw new Error(`账号 ${normalizedAccountId} 正在发布，暂时不能检测或更新账号状态`);
+  }
+}
+
 // 拼接账号文件路径，用于正在新增过程中、未获取数据自增ID的账号文件命名
 export function resolveDraftAccountFilePath(platform: Platform): string {
   const homeDir = process.env.HOME || process.env.USERPROFILE || ".";
@@ -127,6 +235,7 @@ export async function loginAndCreateRemoteAccount(
  */
 export async function updateRemoteAccount(input: PingInput, accountResource: Account) {
   const { accountId, platform } = input;
+  assertAccountQueueNotRunning(accountId);
   const accountFile = resolveAccountFilePath(accountId, platform);
   const partition = readPartitionForAccount(createPartitionStore(), accountId);
   const accountFileExists = fs.existsSync(accountFile);
@@ -148,6 +257,7 @@ export async function updateRemoteAccount(input: PingInput, accountResource: Acc
     status: nextStatus,
     ...(latestNickname ? { nickname: latestNickname } : {}),
   });
+  resumeAccountPublishQueue(accountId);
 
   return createAccountPageModel({
     id: accountId,
@@ -184,6 +294,7 @@ async function persistAccountBackendState(
   accountResource: Account,
   final: boolean,
 ): Promise<boolean> {
+  assertAccountQueueNotRunning(accountId);
   const snapshotFile = `${accountFile}.${randomUUID()}.tmp`;
   try {
     await exportBrowserStorageState(backendWindow, snapshotFile, `${platform}-backend`);
@@ -209,6 +320,7 @@ async function persistAccountBackendState(
       status: pingResult.online ? "online" : "offline",
       ...(latestNickname && latestNickname !== nickname ? { nickname: latestNickname } : {}),
     });
+    resumeAccountPublishQueue(accountId);
     if (finalPingError) throw finalPingError;
     return pingResult.online;
   } finally {
@@ -229,6 +341,7 @@ export async function openExistingAccountBackend(
   parentWindow: BrowserWindow | null,
   accountResource: Account,
 ): Promise<OpenAccountBackendResult> {
+  assertAccountQueueNotRunning(input.accountId);
   const accountFile = resolveAccountFilePath(input.accountId, input.platform);
   const partition = resolvePartitionForAccount(createPartitionStore(), input.accountId);
   let storageState: BrowserStorageState | undefined;

@@ -5,7 +5,7 @@ import { normalizePublishText } from "@shared/publish-text.ts";
 import { createPublishTask, updatePublishTask } from "@/src/api/task-api.ts";
 import { createPartitionStore, resolvePartitionForAccount } from "@/src/db/partition-store.ts";
 import { createTaskPageModel } from "@/src/page-model/task-page-model.ts";
-import { resolveAccountFilePath } from "@/src/service/account-service.ts";
+import { resolveAccountFilePath, runInAccountQueue } from "@/src/service/account-service.ts";
 import { PublishAssetCache } from "@/src/service/publish-asset-cache.ts";
 import type { Video, VideoUploadPayload, VideoUploadResult } from "@/src/infra/video/video.ts";
 import { logger } from "@/src/utils/logger.ts";
@@ -15,71 +15,6 @@ const publishAssetCache = new PublishAssetCache();
 export type PublishExecutionPhase = "preparing" | "queued" | "publishing";
 
 type PublishProgressReporter = (phase: PublishExecutionPhase) => void;
-
-type AccountTask<T> = () => Promise<T>;
-
-interface AccountQueueState {
-  tail: Promise<unknown>;
-  paused: boolean;
-}
-
-const accountQueues = new Map<string, AccountQueueState>();
-
-/** 获取账号发布队列，不存在时创建空队列。 */
-function getAccountQueueState(accountId: string): AccountQueueState {
-  const existing = accountQueues.get(accountId);
-  if (existing) {
-    return existing;
-  }
-
-  const created: AccountQueueState = { tail: Promise.resolve(), paused: false };
-  accountQueues.set(accountId, created);
-  return created;
-}
-
-/**
- * 将发布任务放入账号专属串行队列。
- *
- * @param accountId - 全局唯一账号 ID
- * @param task - 需要串行执行的发布任务
- * @returns 发布任务执行结果
- */
-export async function runInAccountQueue<T>(accountId: string, task: AccountTask<T>): Promise<T> {
-  const normalizedAccountId = String(accountId || "").trim();
-  if (!normalizedAccountId) {
-    throw new Error("发布任务缺少 accountId，无法定位账号发布队列");
-  }
-
-  const state = getAccountQueueState(normalizedAccountId);
-  const run = state.tail.then(async () => {
-    if (state.paused) {
-      throw new Error(`账号 ${normalizedAccountId} 的发布队列已暂停`);
-    }
-
-    try {
-      return await task();
-    } catch (error) {
-      state.paused = true;
-      throw error;
-    }
-  });
-
-  state.tail = run.catch(() => undefined);
-  return run;
-}
-
-/** 恢复指定账号的发布队列。 */
-export function resumeAccountQueue(accountId: string): void {
-  const normalizedAccountId = String(accountId || "").trim();
-  if (normalizedAccountId) {
-    getAccountQueueState(normalizedAccountId).paused = false;
-  }
-}
-
-/** 清理测试中的账号发布队列状态。 */
-export function resetAccountQueuesForTest(): void {
-  accountQueues.clear();
-}
 
 const IMMEDIATE_PUBLISH_VALUE = "0";
 /** 将缺失的发布时间规范为立即发布标记，非空值交给平台协议消费。 */

@@ -7,6 +7,9 @@ import test from 'node:test'
 import { apiClient } from '@/src/api/api-client.ts'
 import { createPartitionStore, readPartitionMapTable, resolvePartitionForAccount } from '@/src/db/partition-store.ts'
 import {
+  resetAccountQueuesForTest,
+  resumeAccountPublishQueue,
+  runInAccountQueue,
   loginAndCreateRemoteAccount,
   resolveAccountFilePath,
   resolveDraftAccountFilePath,
@@ -182,6 +185,96 @@ test('account service updates online status and platform nickname together', asy
   assert.deepEqual(updates, [{ url: '/publish/accounts/101', data: { status: 'online', nickname: '新昵称' } }])
   assert.equal(model.nickname, '新昵称')
   assert.equal(model.status, 'online')
+})
+
+test('account service resumes the account publish queue after updating status', async (t) => {
+  useTemporaryHome(t)
+  createLocalAccountState('106', 'douyin')
+  resetAccountQueuesForTest()
+  t.after(resetAccountQueuesForTest)
+  t.mock.method(apiClient, 'put', async () => ({ data: { code: 0 } }))
+
+  await assert.rejects(
+    runInAccountQueue('106', async () => {
+      throw new Error('publish failed')
+    }),
+    /publish failed/,
+  )
+  const waitingTask = runInAccountQueue('106', async () => 'published')
+
+  await updateRemoteAccount(
+    { accountId: '106', platform: 'douyin' },
+    createAccountResource({ online: true, nickname: '恢复后的账号' }),
+  )
+
+  assert.equal(await waitingTask, 'published')
+})
+
+test('account service preserves the account publish queue when status update fails', async (t) => {
+  useTemporaryHome(t)
+  createLocalAccountState('107', 'douyin')
+  resetAccountQueuesForTest()
+  t.after(resetAccountQueuesForTest)
+  t.mock.method(apiClient, 'put', async () => {
+    throw new Error('update unavailable')
+  })
+
+  await assert.rejects(
+    runInAccountQueue('107', async () => {
+      throw new Error('publish failed')
+    }),
+    /publish failed/,
+  )
+  let waitingTaskStarted = false
+  const waitingTask = runInAccountQueue('107', async () => {
+    waitingTaskStarted = true
+  })
+  await assert.rejects(
+    updateRemoteAccount(
+      { accountId: '107', platform: 'douyin' },
+      createAccountResource({ online: true, nickname: '未保存的账号状态' }),
+    ),
+    /update unavailable/,
+  )
+
+  await Promise.resolve()
+  assert.equal(waitingTaskStarted, false)
+  resumeAccountPublishQueue('107')
+  await waitingTask
+})
+
+test('account service rejects status detection while the account publish queue is running', async (t) => {
+  useTemporaryHome(t)
+  createLocalAccountState('108', 'douyin')
+  resetAccountQueuesForTest()
+  t.after(resetAccountQueuesForTest)
+  let finishPublish: (() => void) | undefined
+  let pingCalls = 0
+  const publishBarrier = new Promise<void>((resolve) => {
+    finishPublish = resolve
+  })
+  const publishingTask = runInAccountQueue('108', async () => {
+    await publishBarrier
+  })
+  await Promise.resolve()
+
+  await assert.rejects(
+    updateRemoteAccount(
+      { accountId: '108', platform: 'douyin' },
+      {
+        login: async () => ({ accountFile: '', loginSucceeded: true }),
+        ping: async () => {
+          pingCalls += 1
+          return { online: true }
+        },
+      },
+    ),
+    /账号 108 正在发布，暂时不能检测或更新账号状态/,
+  )
+  assert.equal(pingCalls, 0)
+
+  finishPublish?.()
+  await publishingTask
 })
 
 test('account service updates only offline status when credentials are rejected', async (t) => {

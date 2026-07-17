@@ -27,12 +27,15 @@ export interface PublishTaskReviewState {
 }
 
 export interface PublishTaskAttributes {
+  account_id?: string | null;
+  account_name?: string | null;
   error_msg?: string | null;
   error_message?: string | null;
   failure_detail?: {
     detail?: string | null;
     reason?: string | null;
   } | null;
+  publish_options?: Record<string, unknown> | null;
   review_state?: PublishTaskReviewState | null;
   [key: string]: unknown;
 }

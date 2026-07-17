@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { Plus, RefreshCw, Search, Trash2 } from "lucide-vue-next";
+import { Monitor, Plus, RefreshCw, Search, SquarePen, TestTubeDiagonal, Trash2 } from "lucide-vue-next";
 import { PLATFORMS, type Platform } from "@shared/electron-api";
 import PlatformLogo from "./PlatformLogo.vue";
 import PlatformPickerDialog from "./PlatformPickerDialog.vue";
@@ -610,7 +610,7 @@ useDialogLayer(() => accountDialogVisible.value);
                 v-if="accountBackendPlatforms.has(item.platformKey)"
                 type="button"
                 role="menuitem"
-                class="flex h-10 w-full items-center rounded-lg px-3 text-left text-[13px] text-ink-muted transition hover:bg-surface-muted hover:text-ink disabled:cursor-not-allowed disabled:opacity-45"
+                class="text-primary-strong disabled:text-ink-faint"
                 :disabled="
                   Boolean(
                     renameDialogLoading || deletingAccountId || pingingAccountId || pingingAll || backendWindowVisible,
@@ -618,34 +618,37 @@ useDialogLayer(() => accountDialogVisible.value);
                 "
                 @click="close(); handleOpenAccountBackend(item)"
               >
+                <Monitor :size="18" :stroke-width="1.9" aria-hidden="true" />
                 {{ backendOpeningAccountId === item.id ? "打开中..." : "账号后台" }}
               </button>
               <button
                 type="button"
                 role="menuitem"
-                class="flex h-10 w-full items-center rounded-lg px-3 text-left text-[13px] text-ink-muted transition hover:bg-surface-muted hover:text-ink disabled:cursor-not-allowed disabled:opacity-45"
+                class="text-primary-strong disabled:text-ink-faint"
                 :disabled="Boolean(renameDialogLoading || deletingAccountId || pingingAccountId || pingingAll)"
                 @click="close(); openRenameDialog(item)"
               >
+                <SquarePen :size="18" :stroke-width="1.9" aria-hidden="true" />
                 重命名
               </button>
               <button
                 type="button"
                 role="menuitem"
-                class="flex h-10 w-full items-center rounded-lg px-3 text-left text-[13px] text-ink-muted transition hover:bg-surface-muted hover:text-ink disabled:cursor-not-allowed disabled:opacity-45"
+                class="text-primary-strong disabled:text-ink-faint"
                 :disabled="Boolean(renameDialogLoading || deletingAccountId || pingingAccountId || pingingAll)"
                 @click="close(); handlePingAccount(item)"
               >
+                <TestTubeDiagonal :size="18" :stroke-width="1.9" aria-hidden="true" />
                 {{ getPingButtonLabel(item.id) }}
               </button>
               <button
                 type="button"
                 role="menuitem"
-                class="flex h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-[13px] text-danger transition hover:bg-danger-soft disabled:cursor-not-allowed disabled:opacity-45"
+                class="text-[#d13e42] disabled:text-ink-faint"
                 :disabled="Boolean(renameDialogLoading || deletingAccountId || pingingAccountId || pingingAll)"
                 @click="close(); handleDeleteAccount(item)"
               >
-                <Trash2 :size="14" aria-hidden="true" /> 删除
+                <Trash2 :size="18" :stroke-width="1.9" aria-hidden="true" /> 删除
               </button>
             </ActionMenu>
           </td>

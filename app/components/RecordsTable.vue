@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { Tooltip as AntTooltip } from "ant-design-vue";
-import { Download, Info, RefreshCw, Search } from "lucide-vue-next";
+import { Download, Info, LayoutList, RefreshCw, Search, Trash2 } from "lucide-vue-next";
 import PlatformLogo from "./PlatformLogo.vue";
 import CapsuleButton from "./ui/CapsuleButton.vue";
 import SelectField from "./ui/SelectField.vue";
@@ -16,6 +16,7 @@ import ToneBadge from "./ui/ToneBadge.vue";
 import { getPublishPlatforms, getPublishTasks, deletePublishTask, exportPublishTasks } from "@/api/publish";
 import type { PublishTask, BackendPlatform } from "@/api/publish";
 import { useNotificationCenter } from "@/notifications";
+import { usePublishQueue } from "@/publish-queue";
 
 const loading = ref(false);
 const exporting = ref(false);
@@ -23,8 +24,11 @@ const errorMessage = ref("");
 const records = ref<PublishTask[]>([]);
 const selectedIds = ref<Set<number>>(new Set());
 const notificationCenter = useNotificationCenter();
+const publishQueue = usePublishQueue();
+const retryToastVisible = ref(false);
 let cancelTaskStateListener: (() => void) | null = null;
 let taskStateRefreshTimer: number | null = null;
+let retryToastTimer: number | null = null;
 
 const pushRecordsError = (title: string, message: string): void => {
   notificationCenter.push({
@@ -252,6 +256,29 @@ const handleDelete = async (item: PublishTask) => {
   }
 };
 
+/** 显示重新发布成功轻提示，并在短暂展示后自动隐藏。 */
+const showRetryToast = (): void => {
+  if (retryToastTimer !== null) window.clearTimeout(retryToastTimer);
+  retryToastVisible.value = true;
+  retryToastTimer = window.setTimeout(() => {
+    retryToastVisible.value = false;
+    retryToastTimer = null;
+  }, 1800);
+};
+
+/** 使用失败记录保存的参数将作品重新加入发布页，不改变当前页面。 */
+const handleRetryPublish = (item: PublishTask): void => {
+  try {
+    publishQueue.addRetry(item);
+    showRetryToast();
+  } catch (error) {
+    const detail = error instanceof Error && error.message.trim()
+      ? error.message.trim()
+      : "发布记录参数不完整，无法重新发布";
+    pushRecordsError("重新发布失败", detail);
+  }
+};
+
 const handleExport = async () => {
   if (exporting.value) return;
   exporting.value = true;
@@ -305,6 +332,8 @@ onUnmounted(() => {
   cancelTaskStateListener = null;
   if (taskStateRefreshTimer !== null) window.clearTimeout(taskStateRefreshTimer);
   taskStateRefreshTimer = null;
+  if (retryToastTimer !== null) window.clearTimeout(retryToastTimer);
+  retryToastTimer = null;
 });
 </script>
 
@@ -459,23 +488,35 @@ onUnmounted(() => {
                 :panel-id="`record-actions-${item.id}`"
                 :label="`${item.title || item.id}的记录操作`"
               >
-                <div role="presentation" class="border-b border-border px-3 py-2.5 text-left">
-                  <span class="block text-[11px] font-semibold text-ink-faint">记录 ID</span>
-                  <strong class="mt-1 block text-xs font-medium text-ink">{{ item.id }}</strong>
-                  <span class="mt-2.5 block text-[11px] font-semibold text-ink-faint">账号 ID</span>
-                  <strong class="mt-1 block text-xs font-medium text-ink">{{ item.account_id || "--" }}</strong>
-                  <span class="mt-2.5 block text-[11px] font-semibold text-ink-faint">预约发布时间</span>
-                  <strong class="mt-1 block text-xs font-medium whitespace-normal text-ink">
-                    {{ item.scheduled_at || "--" }}
-                  </strong>
+                <div
+                  role="presentation"
+                  class="flex flex-col gap-1 border-b border-border px-3 py-2.5 text-left text-[11px] leading-5 font-semibold text-ink-faint"
+                >
+                  <span>记录 ID {{ item.id }}</span>
+                  <span>账号 ID {{ item.account_id || "--" }}</span>
+                  <span v-if="String(item.scheduled_at ?? '').trim() !== '0'">
+                    预约发布时间 {{ item.scheduled_at || "--" }}
+                  </span>
                 </div>
+                <button
+                  v-if="item.status === 'failed'"
+                  type="button"
+                  role="menuitem"
+                  class="text-primary-strong"
+                  :aria-label="`重新准备发布 ${item.title || item.id}`"
+                  @click="close(); handleRetryPublish(item)"
+                >
+                  <LayoutList :size="18" :stroke-width="1.9" aria-hidden="true" />
+                  重新准备发布
+                </button>
                 <button
                   type="button"
                   role="menuitem"
-                  class="flex h-10 w-full items-center rounded-lg px-3 text-left text-[13px] text-danger transition hover:bg-danger-soft"
+                  class="text-[#d13e42]"
                   :aria-label="`删除发布记录 ${item.title || item.id}`"
                   @click="close(); handleDelete(item)"
                 >
+                  <Trash2 :size="18" :stroke-width="1.9" aria-hidden="true" />
                   删除
                 </button>
               </ActionMenu>
@@ -487,6 +528,24 @@ onUnmounted(() => {
     <footer class="flex items-center justify-between gap-[18px] px-8 pt-[18px] pb-[26px] text-[#697789] max-[900px]:flex-col max-[900px]:items-start">
       <div class="pager">共 {{ items.length }} 条</div>
     </footer>
+
+    <Teleport to="body">
+      <Transition
+        enter-active-class="transition duration-200 ease-out"
+        enter-from-class="translate-y-2 opacity-0"
+        leave-active-class="transition duration-150 ease-in"
+        leave-to-class="translate-y-2 opacity-0"
+      >
+        <div
+          v-if="retryToastVisible"
+          class="fixed bottom-7 left-1/2 z-[80] -translate-x-1/2 rounded-full bg-slate-900/92 px-5 py-2.5 text-sm font-medium text-white shadow-xl backdrop-blur"
+          role="status"
+          aria-live="polite"
+        >
+          已添加到 发布 页
+        </div>
+      </Transition>
+    </Teleport>
   </PanelShell>
 </template>
 
