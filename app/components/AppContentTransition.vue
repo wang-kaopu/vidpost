@@ -2,11 +2,15 @@
 import { computed, ref, watch, type Component } from "vue";
 import type { MenuKey } from "@/types";
 
-const MENU_ORDER: MenuKey[] = ["accounts", "works", "records"];
+const MENU_ORDER: MenuKey[] = ["accounts", "works", "publish", "records"];
 
 const props = defineProps<{
   view: Component;
   viewKey: MenuKey;
+}>();
+
+const emit = defineEmits<{
+  navigate: [value: MenuKey];
 }>();
 
 const previousViewKey = ref<MenuKey>(props.viewKey);
@@ -29,7 +33,7 @@ watch(
   <div class="min-h-full">
     <Transition :name="transitionName" mode="out-in">
       <div :key="viewKey" class="min-h-full">
-        <component :is="view" />
+        <component :is="view" @navigate="emit('navigate', $event)" />
       </div>
     </Transition>
   </div>

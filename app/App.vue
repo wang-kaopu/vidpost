@@ -15,6 +15,8 @@ import { createNotificationCenter, notificationCenterKey } from "./notifications
 import PublishProgressPanel from "./components/PublishProgressPanel/PublishProgressPanel.vue";
 import { createPublishProgressCenter, publishProgressCenterKey } from "./publish-progress";
 import type { LaunchIntent } from "@shared/electron-api";
+import PublishView from "./components/Publish.vue";
+import { createPublishQueue, publishQueueKey } from "./publish-queue";
 
 type AppNotificationEventDetail = {
   title: string;
@@ -35,6 +37,7 @@ let removePublishProgressListener: (() => void) | null = null;
 let tokenRefreshFailureNotified = false;
 const notificationCenter = createNotificationCenter();
 const publishProgressCenter = createPublishProgressCenter();
+const publishQueue = createPublishQueue();
 
 const pushSystemError = (title: string, message: string): void => {
   notificationCenter.push({
@@ -55,6 +58,9 @@ const currentView = computed(() => {
   }
   if (activeMenu.value === "works") {
     return Work;
+  }
+  if (activeMenu.value === "publish") {
+    return PublishView;
   }
   return Work;
 });
@@ -120,6 +126,7 @@ const logout = async () => {
   clearSessionTokens();
   loggedIn.value = false;
   user.value = null;
+  publishQueue.clear();
   stopVerificationPolling();
   stopTokenRefresh();
 };
@@ -163,6 +170,7 @@ const handleAppNotificationEvent = (event: Event): void => {
 
 provide(notificationCenterKey, notificationCenter);
 provide(publishProgressCenterKey, publishProgressCenter);
+provide(publishQueueKey, publishQueue);
 
 const refreshAccessToken = async () => {
   const refreshTokenValue = getRefreshToken();
@@ -248,7 +256,7 @@ onBeforeUnmount(() => {
     <div v-else class="workspace grid h-screen grid-cols-[268px_minmax(0,1fr)] overflow-hidden max-[1180px]:grid-cols-[100px_minmax(0,1fr)]">
       <SidebarNav :active="activeMenu" :user="user" @select="activeMenu = $event" @logout="logout" />
       <section class="h-screen overflow-y-auto px-[34px] py-7 max-[900px]:px-5">
-        <AppContentTransition :view="currentView" :view-key="activeMenu" />
+        <AppContentTransition :view="currentView" :view-key="activeMenu" @navigate="activeMenu = $event" />
       </section>
     </div>
 

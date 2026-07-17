@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, type Component } from "vue";
-import { History, UserRound, Video } from "lucide-vue-next";
+import { History, Send, UserRound, Video } from "lucide-vue-next";
 import PopoverPanel from "./ui/PopoverPanel.vue";
 import type { MenuKey, User } from "@/types";
 
@@ -17,6 +17,7 @@ const emit = defineEmits<{
 const menus: Array<{ key: MenuKey; label: string; icon: Component }> = [
   { key: "accounts", label: "账号", icon: UserRound },
   { key: "works", label: "作品", icon: Video },
+  { key: "publish", label: "发布", icon: Send },
   { key: "records", label: "记录", icon: History },
 ];
 
