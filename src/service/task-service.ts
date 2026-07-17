@@ -79,7 +79,8 @@ export async function publishAndUpdateRemoteTask(
     ...publicationText,
     scheduledAt: normalizeScheduledAt(payload.scheduledAt),
   };
-  let remoteTaskId = null;
+  let remoteTaskId: number | null = null;
+  let materializationPayload: (PublishInput & { remoteTaskId: number }) | null = null;
 
   const { accountId, platform } = normalizedPayload;
   const publishOptions = resolvePublishOptions(normalizedPayload);
@@ -114,14 +115,14 @@ export async function publishAndUpdateRemoteTask(
     remoteTaskId = createResult.remoteTaskId;
     reportProgress("preparing");
 
-    const materializedPayload = await publishAssetCache.materializePublishPayload({
+    materializationPayload = {
       ...preparedPayload,
       remoteTaskId,
-    });
+    };
+    const materializedPayload = await publishAssetCache.materializePublishPayload(materializationPayload);
     assertMaterializedVideoUploadPayload(materializedPayload, platform);
 
     // 发布动作
-    remoteTaskId = createResult.remoteTaskId;
     reportProgress("queued");
     const publishResult = await runInAccountQueue<VideoUploadResult>(accountId, () => {
       reportProgress("publishing");
@@ -197,5 +198,11 @@ export async function publishAndUpdateRemoteTask(
 
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`${platform} publish failed: ${message}`);
+  } finally {
+    if (materializationPayload) {
+      await publishAssetCache.removePublishPayloadAssets(materializationPayload).catch((cleanupError) => {
+        logger.error("删除发布视频和封面临时素材失败:", cleanupError);
+      });
+    }
   }
 }

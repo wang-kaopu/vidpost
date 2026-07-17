@@ -180,6 +180,7 @@ src/infra/
 Bilibili、百家号、抖音和搜狐的 `xx-video.ts` 是稳定门面，只实现 `dryRun()`、`upload()` 和 `fetchPublishedState()` 并调用同平台语义模块。三个 HTTP 平台以 `publish.ts` 和 `record-status.ts` 为主；百家号额外使用 `media.ts` 处理 MP4 元数据、MD5 和封面；抖音由 `electron-runtime.ts` 管理窗口、IPC 与签名宿主，`upload.ts` 执行 renderer 上传协议。调用关系保持单向，不使用平台目录 barrel 文件。
 
 - 四个平台都要求标题、视频和封面，封面缺失时任务不会提交。
+- 远程视频和封面按远程发布任务 ID 隔离到临时缓存；每次投稿无论成功或失败，都会在 `finally` 删除该任务的缓存素材。本地来源文件不删除，清理失败也不会覆盖投稿结果。
 - 发布标题按 Unicode 码点统一截断：百家号 50、Bilibili 80、抖音 30、搜狐 30；四平台简介统一截断为 100。规范化结果同时用于远程任务和平台投稿，搜狐不再使用旧的 60 字符上限报错。
 - Bilibili、百家号和抖音使用平台服务端定时能力，逐条计划按上海时区填写 `YYYY-MM-DD HH:mm`；搜狐仍仅支持立即发布。UI 在平台原始最小提前量上固定预留 10 分钟上传时间，同账号批量任务不按队列位置继续增加余量。
 - Bilibili 必须按账号动态查询并选择投稿分区 `humanTypeId`。

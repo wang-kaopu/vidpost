@@ -60,7 +60,8 @@ export function resolveDefaultPublishAssetCacheRoot(): string {
 
 /** 从发布参数中提取稳定的素材缓存键。 */
 function resolveCacheKey(payload: PublishInput & { remoteTaskId?: string | number }): string {
-  const candidates = [payload.workId, payload.remoteTaskId, `${payload.accountId}_${payload.platform}`];
+  // 同一作品可以并发创建多条发布任务，优先使用远程任务 ID 隔离各自的临时素材。
+  const candidates = [payload.remoteTaskId, payload.workId, `${payload.accountId}_${payload.platform}`];
 
   for (const candidate of candidates) {
     const normalized = String(candidate || "").trim();
@@ -148,6 +149,12 @@ export class PublishAssetCache {
     });
 
     return { ...payload, videoPath, coverPath };
+  }
+
+  /** 删除单次发布任务下载到本地的全部临时素材。 */
+  async removePublishPayloadAssets(payload: PublishInput & { remoteTaskId?: string | number }): Promise<void> {
+    const cacheKey = resolveCacheKey(payload);
+    await fsp.rm(path.join(this.cacheRootDir, cacheKey), { force: true, recursive: true });
   }
 
   /** 按素材来源返回本地路径，HTTP(S) 来源会先下载到账号任务缓存。 */

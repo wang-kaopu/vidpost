@@ -37,7 +37,7 @@ test('publish asset cache should keep local paths untouched', async () => {
     assert.equal(materialized.coverPath, payload.coverUrl)
 })
 
-test('publish asset cache should download remote assets and reuse cache', async () => {
+test('publish asset cache should download remote assets, reuse them per task, and remove them', async () => {
     const cacheRoot = await createTempDir('rm-server-cache-remote-')
     const cache = new PublishAssetCache(cacheRoot)
     let requestCount = 0
@@ -62,6 +62,7 @@ test('publish asset cache should download remote assets and reuse cache', async 
     try {
         const firstPayload = await cache.materializePublishPayload({
             ...BASE_PUBLISH_INPUT,
+            remoteTaskId: 'task-remote',
             workId: 'work-remote',
             videoUrl: `${baseUrl}/video.mp4`,
             coverUrl: `${baseUrl}/cover.png`,
@@ -69,6 +70,7 @@ test('publish asset cache should download remote assets and reuse cache', async 
 
         const secondPayload = await cache.materializePublishPayload({
             ...BASE_PUBLISH_INPUT,
+            remoteTaskId: 'task-remote',
             workId: 'work-remote',
             videoUrl: `${baseUrl}/video.mp4`,
             coverUrl: `${baseUrl}/cover.png`,
@@ -78,9 +80,15 @@ test('publish asset cache should download remote assets and reuse cache', async 
         assert.equal(firstPayload.coverPath, secondPayload.coverPath)
         assert.equal(path.basename(firstPayload.videoPath), 'work-remote.mp4')
         assert.equal(path.basename(firstPayload.coverPath), 'work-remote.png')
+        assert.equal(path.relative(cacheRoot, firstPayload.videoPath).split(path.sep)[0], 'task-remote')
         assert.equal(requestCount, 2)
         await fs.access(firstPayload.videoPath)
         await fs.access(firstPayload.coverPath)
+
+        await cache.removePublishPayloadAssets(firstPayload)
+
+        await assert.rejects(fs.access(firstPayload.videoPath))
+        await assert.rejects(fs.access(firstPayload.coverPath))
     } finally {
         await new Promise((resolve, reject) => {
             server.close((error) => {
@@ -138,4 +146,28 @@ test('publish asset cache should use canonical workId for downloaded asset namin
             })
         })
     }
+})
+
+test('publish asset cache should isolate and remove assets by remote task', async () => {
+    const cacheRoot = await createTempDir('rm-server-cache-cleanup-')
+    const cache = new PublishAssetCache(cacheRoot)
+    const payload = {
+        ...BASE_PUBLISH_INPUT,
+        remoteTaskId: 'task-202',
+        workId: 'shared-work',
+        videoUrl: '/tmp/demo-video.mp4',
+        coverUrl: '/tmp/demo-cover.png',
+    }
+    const taskCacheDirectory = path.join(cacheRoot, payload.remoteTaskId)
+    const otherTaskCacheDirectory = path.join(cacheRoot, 'task-203')
+
+    await fs.mkdir(taskCacheDirectory, { recursive: true })
+    await fs.mkdir(otherTaskCacheDirectory, { recursive: true })
+    await fs.writeFile(path.join(taskCacheDirectory, 'video.mp4'), 'video')
+    await fs.writeFile(path.join(otherTaskCacheDirectory, 'video.mp4'), 'other video')
+
+    await cache.removePublishPayloadAssets(payload)
+
+    await assert.rejects(fs.access(taskCacheDirectory))
+    await fs.access(otherTaskCacheDirectory)
 })
