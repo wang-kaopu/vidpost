@@ -4,14 +4,19 @@ defineOptions({ name: "PublishView" });
 
 import { computed, ref } from "vue";
 import { CircleCheck, CircleX, ListTodo, LoaderCircle, Plus, ShieldCheck, Trash2, Video } from "lucide-vue-next";
+import type { BasePublishInput, PublishInput } from "@shared/electron-api";
 import {
   getPublishAccounts,
   normalizePublishAccount,
   type PublishAccountItem,
 } from "@/api/publish";
+import { fetchWorkPublishPayload } from "@/api/works";
 import type { MenuKey } from "@/types";
 import { usePublishQueue, type PublishSettings } from "@/publish-queue";
+import { useNotificationCenter } from "@/notifications";
+import { usePublishProgressCenter } from "@/publish-progress";
 import { runAccountPingBatch } from "@/utils/account-ping-batch";
+import { IMMEDIATE_PUBLISH_VALUE, validateScheduledAt } from "@/utils/publish-schedule";
 import CapsuleButton from "./ui/CapsuleButton.vue";
 import PanelShell from "./ui/PanelShell.vue";
 import ToneBadge from "./ui/ToneBadge.vue";
@@ -24,10 +29,18 @@ const emit = defineEmits<{
 }>();
 
 const publishQueue = usePublishQueue();
+const notificationCenter = useNotificationCenter();
+const publishProgressCenter = usePublishProgressCenter();
 const activeAccountWorkId = ref("");
 const activeSettingsWorkId = ref("");
+const submittingPublish = ref(false);
 const runningCheck = computed(() =>
   publishQueue.items.value.some((item) => item.checkState.status === "checking"),
+);
+const operationLocked = computed(() => runningCheck.value || submittingPublish.value);
+const allChecksSucceeded = computed(() =>
+  publishQueue.items.value.length > 0
+  && publishQueue.items.value.every((item) => item.checkState.status === "success"),
 );
 const activeAccountItem = computed(() =>
   publishQueue.items.value.find((item) => item.id === activeAccountWorkId.value) || null,
@@ -38,7 +51,7 @@ const activeSettingsItem = computed(() =>
 
 /** 打开指定作品的发布设置抽屉。 */
 const openSettings = (workId: string): void => {
-  if (runningCheck.value) return;
+  if (operationLocked.value) return;
   const item = publishQueue.items.value.find((candidate) => candidate.id === workId);
   if (!item?.publishSettings.accountId) return;
   activeAccountWorkId.value = "";
@@ -47,7 +60,7 @@ const openSettings = (workId: string): void => {
 
 /** 打开指定作品的账号选择抽屉。 */
 const openAccount = (workId: string): void => {
-  if (runningCheck.value) return;
+  if (operationLocked.value) return;
   activeSettingsWorkId.value = "";
   activeAccountWorkId.value = workId;
 };
@@ -64,21 +77,21 @@ const closeSettings = (): void => {
 
 /** 保存当前作品的差异化平台发布参数。 */
 const saveSettings = (settings: PublishSettings): void => {
-  if (runningCheck.value || !activeSettingsWorkId.value) return;
+  if (operationLocked.value || !activeSettingsWorkId.value) return;
   publishQueue.updateSettings(activeSettingsWorkId.value, settings);
   closeSettings();
 };
 
 /** 保存当前作品绑定的发布账号。 */
 const saveAccount = (settings: PublishSettings): void => {
-  if (runningCheck.value || !activeAccountWorkId.value) return;
+  if (operationLocked.value || !activeAccountWorkId.value) return;
   publishQueue.updateSettings(activeAccountWorkId.value, settings);
   closeAccount();
 };
 
 /** 批量探活当前发布页绑定的账号，并把最新账号状态同步回每个作品。 */
 const runPublishChecks = async (): Promise<void> => {
-  if (runningCheck.value || !publishQueue.items.value.length) return;
+  if (operationLocked.value || !publishQueue.items.value.length) return;
 
   const queuedItems = [...publishQueue.items.value];
   queuedItems.forEach((item) => {
@@ -174,9 +187,148 @@ const runPublishChecks = async (): Promise<void> => {
   });
 };
 
+/** 将 Electron 发布异常整理为适合进度面板和系统通知展示的简短原因。 */
+const formatPublishFailureReason = (error: unknown): string => {
+  const rawMessage = error instanceof Error ? error.message : String(error || "未知发布错误");
+  return rawMessage
+    .replace(/^Error invoking remote method 'publish':\s*/u, "")
+    .replace(/^Error:\s*/u, "")
+    .trim() || "未知发布错误";
+};
+
+/** 提交全部检测成功的作品，并交由应用级发布进度面板持续跟踪。 */
+const confirmPublish = async (): Promise<void> => {
+  if (operationLocked.value || !allChecksSucceeded.value) return;
+  submittingPublish.value = true;
+
+  try {
+    const publishApi = window.electronAPI?.publish;
+    if (!publishApi) throw new Error("当前环境未提供发布能力");
+
+    const queuedItems = [...publishQueue.items.value];
+    const publishTasks = await Promise.all(queuedItems.map(async (item) => {
+      const settings = item.publishSettings;
+      if (!settings.accountId || !settings.accountName || !settings.platform) {
+        throw new Error(`《${item.title}》缺少发布账号`);
+      }
+      if (!settings.title.trim()) {
+        throw new Error(`${settings.platformLabel}账号「${settings.accountName}」的发布标题不能为空`);
+      }
+
+      const scheduleError = validateScheduledAt(settings.platform, settings.scheduledAt);
+      if (scheduleError) {
+        throw new Error(`${settings.platformLabel}账号「${settings.accountName}」《${settings.title}》：${scheduleError}`);
+      }
+
+      const workPayload = await fetchWorkPublishPayload(item.id);
+      if (!workPayload.coverPath) {
+        throw new Error(`${settings.platformLabel}账号「${settings.accountName}」的任务缺少封面`);
+      }
+      const baseInput: BasePublishInput = {
+        accountId: settings.accountId,
+        accountName: settings.accountName,
+        coverUrl: workPayload.coverPath,
+        introduction: settings.introduction,
+        progressId: crypto.randomUUID(),
+        scheduledAt: settings.scheduledAt,
+        title: settings.title,
+        videoType: workPayload.videoType,
+        videoUrl: workPayload.videoPath,
+        workId: workPayload.workId,
+      };
+
+      let input: PublishInput;
+      switch (settings.platform) {
+        case "baijiahao":
+          input = { ...baseInput, platform: settings.platform };
+          break;
+        case "bilibili":
+          if (
+            typeof settings.humanTypeId !== "number"
+            || !Number.isSafeInteger(settings.humanTypeId)
+            || settings.humanTypeId <= 0
+          ) {
+            throw new Error(`Bilibili 账号「${settings.accountName}」必须选择投稿分区`);
+          }
+          input = {
+            ...baseInput,
+            humanTypeId: settings.humanTypeId,
+            platform: settings.platform,
+          };
+          break;
+        case "douyin":
+          input = {
+            ...baseInput,
+            platform: settings.platform,
+            visibility: settings.visibility,
+          };
+          break;
+        case "sohu":
+          if (
+            typeof settings.channelId !== "number"
+            || !Number.isSafeInteger(settings.channelId)
+            || settings.channelId <= 0
+            || typeof settings.videoChannelId !== "number"
+            || !Number.isSafeInteger(settings.videoChannelId)
+            || settings.videoChannelId <= 0
+          ) {
+            throw new Error(`搜狐账号「${settings.accountName}」必须选择一级频道和二级频道`);
+          }
+          input = {
+            ...baseInput,
+            channelId: settings.channelId,
+            platform: settings.platform,
+            videoChannelId: settings.videoChannelId,
+          };
+          break;
+      }
+
+      return { input, platformLabel: settings.platformLabel };
+    }));
+
+    publishProgressCenter.openBatch(publishTasks.map(({ input, platformLabel }) => ({
+      id: input.progressId,
+      platformKey: input.platform,
+      platformLabel,
+      accountName: input.accountName,
+      title: input.title,
+      scheduled: input.scheduledAt !== IMMEDIATE_PUBLISH_VALUE,
+    })));
+    publishQueue.clear();
+    closeAccount();
+    closeSettings();
+
+    publishTasks.forEach(({ input, platformLabel }) => {
+      void publishApi(input)
+        .then(() => publishProgressCenter.complete(input.progressId))
+        .catch((error: unknown) => {
+          const failureReason = formatPublishFailureReason(error);
+          publishProgressCenter.fail(input.progressId, failureReason);
+          notificationCenter.push({
+            title: `${platformLabel}发布失败`,
+            message: `账号「${input.accountName}」《${input.title}》：${failureReason}`,
+            source: "发布任务",
+            tone: "error",
+            unread: true,
+          });
+        });
+    });
+  } catch (error) {
+    notificationCenter.push({
+      title: "发布提交失败",
+      message: formatPublishFailureReason(error),
+      source: "发布工作台",
+      tone: "error",
+      unread: true,
+    });
+  } finally {
+    submittingPublish.value = false;
+  }
+};
+
 /** 从迁移期发布工作台移除指定作品。 */
 const removeWork = (workId: string): void => {
-  if (runningCheck.value) return;
+  if (operationLocked.value) return;
   if (activeAccountWorkId.value === workId) closeAccount();
   if (activeSettingsWorkId.value === workId) closeSettings();
   publishQueue.remove(workId);
@@ -244,7 +396,7 @@ const removeWork = (workId: string): void => {
             class="group flex min-w-0 items-center gap-3.5 rounded-2xl bg-transparent p-2 text-left transition duration-150 enabled:hover:bg-primary-soft/60 enabled:focus-visible:outline-2 enabled:focus-visible:outline-offset-2 enabled:focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-55"
             type="button"
             :aria-label="`重新选择 ${item.publishSettings.accountName} 的发布账号`"
-            :disabled="runningCheck"
+            :disabled="operationLocked"
             @click="openAccount(item.id)"
           >
             <PlatformLogo
@@ -262,7 +414,7 @@ const removeWork = (workId: string): void => {
             v-else
             class="group inline-flex min-w-24 flex-col items-center gap-[7px] rounded-2xl bg-transparent px-3 py-2 text-[13px] text-[#344b65] transition duration-150 enabled:hover:-translate-y-px enabled:hover:bg-[rgba(231,239,248,0.7)] enabled:hover:text-primary-strong disabled:cursor-not-allowed disabled:opacity-55"
             type="button"
-            :disabled="runningCheck"
+            :disabled="operationLocked"
             @click="openAccount(item.id)"
           >
             <span class="grid size-[34px] place-items-center rounded-full bg-[#aeb9c4] text-white transition group-hover:bg-[#7f9fc1]">
@@ -278,12 +430,12 @@ const removeWork = (workId: string): void => {
           <button
             class="inline-flex items-center gap-[9px] bg-transparent p-0 text-left text-sm font-bold transition duration-150"
             :class="item.publishSettings.accountId
-              ? runningCheck
+              ? operationLocked
                 ? 'cursor-not-allowed text-ink-faint'
                 : 'text-primary-strong hover:translate-x-0.5'
               : 'cursor-not-allowed text-ink-faint'"
             type="button"
-            :disabled="runningCheck || !item.publishSettings.accountId"
+            :disabled="operationLocked || !item.publishSettings.accountId"
             @click="openSettings(item.id)"
           >
             <ListTodo :size="18" :stroke-width="1.9" aria-hidden="true" />
@@ -292,7 +444,7 @@ const removeWork = (workId: string): void => {
           <button
             class="inline-flex items-center gap-[9px] bg-transparent p-0 text-left text-sm font-bold transition duration-150 enabled:text-[#d13e42] enabled:hover:translate-x-0.5 disabled:cursor-not-allowed disabled:text-ink-faint"
             type="button"
-            :disabled="runningCheck"
+            :disabled="operationLocked"
             @click="removeWork(item.id)"
           >
             <Trash2 :size="18" :stroke-width="1.9" aria-hidden="true" />
@@ -329,12 +481,12 @@ const removeWork = (workId: string): void => {
         variant="primary"
         size="lg"
         type="button"
-        :disabled="runningCheck"
-        @click="runPublishChecks"
+        :disabled="operationLocked"
+        @click="allChecksSucceeded ? confirmPublish() : runPublishChecks()"
       >
-        <LoaderCircle v-if="runningCheck" class="animate-spin" :size="17" aria-hidden="true" />
+        <LoaderCircle v-if="operationLocked" class="animate-spin" :size="17" aria-hidden="true" />
         <ShieldCheck v-else :size="17" aria-hidden="true" />
-        {{ runningCheck ? "检测中…" : "发布检测" }}
+        {{ submittingPublish ? "提交中…" : runningCheck ? "检测中…" : allChecksSucceeded ? "确定发布" : "发布检测" }}
       </CapsuleButton>
     </Transition>
   </Teleport>
