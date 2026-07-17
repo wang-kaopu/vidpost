@@ -30,6 +30,23 @@ export type PublishProgressCenterApi = {
 export const publishProgressCenterKey: InjectionKey<PublishProgressCenterApi> = Symbol("publish-progress-center");
 
 const terminalPhases = new Set<PublishProgressPhase>(["completed", "scheduled", "failed"]);
+const unhandledPublishFailureMessage = "请前往账号后台重新登录或手动发布一次";
+const actionablePublishFailurePatterns = [ /验证码/u, /身份验证/u, /重新登录/u, /登录状态/u, /账号凭据/u, /账号状态/u, /发布频率/u, /发布额度/u ];
+
+/**
+ * 保留已经转成用户可操作说明的发布错误，并拦截其余技术异常。
+ *
+ * @param errorMessage - 发布链路返回的错误文本
+ * @returns 适合在发布进度面板展示的失败原因
+ */
+export function resolvePublishProgressFailureMessage(errorMessage: string): string {
+  const normalized = String(errorMessage || "")
+    .replace(/^(?:baijiahao|bilibili|douyin|sohu) publish failed:\s*/iu, "")
+    .trim();
+  return actionablePublishFailurePatterns.some((pattern) => pattern.test(normalized))
+    ? normalized
+    : unhandledPublishFailureMessage;
+}
 
 /**
  * 创建应用级发布进度状态，确保切换业务页面后任务仍可继续更新。
@@ -64,7 +81,10 @@ export function createPublishProgressCenter(): PublishProgressCenterApi {
 
   /** 写入任务失败终态及供用户排查的简短原因。 */
   const fail = (taskId: string, errorMessage: string): void => {
-    items.value = items.value.map((item) => (item.id === taskId ? { ...item, phase: "failed", errorMessage } : item));
+    const displayMessage = resolvePublishProgressFailureMessage(errorMessage);
+    items.value = items.value.map((item) =>
+      item.id === taskId ? { ...item, phase: "failed", errorMessage: displayMessage } : item,
+    );
   };
 
   /** 切换浮层内容的折叠状态，不影响任何发布任务。 */

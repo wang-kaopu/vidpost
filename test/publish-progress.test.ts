@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createPublishProgressCenter } from "@/app/publish-progress.ts";
+import {
+  createPublishProgressCenter,
+  resolvePublishProgressFailureMessage,
+} from "@/app/publish-progress.ts";
 
 test("publish progress keeps confirmation order while phases change", () => {
   const center = createPublishProgressCenter();
@@ -194,4 +197,47 @@ test("progress collapse persists through updates and resets for a new batch", ()
     center.items.value.map((item) => item.id),
     ["active-task", "new-task"],
   );
+});
+
+test("publish progress keeps actionable intercepted failures", () => {
+  assert.equal(
+    resolvePublishProgressFailureMessage("douyin publish failed: 账号需要身份验证：验证方式=sms"),
+    "账号需要身份验证：验证方式=sms",
+  );
+  assert.equal(
+    resolvePublishProgressFailureMessage("搜狐账号凭据不完整，请重新登录：缺少 Cookie"),
+    "搜狐账号凭据不完整，请重新登录：缺少 Cookie",
+  );
+});
+
+test("publish progress replaces unhandled technical failures with an actionable fallback", () => {
+  assert.equal(
+    resolvePublishProgressFailureMessage("AxiosError: Request failed with status code 500"),
+    "请前往账号后台重新登录或手动发布一次",
+  );
+  assert.equal(
+    resolvePublishProgressFailureMessage(""),
+    "请前往账号后台重新登录或手动发布一次",
+  );
+  assert.equal(
+    resolvePublishProgressFailureMessage("Bilibili 账号必须选择投稿分区"),
+    "请前往账号后台重新登录或手动发布一次",
+  );
+});
+
+test("publish progress center applies the frontend failure interceptor", () => {
+  const center = createPublishProgressCenter();
+  center.openBatch([{
+    id: "progress-1",
+    platformKey: "douyin",
+    platformLabel: "抖音",
+    accountName: "测试账号",
+    title: "测试作品",
+    scheduled: false,
+  }]);
+
+  center.fail("progress-1", "TypeError: Failed to fetch");
+
+  assert.equal(center.items.value[0]?.phase, "failed");
+  assert.equal(center.items.value[0]?.errorMessage, "请前往账号后台重新登录或手动发布一次");
 });

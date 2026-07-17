@@ -2,6 +2,7 @@ import { inject, ref, type InjectionKey, type Ref } from "vue";
 import type { DouyinVisibility, Platform } from "@shared/electron-api";
 import type { PublishTask } from "./api/publish";
 import type { WorkItem } from "./types";
+import { validateScheduledAt } from "./utils/publish-schedule";
 
 export type PublishSettings = {
   accountId: string;
@@ -163,6 +164,54 @@ export function createRetryPublishQueueItem(task: PublishTask): PublishQueueItem
       visibility,
     },
   };
+}
+
+/**
+ * 按队列顺序查找发布检测前的第一个参数错误。
+ *
+ * @param items - 当前发布页的全部待发布条目
+ * @returns 第一个参数错误；全部有效时返回空字符串
+ */
+export function findFirstPublishQueueValidationError(items: PublishQueueItem[]): string {
+  for (const item of items) {
+    const settings = item.publishSettings;
+    const workTitle = item.title.trim() || `作品 ${item.id}`;
+    if (!settings.accountId || !settings.accountName || !settings.platform) {
+      return `《${workTitle}》请先添加发布账号`;
+    }
+    if (!settings.title.trim()) {
+      return `${settings.platformLabel}账号「${settings.accountName}」的发布标题不能为空`;
+    }
+    if (
+      settings.platform === "bilibili"
+      && (
+        typeof settings.humanTypeId !== "number"
+        || !Number.isSafeInteger(settings.humanTypeId)
+        || settings.humanTypeId <= 0
+      )
+    ) {
+      return `Bilibili 账号「${settings.accountName}」必须选择投稿分区`;
+    }
+    if (
+      settings.platform === "sohu"
+      && (
+        typeof settings.channelId !== "number"
+        || !Number.isSafeInteger(settings.channelId)
+        || settings.channelId <= 0
+        || typeof settings.videoChannelId !== "number"
+        || !Number.isSafeInteger(settings.videoChannelId)
+        || settings.videoChannelId <= 0
+      )
+    ) {
+      return `搜狐账号「${settings.accountName}」必须选择一级频道和二级频道`;
+    }
+
+    const scheduleError = validateScheduledAt(settings.platform, settings.scheduledAt);
+    if (scheduleError) {
+      return `${settings.platformLabel}账号「${settings.accountName}」《${settings.title}》：${scheduleError}`;
+    }
+  }
+  return "";
 }
 
 /**

@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createPublishQueue } from "@/app/publish-queue.ts";
+import {
+  createPublishQueue,
+  findFirstPublishQueueValidationError,
+} from "@/app/publish-queue.ts";
 import type { PublishTask } from "@/app/api/publish.ts";
 import type { WorkItem } from "@/app/types.ts";
 
@@ -137,6 +140,51 @@ test("publish queue duplicates video and settings without copying the account", 
     accountId: "",
     accountName: "",
   });
+});
+
+test("publish queue validation returns only the first error before account ping", () => {
+  const queue = createPublishQueue();
+  queue.add([createWork("1", "第一个作品"), createWork("2", "第二个作品")]);
+
+  assert.equal(
+    findFirstPublishQueueValidationError(queue.items.value),
+    "《第一个作品》请先添加发布账号",
+  );
+});
+
+test("publish queue validation checks platform settings and schedule before account ping", () => {
+  const queue = createPublishQueue();
+  queue.add([createWork("1", "标题 1")]);
+  const queueId = queue.items.value[0]?.queueId;
+  assert.ok(queueId);
+  queue.updateSettings(queueId, {
+    accountId: "account-1",
+    accountName: "Bilibili 账号",
+    channelId: null,
+    humanTypeId: null,
+    introduction: "简介",
+    platform: "bilibili",
+    platformLabel: "哔哩哔哩",
+    scheduledAt: "0",
+    title: "发布标题",
+    videoChannelId: null,
+    visibility: "public",
+  });
+
+  assert.equal(
+    findFirstPublishQueueValidationError(queue.items.value),
+    "Bilibili 账号「Bilibili 账号」必须选择投稿分区",
+  );
+
+  queue.updateSettings(queueId, {
+    ...queue.items.value[0]!.publishSettings,
+    humanTypeId: 171,
+    scheduledAt: "invalid",
+  });
+  assert.match(
+    findFirstPublishQueueValidationError(queue.items.value),
+    /发布时间格式必须为 YYYY-MM-DD HH:mm/u,
+  );
 });
 
 test("publish queue stores account-check results and resets them after settings change", () => {

@@ -2,7 +2,7 @@
 /** 发布工作台，集中承载从作品页加入并完成检测、提交的待发布作品。 */
 defineOptions({ name: "PublishView" });
 
-import { computed, ref } from "vue";
+import { computed, onBeforeUnmount, ref } from "vue";
 import { CircleCheck, CircleX, Copy, ListTodo, LoaderCircle, Plus, ShieldCheck, Trash2, Video } from "lucide-vue-next";
 import type { BasePublishInput, PublishInput } from "@shared/electron-api";
 import {
@@ -12,12 +12,17 @@ import {
 } from "@/api/publish";
 import { fetchWorkPublishPayload } from "@/api/works";
 import type { MenuKey } from "@/types";
-import { usePublishQueue, type PublishSettings } from "@/publish-queue";
+import {
+  findFirstPublishQueueValidationError,
+  usePublishQueue,
+  type PublishSettings,
+} from "@/publish-queue";
 import { useNotificationCenter } from "@/notifications";
 import { usePublishProgressCenter } from "@/publish-progress";
 import { runAccountPingBatch } from "@/utils/account-ping-batch";
 import { IMMEDIATE_PUBLISH_VALUE, validateScheduledAt } from "@/utils/publish-schedule";
 import CapsuleButton from "./ui/CapsuleButton.vue";
+import BottomFloatingBar from "./ui/BottomFloatingBar.vue";
 import PanelShell from "./ui/PanelShell.vue";
 import ToneBadge from "./ui/ToneBadge.vue";
 import PlatformLogo from "./PlatformLogo.vue";
@@ -34,6 +39,8 @@ const publishProgressCenter = usePublishProgressCenter();
 const activeAccountQueueId = ref("");
 const activeSettingsQueueId = ref("");
 const submittingPublish = ref(false);
+const publishValidationMessage = ref("");
+let publishValidationMessageTimer: number | null = null;
 const runningCheck = computed(() =>
   publishQueue.items.value.some((item) => item.checkState.status === "checking"),
 );
@@ -48,6 +55,16 @@ const activeAccountItem = computed(() =>
 const activeSettingsItem = computed(() =>
   publishQueue.items.value.find((item) => item.queueId === activeSettingsQueueId.value) || null,
 );
+
+/** 显示发布检测前的首个参数错误，并在短暂展示后自动隐藏。 */
+const showPublishValidationMessage = (message: string): void => {
+  if (publishValidationMessageTimer !== null) window.clearTimeout(publishValidationMessageTimer);
+  publishValidationMessage.value = message;
+  publishValidationMessageTimer = window.setTimeout(() => {
+    publishValidationMessage.value = "";
+    publishValidationMessageTimer = null;
+  }, 2400);
+};
 
 /** 打开指定待发布条目的发布设置抽屉。 */
 const openSettings = (queueId: string): void => {
@@ -92,6 +109,12 @@ const saveAccount = (settings: PublishSettings): void => {
 /** 批量探活当前发布页绑定的账号，并把最新账号状态同步回每个作品。 */
 const runPublishChecks = async (): Promise<void> => {
   if (operationLocked.value || !publishQueue.items.value.length) return;
+
+  const validationError = findFirstPublishQueueValidationError(publishQueue.items.value);
+  if (validationError) {
+    showPublishValidationMessage(validationError);
+    return;
+  }
 
   const queuedItems = [...publishQueue.items.value];
   queuedItems.forEach((item) => {
@@ -193,6 +216,7 @@ const formatPublishFailureReason = (error: unknown): string => {
   return rawMessage
     .replace(/^Error invoking remote method 'publish':\s*/u, "")
     .replace(/^Error:\s*/u, "")
+    .replace(/^(?:baijiahao|bilibili|douyin|sohu) publish failed:\s*/iu, "")
     .trim() || "未知发布错误";
 };
 
@@ -339,6 +363,11 @@ const duplicateWork = (queueId: string): void => {
   if (operationLocked.value) return;
   publishQueue.duplicate(queueId);
 };
+
+onBeforeUnmount(() => {
+  if (publishValidationMessageTimer !== null) window.clearTimeout(publishValidationMessageTimer);
+  publishValidationMessageTimer = null;
+});
 </script>
 
 <template>
@@ -482,6 +511,14 @@ const duplicateWork = (queueId: string): void => {
       </CapsuleButton>
     </div>
   </PanelShell>
+
+  <BottomFloatingBar
+    :visible="Boolean(publishValidationMessage)"
+    role="alert"
+    aria-live="assertive"
+  >
+    <span class="min-w-0 text-center leading-5">{{ publishValidationMessage }}</span>
+  </BottomFloatingBar>
 
   <Teleport to="body">
     <Transition
