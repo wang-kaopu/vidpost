@@ -15,6 +15,7 @@ import {
   createPartitionStore,
   deletePartitionMapping,
   movePartitionMapping,
+  readPartitionForAccount,
   resolvePartitionForAccount,
 } from "@/src/db/partition-store.ts";
 import { createAccountPageModel } from "@/src/page-model/account-page-model.ts";
@@ -115,14 +116,30 @@ export async function loginAndCreateRemoteAccount(
   }
 }
 
-// 探活账号并更新远程账号状态
+/**
+ * 检查账号本地状态与平台登录态，并同步远程账号。
+ *
+ * cookie 文件或已绑定 partition 缺失时不请求平台，直接按离线处理。
+ *
+ * @param input - 账号 ID 和平台标识
+ * @param accountResource - 平台账号探活实现
+ * @returns 同步后的账号页面模型
+ */
 export async function updateRemoteAccount(input: PingInput, accountResource: Account) {
   const { accountId, platform } = input;
   const accountFile = resolveAccountFilePath(accountId, platform);
-  resolvePartitionForAccount(createPartitionStore(), accountId);
-  logger.info("账号文件存在:", accountFile);
+  const partition = readPartitionForAccount(createPartitionStore(), accountId);
+  const accountFileExists = fs.existsSync(accountFile);
+  const pingResult = accountFileExists && partition
+    ? await accountResource.ping(accountFile)
+    : { online: false };
 
-  const pingResult = await accountResource.ping(accountFile);
+  if (!accountFileExists || !partition) {
+    logger.info(`${platform}账号本地状态不完整，按离线处理:`, {
+      accountFileExists,
+      partitionExists: Boolean(partition),
+    });
+  }
   logger.info(`${platform}检测结果：`, pingResult);
 
   const nextStatus = pingResult.online ? "online" : "offline";

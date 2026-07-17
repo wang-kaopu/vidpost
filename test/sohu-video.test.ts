@@ -8,7 +8,6 @@ import {
   assertSohuChannelSelection,
   createSohuAuthKey,
   createSohuBrief,
-  createSohuPublication,
   createSohuPublishPayload,
   createSohuVideoChunks,
   extractSohuPublishedPostId,
@@ -47,12 +46,6 @@ test("createSohuBrief truncates the complete brief to 200 characters", () => {
 
 test("createSohuBrief rejects a complete brief shorter than five characters", () => {
   assert.throws(() => createSohuBrief("短文", []), /至少为 5/u);
-});
-
-test("createSohuPublication trims titles, truncates them to 60 characters, and enforces the minimum", () => {
-  const publication = createSohuPublication(`  ${"标".repeat(70)}  `, "有效视频简介", []);
-  assert.equal(publication.title, "标".repeat(60));
-  assert.throws(() => createSohuPublication("四个字", "有效视频简介", []), /至少为 5/u);
 });
 
 test("assertSohuChannelSelection validates the parent-child relationship", () => {

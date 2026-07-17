@@ -86,6 +86,29 @@ export function readPartitionMapTable(store: PartitionStore): PartitionMapTable 
 }
 
 /**
+ * 读取账号已经持久化的 Electron partition，不创建新的映射。
+ *
+ * @param store - 本地持久化 Store
+ * @param accountId - 账号稳定标识
+ * @returns 已存在的 persist partition；账号尚未绑定时返回 undefined
+ */
+export function readPartitionForAccount(store: PartitionStore, accountId: string | number): string | undefined {
+  const normalizedAccountId = String(accountId || "").trim();
+  if (!normalizedAccountId) {
+    throw new Error("readPartitionForAccount requires a non-empty accountId");
+  }
+
+  const partition = readPartitionMapTable(store)[normalizedAccountId];
+  if (partition === undefined) {
+    return undefined;
+  }
+  if (typeof partition !== "string" || !partition.startsWith("persist:")) {
+    throw new Error(`账号 ${normalizedAccountId} 的 partition 非法: ${String(partition)}`);
+  }
+  return partition;
+}
+
+/**
  * 为账号解析稳定的 Electron persist partition。
  *
  * @param store - 本地持久化 Store
@@ -98,17 +121,13 @@ export function resolvePartitionForAccount(store: PartitionStore, accountId: str
     throw new Error("resolvePartitionForAccount requires a non-empty accountId");
   }
 
-  const table = readPartitionMapTable(store);
-  let partition = table[normalizedAccountId];
+  let partition = readPartitionForAccount(store, normalizedAccountId);
 
   if (!partition) {
+    const table = readPartitionMapTable(store);
     partition = `persist:rpa-${encodePartitionAccountId(normalizedAccountId)}`;
     table[normalizedAccountId] = partition;
     store.set(PARTITION_MAP_TABLE_KEY, table);
-  }
-
-  if (typeof partition !== "string" || !partition.startsWith("persist:")) {
-    throw new Error(`账号 ${normalizedAccountId} 的 partition 非法: ${String(partition)}`);
   }
 
   return partition;

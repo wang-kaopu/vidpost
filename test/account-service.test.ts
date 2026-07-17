@@ -5,6 +5,7 @@ import path from 'node:path'
 import test from 'node:test'
 
 import { apiClient } from '@/src/api/api-client.ts'
+import { createPartitionStore, readPartitionMapTable, resolvePartitionForAccount } from '@/src/db/partition-store.ts'
 import {
   loginAndCreateRemoteAccount,
   resolveAccountFilePath,
@@ -19,6 +20,14 @@ function useTemporaryHome(t: test.TestContext): void {
     if (previousHome === undefined) delete process.env.HOME
     else process.env.HOME = previousHome
   })
+}
+
+/** 为日常探活创建已绑定 partition 的本地账号状态。 */
+function createLocalAccountState(accountId: string, platform: string): void {
+  const accountFile = resolveAccountFilePath(accountId, platform)
+  fs.mkdirSync(path.dirname(accountFile), { recursive: true })
+  fs.writeFileSync(accountFile, JSON.stringify({ cookies: [] }), 'utf8')
+  resolvePartitionForAccount(createPartitionStore(), accountId)
 }
 
 function createAccountResource(result: unknown) {
@@ -158,6 +167,7 @@ test('login uses the remote account id when ping returns no nickname', async (t)
 
 test('account service updates online status and platform nickname together', async (t) => {
   useTemporaryHome(t)
+  createLocalAccountState('101', 'douyin')
   const updates: Array<{ data: Record<string, unknown>; url: string }> = []
   t.mock.method(apiClient, 'put', async (url: string, data: Record<string, unknown>) => {
     updates.push({ data, url })
@@ -176,6 +186,7 @@ test('account service updates online status and platform nickname together', asy
 
 test('account service updates only offline status when credentials are rejected', async (t) => {
   useTemporaryHome(t)
+  createLocalAccountState('102', 'bilibili')
   const updates: Array<Record<string, unknown>> = []
   t.mock.method(apiClient, 'put', async (_url: string, data: Record<string, unknown>) => {
     updates.push(data)
@@ -192,6 +203,7 @@ test('account service updates only offline status when credentials are rejected'
 
 test('account service preserves remote state when account detection throws', async (t) => {
   useTemporaryHome(t)
+  createLocalAccountState('103', 'baijiahao')
   let updateCalls = 0
   t.mock.method(apiClient, 'put', async () => {
     updateCalls += 1
@@ -206,4 +218,57 @@ test('account service preserves remote state when account detection throws', asy
     /network unavailable/,
   )
   assert.equal(updateCalls, 0)
+})
+
+test('account service marks the account offline without ping when the cookie file is missing', async (t) => {
+  useTemporaryHome(t)
+  resolvePartitionForAccount(createPartitionStore(), '104')
+  const updates: Array<Record<string, unknown>> = []
+  let pingCalls = 0
+  t.mock.method(apiClient, 'put', async (_url: string, data: Record<string, unknown>) => {
+    updates.push(data)
+    return { data: { code: 0 } }
+  })
+
+  await updateRemoteAccount(
+    { accountId: '104', platform: 'sohu' },
+    {
+      login: async () => ({ accountFile: '', loginSucceeded: true }),
+      ping: async () => {
+        pingCalls += 1
+        return { online: true }
+      },
+    },
+  )
+
+  assert.equal(pingCalls, 0)
+  assert.deepEqual(updates, [{ status: 'offline' }])
+})
+
+test('account service marks the account offline without ping or creating a missing partition', async (t) => {
+  useTemporaryHome(t)
+  const accountFile = resolveAccountFilePath('105', 'douyin')
+  fs.mkdirSync(path.dirname(accountFile), { recursive: true })
+  fs.writeFileSync(accountFile, JSON.stringify({ cookies: [] }), 'utf8')
+  const updates: Array<Record<string, unknown>> = []
+  let pingCalls = 0
+  t.mock.method(apiClient, 'put', async (_url: string, data: Record<string, unknown>) => {
+    updates.push(data)
+    return { data: { code: 0 } }
+  })
+
+  await updateRemoteAccount(
+    { accountId: '105', platform: 'douyin' },
+    {
+      login: async () => ({ accountFile: '', loginSucceeded: true }),
+      ping: async () => {
+        pingCalls += 1
+        return { online: true }
+      },
+    },
+  )
+
+  assert.equal(pingCalls, 0)
+  assert.deepEqual(updates, [{ status: 'offline' }])
+  assert.deepEqual(readPartitionMapTable(createPartitionStore()), {})
 })

@@ -9,6 +9,7 @@ import {
   createPartitionStore,
   deletePartitionMapping,
   movePartitionMapping,
+  readPartitionForAccount,
   readPartitionMapTable,
   resolvePartitionForAccount,
 } from "@/src/db/partition-store.ts";
@@ -45,6 +46,13 @@ test("partition map persists after recreating the local store", () => {
   const restoredStore = createPartitionStore(storePath);
 
   assert.equal(resolvePartitionForAccount(restoredStore, "account:1001"), partition);
+});
+
+test("readPartitionForAccount does not create a missing partition", () => {
+  const store = createTempStore();
+
+  assert.equal(readPartitionForAccount(store, "account:1001"), undefined);
+  assert.deepEqual(readPartitionMapTable(store), {});
 });
 
 test("movePartitionMapping migrates a draft partition to the remote account id", () => {
@@ -92,4 +100,11 @@ test("resolvePartitionForAccount rejects an invalid stored partition", () => {
   store.set(PARTITION_MAP_TABLE_KEY, { "1001": "temporary:1001" });
 
   assert.throws(() => resolvePartitionForAccount(store, "1001"), /partition 非法/u);
+});
+
+test("readPartitionForAccount rejects an invalid stored partition", () => {
+  const store = createTempStore();
+  store.set(PARTITION_MAP_TABLE_KEY, { "1001": "temporary:1001" });
+
+  assert.throws(() => readPartitionForAccount(store, "1001"), /partition 非法/u);
 });

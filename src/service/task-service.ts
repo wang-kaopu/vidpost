@@ -1,6 +1,7 @@
 import fs from "node:fs";
 
 import type { Platform, PublishInput } from "@shared/electron-api.ts";
+import { normalizePublishText } from "@shared/publish-text.ts";
 import { createPublishTask, updatePublishTask } from "@/src/api/task-api.ts";
 import { createPartitionStore, resolvePartitionForAccount } from "@/src/db/partition-store.ts";
 import { createTaskPageModel } from "@/src/page-model/task-page-model.ts";
@@ -137,8 +138,10 @@ export async function publishAndUpdateRemoteTask(
   video: Video,
   reportProgress: PublishProgressReporter = () => undefined,
 ) {
+  const publicationText = normalizePublishText(payload.platform, payload.title, payload.introduction);
   const normalizedPayload = {
     ...payload,
+    ...publicationText,
     scheduledAt: normalizeScheduledAt(payload.scheduledAt),
   };
   let remoteTaskId = null;
@@ -201,7 +204,7 @@ export async function publishAndUpdateRemoteTask(
     const link = publishResult.link;
 
     const reviewStateClues = {
-      title: payload.title ?? null,
+      title: normalizedPayload.title,
       published_at: new Date().toISOString(),
       platform_work_id: publishResult?.postId ?? publishResult?.articleId ?? null,
       share_url: publishResult?.link ?? null,
