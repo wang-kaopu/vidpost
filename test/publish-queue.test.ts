@@ -69,3 +69,25 @@ test("publish queue keeps platform-specific settings with the selected work", ()
     visibility: "friends",
   });
 });
+
+test("publish queue stores account-check results and resets them after settings change", () => {
+  const queue = createPublishQueue();
+  queue.add([createWork("1", "标题 1")]);
+
+  queue.updateCheckState("1", {
+    errorMessage: "账号登录已失效",
+    status: "failed",
+  });
+  assert.deepEqual(queue.items.value[0]?.checkState, {
+    errorMessage: "账号登录已失效",
+    status: "failed",
+  });
+
+  const settings = queue.items.value[0]?.publishSettings;
+  assert.ok(settings);
+  queue.updateSettings("1", { ...settings, title: "修改后的标题" });
+  assert.deepEqual(queue.items.value[0]?.checkState, {
+    errorMessage: "",
+    status: "idle",
+  });
+});

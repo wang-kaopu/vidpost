@@ -16,13 +16,20 @@ export type PublishSettings = {
   visibility: DouyinVisibility;
 };
 
+export type PublishCheckState = {
+  errorMessage: string;
+  status: "checking" | "failed" | "idle" | "success";
+};
+
 export type PublishQueueItem = WorkItem & {
+  checkState: PublishCheckState;
   publishSettings: PublishSettings;
 };
 
 export type PublishQueueApi = {
   items: Ref<PublishQueueItem[]>;
   add: (works: WorkItem[]) => number;
+  updateCheckState: (workId: string, state: PublishCheckState) => void;
   updateSettings: (workId: string, settings: PublishSettings) => void;
   remove: (workId: string) => void;
   clear: () => void;
@@ -45,6 +52,10 @@ export function createPublishQueue(): PublishQueueApi {
       .filter((item) => !existingIds.has(item.id))
       .map((item): PublishQueueItem => ({
         ...item,
+        checkState: {
+          errorMessage: "",
+          status: "idle",
+        },
         publishSettings: {
           accountId: "",
           accountName: "",
@@ -66,7 +77,20 @@ export function createPublishQueue(): PublishQueueApi {
   /** 保存指定作品的账号和平台差异化发布参数。 */
   const updateSettings = (workId: string, settings: PublishSettings): void => {
     items.value = items.value.map((item) =>
-      item.id === workId ? { ...item, publishSettings: { ...settings } } : item,
+      item.id === workId
+        ? {
+            ...item,
+            checkState: { errorMessage: "", status: "idle" },
+            publishSettings: { ...settings },
+          }
+        : item,
+    );
+  };
+
+  /** 更新指定作品的账号检测状态。 */
+  const updateCheckState = (workId: string, state: PublishCheckState): void => {
+    items.value = items.value.map((item) =>
+      item.id === workId ? { ...item, checkState: { ...state } } : item,
     );
   };
 
@@ -80,7 +104,7 @@ export function createPublishQueue(): PublishQueueApi {
     items.value = [];
   };
 
-  return { items, add, updateSettings, remove, clear };
+  return { items, add, updateCheckState, updateSettings, remove, clear };
 }
 
 /**
