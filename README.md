@@ -121,7 +121,7 @@ Forge 的 ASAR 配置会整体解包 Playwright、Sharp 和 `@img` 运行时目�
 
 ## 日志规范
 
-项目源码统一通过 logger 输出日志。Node、Electron 和脚本使用 `src/utils/logger.ts`；浏览器代码继续通过 `app/src/utils/logger.ts` 保持相同的 `logger.info(...values)` 和 `logger.error(...values)` 调用方式，但格式化后会通过 `electronAPI.logger` 交给主进程持久化。业务代码禁止直接调用 `console.*`。
+项目源码统一通过 logger 输出日志。Node、Electron 和脚本使用 `src/utils/logger.ts`；浏览器代码通过 `app/src/utils/logger.ts` 保持相同的 `logger.info(...values)` 和 `logger.error(...values)` 调用方式，但格式化后会通过 `electronAPI.logger` 交给主进程持久化。正式 renderer 启动时会写入启动标记，并统一记录 Vue 未捕获异常、页面运行时异常、未处理的 Promise 拒绝、脱敏后的 HTTP 请求失败，以及直接调用 Electron IPC 的关键业务失败。HTTP 失败日志只记录方法、不含查询参数的相对 URL、状态码、错误码和业务说明，不记录认证 Header、查询参数或请求体。业务代码禁止直接调用 `console.*`。
 
 Electron 使用 log4js 在用户主目录的 `~/.agenthunt/logs` 保存两组文件：主进程及 Node 业务写入 `electron.log`，正式 renderer 写入 `renderer.log`。应用通过 `app.getPath("home")` 构造绝对路径并交给 `app.setAppLogsPath()`，不依赖 shell 展开 `~`。每组当前日志累计写入 24 小时后按数字序号轮转，当前日志不带序号，最近的历史日志为 `.1`，最旧为 `.6`，因此每组固定保留 7 个日志窗口。应用重启时会从当前文件的创建时间继续计算剩余时长；若关闭时间已超过 24 小时，则在下次启动时立即补做一次轮转，但不会为关闭期间生成空日志文件。应用退出前会等待轮转和异步日志写入完成。renderer 只能向受限 IPC 发送已经安全格式化的日志文本，不能访问文件系统或 log4js。
 

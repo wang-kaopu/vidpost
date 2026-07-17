@@ -25,6 +25,7 @@ import { removeAccount, updateAccount } from "@/api/accounts";
 import type { PublishAccountItem, PlatformOption, BackendPlatform } from "@/api/publish";
 import { useNotificationCenter } from "@/notifications";
 import { usePublishProgressCenter } from "@/publish-progress";
+import { logger } from "@/src/utils/logger";
 import { runAccountPingBatch } from "@/utils/account-ping-batch";
 import { useDialogLayer } from "../composables/useDialogLayer";
 
@@ -296,9 +297,16 @@ const pingAccount = async (item: Pick<PublishAccountItem, "id" | "platformKey">)
   pingingAccountId.value = item.id;
   errorMessage.value = "";
   try {
-    await window.electronAPI?.ping({ accountId: item.id, platform: item.platformKey as Platform });
+    const ping = window.electronAPI?.ping;
+    if (!ping) throw new Error("账号检测 IPC 未初始化");
+    await ping({ accountId: item.id, platform: item.platformKey as Platform });
     await loadAccounts({ preservePage: true });
-  } catch {
+  } catch (error) {
+    logger.error("renderer.account.ping-error 账号检测失败", {
+      accountId: item.id,
+      error,
+      platform: item.platformKey,
+    });
     errorMessage.value = "";
     pushAccountError("账号检测失败", "账号状态检测没有完成，请稍后重试");
   } finally {
@@ -326,6 +334,10 @@ const handleOpenAccountBackend = async (item: PublishAccountItem): Promise<void>
   }
   const openAccountBackend = window.electronAPI?.openAccountBackend;
   if (!openAccountBackend) {
+    logger.error("renderer.account-backend.unavailable 当前环境未注入账号后台能力", {
+      accountId: item.id,
+      platform: item.platformKey,
+    });
     pushAccountError("账号后台打开失败", "当前环境未注入账号后台能力");
     return;
   }
@@ -339,9 +351,19 @@ const handleOpenAccountBackend = async (item: PublishAccountItem): Promise<void>
       platform: item.platformKey as Platform,
     });
     if (result.saveError) {
+      logger.error("renderer.account-backend.save-error 账号状态保存失败", {
+        accountId: item.id,
+        message: result.saveError,
+        platform: item.platformKey,
+      });
       pushAccountError("账号状态保存失败", "请重新打开账号后台重试");
     }
-  } catch {
+  } catch (error) {
+    logger.error("renderer.account-backend.open-error 平台后台打开失败", {
+      accountId: item.id,
+      error,
+      platform: item.platformKey,
+    });
     pushAccountError("账号后台打开失败", "平台后台没有成功打开，请稍后重试");
   } finally {
     backendWindowVisible.value = false;
@@ -362,8 +384,17 @@ const handlePingAllAccounts = async () => {
     const summary = await runAccountPingBatch(
       queue,
       async (item) => {
-        if (!window.electronAPI?.ping) throw new Error("账号检测 IPC 未初始化");
-        await window.electronAPI.ping({ accountId: item.id, platform: item.platformKey as Platform });
+        try {
+          if (!window.electronAPI?.ping) throw new Error("账号检测 IPC 未初始化");
+          await window.electronAPI.ping({ accountId: item.id, platform: item.platformKey as Platform });
+        } catch (error) {
+          logger.error("renderer.account.batch-ping-error 批量账号检测失败", {
+            accountId: item.id,
+            error,
+            platform: item.platformKey,
+          });
+          throw error;
+        }
       },
       {
         batchSize: 3,
@@ -443,13 +474,16 @@ const createPlatformAccount = async (platform: PlatformOption) => {
   platformErrorMessage.value = "";
   try {
     if (!accountBackendPlatforms.has(platform.key)) throw new Error("当前平台不支持 Electron 登录");
-    // if (!window.electronAPI?.login(platform.key)) {
-    //   throw new Error("当前环境未注入 Electron 平台登录能力");
-    // }
-    await window.electronAPI?.login(platform.key as Platform);
+    const login = window.electronAPI?.login;
+    if (!login) throw new Error("当前环境未注入 Electron 平台登录能力");
+    await login(platform.key as Platform);
     await loadAccounts();
     platformDialogVisible.value = false;
-  } catch {
+  } catch (error) {
+    logger.error("renderer.account.create-error 新增账号失败", {
+      error,
+      platform: platform.key,
+    });
     platformErrorMessage.value = "";
     platformDialogVisible.value = false;
     pushAccountError("新增账号失败", "账号没有新增成功，请稍后重试");

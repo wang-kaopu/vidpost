@@ -19,6 +19,7 @@ import {
 } from "@/publish-queue";
 import { useNotificationCenter } from "@/notifications";
 import { usePublishProgressCenter } from "@/publish-progress";
+import { logger } from "@/src/utils/logger";
 import { runAccountPingBatch } from "@/utils/account-ping-batch";
 import { IMMEDIATE_PUBLISH_VALUE, validateScheduledAt } from "@/utils/publish-schedule";
 import CapsuleButton from "./ui/CapsuleButton.vue";
@@ -143,6 +144,11 @@ const runPublishChecks = async (): Promise<void> => {
         if (!ping) throw new Error("当前环境未提供账号检测能力");
         await ping({ accountId: target.accountId, platform: target.platform });
       } catch (error) {
+        logger.error("renderer.publish-check.error 账号检测失败", {
+          accountId: target.accountId,
+          error,
+          platform: target.platform,
+        });
         pingErrors.set(target.id, error instanceof Error && error.message.trim() ? error.message.trim() : "账号检测失败");
         throw error;
       }
@@ -326,6 +332,12 @@ const confirmPublish = async (): Promise<void> => {
       void publishApi(input)
         .then(() => publishProgressCenter.complete(input.progressId))
         .catch((error: unknown) => {
+          logger.error("renderer.publish.error 发布任务执行失败", {
+            accountId: input.accountId,
+            error,
+            platform: input.platform,
+            progressId: input.progressId,
+          });
           const failureReason = formatPublishFailureReason(error);
           publishProgressCenter.fail(input.progressId, failureReason);
           notificationCenter.push({
@@ -338,6 +350,7 @@ const confirmPublish = async (): Promise<void> => {
         });
     });
   } catch (error) {
+    logger.error("renderer.publish.prepare-error 发布任务准备失败", error);
     notificationCenter.push({
       title: "发布提交失败",
       message: formatPublishFailureReason(error),

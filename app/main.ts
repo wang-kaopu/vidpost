@@ -1,5 +1,21 @@
 import { createApp } from "vue";
 import App from "./App.vue";
 import "./styles.css";
+import { logger } from "./src/utils/logger";
 
-createApp(App).mount("#app");
+const vueApp = createApp(App);
+
+vueApp.config.errorHandler = (error, _instance, info) => {
+  logger.error("renderer.vue.error 未捕获的组件异常", { error, info });
+};
+
+window.addEventListener("error", (event) => {
+  logger.error("renderer.window.error 未捕获的页面异常", event.error ?? event.message);
+});
+
+window.addEventListener("unhandledrejection", (event) => {
+  logger.error("renderer.promise.unhandled 未处理的 Promise 拒绝", event.reason);
+});
+
+logger.info("renderer.lifecycle 应用启动");
+vueApp.mount("#app");

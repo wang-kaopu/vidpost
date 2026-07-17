@@ -1,5 +1,6 @@
 import axios, { AxiosError, AxiosHeaders, type AxiosInstance, type AxiosRequestConfig, type AxiosResponse } from "axios";
 import { frontendEnv, getAccessToken } from "@/config";
+import { logger } from "@/src/utils/logger";
 import type { ApiEnvelope } from "./types";
 
 type QueryScalar = string | number | boolean | null | undefined;
@@ -142,6 +143,34 @@ async function getHttpErrorMessage(error: unknown, fallbackMessage: string): Pro
   return fallbackMessage;
 }
 
+/**
+ * 将请求异常转换为业务错误，并记录不含认证信息和请求体的诊断上下文。
+ *
+ * @param error - Axios、业务响应或运行时抛出的原始异常
+ * @param fallbackMessage - 当前请求对应的业务兜底说明
+ * @returns 向上层继续抛出的标准错误
+ */
+async function normalizeAndLogRequestError(error: unknown, fallbackMessage: string): Promise<Error> {
+  const normalizedError = error instanceof Error && !axios.isAxiosError(error)
+    ? error
+    : new Error(await getHttpErrorMessage(error, fallbackMessage));
+  const requestContext = axios.isAxiosError(error)
+    ? {
+        code: error.code,
+        method: error.config?.method?.toUpperCase(),
+        status: error.response?.status,
+        url: error.config?.url?.split("?", 1)[0],
+      }
+    : {};
+
+  logger.error("renderer.http.error 前端请求失败", {
+    ...requestContext,
+    message: normalizedError.message,
+    operation: fallbackMessage,
+  });
+  return normalizedError;
+}
+
 // 解包API响应
 export function unwrapEnvelope<T>(
   payload: ApiEnvelope<T>,
@@ -164,10 +193,7 @@ export async function requestEnvelope<T>(
     const response = await request;
     return unwrapEnvelope(response.data, fallbackMessage);
   } catch (error) {
-    if (error instanceof Error && !axios.isAxiosError(error)) {
-      throw error;
-    }
-    throw new Error(await getHttpErrorMessage(error, fallbackMessage));
+    throw await normalizeAndLogRequestError(error, fallbackMessage);
   }
 }
 
@@ -180,10 +206,7 @@ export async function requestSuccess(
     const response = await request;
     unwrapEnvelope(response.data, fallbackMessage, { requireData: false });
   } catch (error) {
-    if (error instanceof Error && !axios.isAxiosError(error)) {
-      throw error;
-    }
-    throw new Error(await getHttpErrorMessage(error, fallbackMessage));
+    throw await normalizeAndLogRequestError(error, fallbackMessage);
   }
 }
 
@@ -197,7 +220,7 @@ export async function requestBlob(
       responseType: "blob",
     });
   } catch (error) {
-    throw new Error(await getHttpErrorMessage(error, fallbackMessage));
+    throw await normalizeAndLogRequestError(error, fallbackMessage);
   }
 }
 

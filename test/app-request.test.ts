@@ -75,6 +75,63 @@ test("requestEnvelope surfaces backend message from axios error responses", asyn
   );
 });
 
+test("requestEnvelope forwards sanitized request failures to the renderer logger", async () => {
+  const { requestEnvelope } = requestModule;
+  const runtime = globalThis as typeof globalThis & { window?: Window };
+  const originalWindow = runtime.window;
+  const requestConfig = {
+    data: { secretBody: "private-body" },
+    headers: new axios.AxiosHeaders({ Authorization: "Bearer private-token" }),
+    method: "post",
+    url: "/publish/tasks?access_token=private-query",
+  };
+  let forwarded = "";
+  runtime.window = {
+    electronAPI: {
+      logger: {
+        error: (message: string) => {
+          forwarded = message;
+        },
+        info: () => undefined,
+      },
+    },
+  } as unknown as Window;
+
+  try {
+    await assert.rejects(
+      () =>
+        requestEnvelope(
+          Promise.reject(
+            new axios.AxiosError("Request failed", "ERR_BAD_RESPONSE", requestConfig, undefined, {
+              status: 503,
+              statusText: "Service Unavailable",
+              headers: {},
+              config: requestConfig,
+              data: { message: "服务暂时不可用", secretBody: "private-response" },
+            }),
+          ),
+          "创建发布任务失败",
+        ),
+      /服务暂时不可用/,
+    );
+  } finally {
+    if (originalWindow) {
+      runtime.window = originalWindow;
+    } else {
+      delete runtime.window;
+    }
+  }
+
+  assert.match(forwarded, /renderer\.http\.error 前端请求失败/u);
+  assert.match(forwarded, /"method":"POST"/u);
+  assert.match(forwarded, /"status":503/u);
+  assert.match(forwarded, /"url":"\/publish\/tasks"/u);
+  assert.equal(forwarded.includes("private-token"), false);
+  assert.equal(forwarded.includes("private-body"), false);
+  assert.equal(forwarded.includes("private-query"), false);
+  assert.equal(forwarded.includes("private-response"), false);
+});
+
 test("requestSuccess allows empty data on successful envelopes", async () => {
   const { requestSuccess } = requestModule;
 

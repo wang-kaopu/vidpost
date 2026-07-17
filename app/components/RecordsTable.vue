@@ -18,6 +18,7 @@ import { getPublishPlatforms, getPublishTasks, deletePublishTask, exportPublishT
 import type { PublishTask, BackendPlatform } from "@/api/publish";
 import { useNotificationCenter } from "@/notifications";
 import { usePublishQueue } from "@/publish-queue";
+import { logger } from "@/src/utils/logger";
 
 const loading = ref(false);
 const exporting = ref(false);
@@ -273,6 +274,10 @@ const handleRetryPublish = (item: PublishTask): void => {
     publishQueue.addRetry(item);
     showRetryToast();
   } catch (error) {
+    logger.error("renderer.records.retry-error 重新发布参数恢复失败", {
+      error,
+      taskId: item.id,
+    });
     const detail = error instanceof Error && error.message.trim()
       ? error.message.trim()
       : "发布记录参数不完整，无法重新发布";

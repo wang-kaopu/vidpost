@@ -9,6 +9,7 @@ import {
 } from "@shared/electron-api";
 import { useDialogLayer } from "@/composables/useDialogLayer";
 import type { PublishQueueItem, PublishSettings } from "@/publish-queue";
+import { logger } from "@/src/utils/logger";
 import {
   getScheduledPublishBounds,
   IMMEDIATE_PUBLISH_VALUE,
@@ -144,6 +145,11 @@ const loadPlatformOptions = async (platform: NonNullable<PublishSettings["platfo
     }
   } catch (error) {
     if (requestId !== optionRequestId) return;
+    logger.error("renderer.publish-settings.error 平台发布选项加载失败", {
+      accountId,
+      error,
+      platform,
+    });
     platformOptionsError.value = error instanceof Error ? error.message : String(error);
   } finally {
     if (requestId === optionRequestId) platformOptionsLoading.value = false;
