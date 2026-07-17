@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { Plus, RefreshCw, Search, Trash2 } from "lucide-vue-next";
 import { PLATFORMS, type Platform } from "@shared/electron-api";
 import PlatformLogo from "./PlatformLogo.vue";
-import PlatformPickerDialog from "./PlatformPickerDialog/PlatformPickerDialog.vue";
+import PlatformPickerDialog from "./PlatformPickerDialog.vue";
 import CapsuleButton from "./ui/CapsuleButton.vue";
 import SelectField from "./ui/SelectField.vue";
 import TextInput from "./ui/TextInput.vue";
@@ -54,7 +54,6 @@ const platformDialogVisible = ref(false);
 const platformLoading = ref(false);
 const platformErrorMessage = ref("");
 const platforms = ref<PlatformOption[]>([]);
-const selectedPlatformKeys = ref<string[]>([]);
 const creatingPlatformKey = ref("");
 
 const tagDialogVisible = ref(false);
@@ -415,7 +414,6 @@ const openPlatformDialog = async () => {
   platformLoading.value = true;
   platformErrorMessage.value = "";
   creatingPlatformKey.value = "";
-  selectedPlatformKeys.value = [];
   try {
     const res = await getPublishPlatforms();
     const list = (res.list || []) as BackendPlatform[];
@@ -437,7 +435,6 @@ const openPlatformDialog = async () => {
 const closePlatformDialog = () => {
   platformDialogVisible.value = false;
   creatingPlatformKey.value = "";
-  selectedPlatformKeys.value = [];
 };
 
 const createPlatformAccount = async (platform: PlatformOption) => {
@@ -707,8 +704,6 @@ useDialogLayer(() => accountDialogVisible.value);
       :loading="platformLoading"
       :error-message="platformErrorMessage"
       empty-message="暂无可用平台"
-      selection-mode="single"
-      :selected-platform-keys="selectedPlatformKeys"
       :busy-platform-key="creatingPlatformKey"
       busy-label="创建中..."
       @close="closePlatformDialog"

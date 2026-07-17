@@ -382,7 +382,7 @@ async function fetchSohuChannels(http: AxiosInstance, accountId: string): Promis
   return channels;
 }
 
-/** 查询指定 storage-state 对应账号的搜狐频道树，供发布计划 UI 使用。 */
+/** 查询指定 storage-state 对应账号的搜狐频道树，供发布设置使用。 */
 export async function getSohuChannels(accountFile: string): Promise<SohuChannel[]> {
   const resolvedAccountFile = isAbsolute(accountFile) ? accountFile : resolve(process.cwd(), accountFile);
   const [account, userAgent] = await Promise.all([

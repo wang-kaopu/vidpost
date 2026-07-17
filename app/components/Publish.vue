@@ -1,5 +1,5 @@
 <script setup lang="ts">
-/** 迁移期发布工作台，集中承载从作品页加入的待发布作品。 */
+/** 发布工作台，集中承载从作品页加入并完成检测、提交的待发布作品。 */
 defineOptions({ name: "PublishView" });
 
 import { computed, ref } from "vue";
@@ -326,7 +326,7 @@ const confirmPublish = async (): Promise<void> => {
   }
 };
 
-/** 从迁移期发布工作台移除指定作品。 */
+/** 从发布工作台移除指定作品。 */
 const removeWork = (workId: string): void => {
   if (operationLocked.value) return;
   if (activeAccountWorkId.value === workId) closeAccount();

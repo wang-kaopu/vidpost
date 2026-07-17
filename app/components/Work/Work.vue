@@ -4,7 +4,7 @@ defineOptions({ name: "WorkView" });
 import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from "vue";
 import { message } from "ant-design-vue";
 import { CirclePlay, RefreshCw, Search } from "lucide-vue-next";
-      import CapsuleButton from "../ui/CapsuleButton.vue";
+import CapsuleButton from "../ui/CapsuleButton.vue";
 import SelectField from "../ui/SelectField.vue";
 import TextInput from "../ui/TextInput.vue";
 import CircleCheckbox from "../ui/CircleCheckbox.vue";

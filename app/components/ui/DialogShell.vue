@@ -9,15 +9,9 @@ const props = withDefaults(
     visible: boolean;
     title: string;
     description?: string;
-    width?: "default" | "wide" | "xwide" | "compact";
-    showClose?: boolean;
-    closeOnMask?: boolean;
   }>(),
   {
     description: "",
-    width: "default",
-    showClose: true,
-    closeOnMask: true,
   },
 );
 
@@ -25,9 +19,9 @@ const emit = defineEmits<{
   close: [];
 }>();
 
-/** 仅在允许时响应遮罩点击。 */
+/** 响应遮罩点击并关闭平台选择弹窗。 */
 function handleMaskClick(): void {
-  if (props.closeOnMask) emit("close");
+  emit("close");
 }
 </script>
 
@@ -40,23 +34,17 @@ function handleMaskClick(): void {
         @click.self="handleMaskClick"
       >
         <section
-          class="dialog-surface max-h-[min(760px,calc(100vh-48px))] overflow-auto rounded-[30px] bg-white/96 px-[30px] pt-[30px] pb-[26px] shadow-[0_28px_80px_rgba(84,110,144,0.24)] will-change-[transform,opacity] max-[900px]:rounded-3xl max-[900px]:px-[18px] max-[900px]:pt-6 max-[900px]:pb-5"
-          :class="{
-            'w-[min(920px,100%)]': props.width === 'default',
-            'w-[min(1100px,100%)] max-h-[min(820px,calc(100vh-48px))] overflow-visible max-[900px]:w-[min(1100px,calc(100vw-24px))]': props.width === 'wide',
-            'w-[min(1380px,100%)] max-h-[min(820px,calc(100vh-48px))] overflow-hidden max-[900px]:w-[min(1100px,calc(100vw-24px))]': props.width === 'xwide',
-            'w-[min(560px,calc(100vw-48px))]': props.width === 'compact',
-          }"
+          class="dialog-surface max-h-[min(760px,calc(100vh-48px))] w-[min(920px,100%)] overflow-auto rounded-[30px] bg-white/96 px-[30px] pt-[30px] pb-[26px] shadow-[0_28px_80px_rgba(84,110,144,0.24)] will-change-[transform,opacity] max-[900px]:rounded-3xl max-[900px]:px-[18px] max-[900px]:pt-6 max-[900px]:pb-5"
           @click.stop
         >
-          <header class="mb-6 flex items-start justify-between gap-[18px]" :class="{ 'mb-5': props.width === 'wide' || props.width === 'xwide' }">
+          <header class="mb-6 flex items-start justify-between gap-[18px]">
             <div>
-              <h2 class="m-0 text-[34px] tracking-[-0.05em] max-[900px]:text-[28px]" :class="{ 'text-[30px] max-[900px]:text-lg': props.width === 'wide' || props.width === 'xwide' }">
+              <h2 class="m-0 text-[34px] tracking-[-0.05em] max-[900px]:text-[28px]">
                 {{ props.title }}
               </h2>
               <p v-if="props.description" class="mt-2 mb-0 text-base text-ink-muted">{{ props.description }}</p>
             </div>
-            <IconButton v-if="props.showClose" aria-label="关闭" @click="emit('close')">
+            <IconButton aria-label="关闭" @click="emit('close')">
               <span class="text-[26px] leading-none">×</span>
             </IconButton>
           </header>
