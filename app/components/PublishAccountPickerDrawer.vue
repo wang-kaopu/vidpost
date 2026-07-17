@@ -103,7 +103,11 @@ const selectInitialPlatform = (): void => {
     (account) => account.id === props.item?.publishSettings.accountId,
   );
   const firstPopulatedPlatform = platformFilters.value.find((filter) => filter.count > 0)?.key;
-  activeFilterKey.value = currentAccount?.platformKey || firstPopulatedPlatform || PLATFORMS[0];
+  activeFilterKey.value =
+    currentAccount?.platformKey ||
+    props.item?.publishSettings.platform ||
+    firstPopulatedPlatform ||
+    PLATFORMS[0];
 };
 
 /** 加载账号中心中现有的发布账号。 */
@@ -150,21 +154,19 @@ const confirmAccount = (): void => {
   const account = selectedAccount.value;
   if (!props.item || !account || !isAccountAvailable(account)) return;
   const platform = account.platformKey as Platform;
-  const accountChanged =
-    props.item.publishSettings.accountId !== account.id ||
-    props.item.publishSettings.platform !== platform;
+  const platformChanged = props.item.publishSettings.platform !== platform;
 
   emit("confirm", {
     ...props.item.publishSettings,
     accountId: account.id,
     accountName: account.nickname,
-    channelId: accountChanged ? null : props.item.publishSettings.channelId,
-    humanTypeId: accountChanged ? null : props.item.publishSettings.humanTypeId,
+    channelId: platformChanged ? null : props.item.publishSettings.channelId,
+    humanTypeId: platformChanged ? null : props.item.publishSettings.humanTypeId,
     platform,
     platformLabel: account.platform,
-    scheduledAt: accountChanged ? "0" : props.item.publishSettings.scheduledAt,
-    videoChannelId: accountChanged ? null : props.item.publishSettings.videoChannelId,
-    visibility: accountChanged ? "public" : props.item.publishSettings.visibility,
+    scheduledAt: platformChanged ? "0" : props.item.publishSettings.scheduledAt,
+    videoChannelId: platformChanged ? null : props.item.publishSettings.videoChannelId,
+    visibility: platformChanged ? "public" : props.item.publishSettings.visibility,
   });
 };
 
@@ -174,7 +176,7 @@ const handleKeydown = (event: KeyboardEvent): void => {
 };
 
 watch(
-  () => [props.visible, props.item?.id] as const,
+  () => [props.visible, props.item?.queueId] as const,
   ([visible]) => {
     if (!visible || !props.item) return;
     pickerMode.value = "platform";

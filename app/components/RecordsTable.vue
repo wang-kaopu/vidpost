@@ -13,6 +13,7 @@ import FilterPopover from "./ui/FilterPopover.vue";
 import PanelShell from "./ui/PanelShell.vue";
 import StateMessage from "./ui/StateMessage.vue";
 import ToneBadge from "./ui/ToneBadge.vue";
+import BottomFloatingBar from "./ui/BottomFloatingBar.vue";
 import { getPublishPlatforms, getPublishTasks, deletePublishTask, exportPublishTasks } from "@/api/publish";
 import type { PublishTask, BackendPlatform } from "@/api/publish";
 import { useNotificationCenter } from "@/notifications";
@@ -529,23 +530,9 @@ onUnmounted(() => {
       <div class="pager">共 {{ items.length }} 条</div>
     </footer>
 
-    <Teleport to="body">
-      <Transition
-        enter-active-class="transition duration-200 ease-out"
-        enter-from-class="translate-y-2 opacity-0"
-        leave-active-class="transition duration-150 ease-in"
-        leave-to-class="translate-y-2 opacity-0"
-      >
-        <div
-          v-if="retryToastVisible"
-          class="fixed bottom-7 left-1/2 z-[80] -translate-x-1/2 rounded-full bg-slate-900/92 px-5 py-2.5 text-sm font-medium text-white shadow-xl backdrop-blur"
-          role="status"
-          aria-live="polite"
-        >
-          已添加到 发布 页
-        </div>
-      </Transition>
-    </Teleport>
+    <BottomFloatingBar :visible="retryToastVisible" role="status" aria-live="polite">
+      <span class="whitespace-nowrap">已添加, 前往发布页查看</span>
+    </BottomFloatingBar>
   </PanelShell>
 </template>
 

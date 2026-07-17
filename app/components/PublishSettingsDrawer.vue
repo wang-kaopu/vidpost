@@ -202,7 +202,7 @@ const handleKeydown = (event: KeyboardEvent): void => {
 };
 
 watch(
-  () => [props.visible, props.item?.id] as const,
+  () => [props.visible, props.item?.queueId] as const,
   ([visible]) => {
     if (!visible || !props.item) return;
     draft.value = { ...props.item.publishSettings };

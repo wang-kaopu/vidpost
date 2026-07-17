@@ -3,7 +3,7 @@
 defineOptions({ name: "PublishView" });
 
 import { computed, ref } from "vue";
-import { CircleCheck, CircleX, ListTodo, LoaderCircle, Plus, ShieldCheck, Trash2, Video } from "lucide-vue-next";
+import { CircleCheck, CircleX, Copy, ListTodo, LoaderCircle, Plus, ShieldCheck, Trash2, Video } from "lucide-vue-next";
 import type { BasePublishInput, PublishInput } from "@shared/electron-api";
 import {
   getPublishAccounts,
@@ -31,8 +31,8 @@ const emit = defineEmits<{
 const publishQueue = usePublishQueue();
 const notificationCenter = useNotificationCenter();
 const publishProgressCenter = usePublishProgressCenter();
-const activeAccountWorkId = ref("");
-const activeSettingsWorkId = ref("");
+const activeAccountQueueId = ref("");
+const activeSettingsQueueId = ref("");
 const submittingPublish = ref(false);
 const runningCheck = computed(() =>
   publishQueue.items.value.some((item) => item.checkState.status === "checking"),
@@ -43,49 +43,49 @@ const allChecksSucceeded = computed(() =>
   && publishQueue.items.value.every((item) => item.checkState.status === "success"),
 );
 const activeAccountItem = computed(() =>
-  publishQueue.items.value.find((item) => item.id === activeAccountWorkId.value) || null,
+  publishQueue.items.value.find((item) => item.queueId === activeAccountQueueId.value) || null,
 );
 const activeSettingsItem = computed(() =>
-  publishQueue.items.value.find((item) => item.id === activeSettingsWorkId.value) || null,
+  publishQueue.items.value.find((item) => item.queueId === activeSettingsQueueId.value) || null,
 );
 
-/** 打开指定作品的发布设置抽屉。 */
-const openSettings = (workId: string): void => {
+/** 打开指定待发布条目的发布设置抽屉。 */
+const openSettings = (queueId: string): void => {
   if (operationLocked.value) return;
-  const item = publishQueue.items.value.find((candidate) => candidate.id === workId);
+  const item = publishQueue.items.value.find((candidate) => candidate.queueId === queueId);
   if (!item?.publishSettings.accountId) return;
-  activeAccountWorkId.value = "";
-  activeSettingsWorkId.value = workId;
+  activeAccountQueueId.value = "";
+  activeSettingsQueueId.value = queueId;
 };
 
-/** 打开指定作品的账号选择抽屉。 */
-const openAccount = (workId: string): void => {
+/** 打开指定待发布条目的账号选择抽屉。 */
+const openAccount = (queueId: string): void => {
   if (operationLocked.value) return;
-  activeSettingsWorkId.value = "";
-  activeAccountWorkId.value = workId;
+  activeSettingsQueueId.value = "";
+  activeAccountQueueId.value = queueId;
 };
 
 /** 关闭账号选择抽屉。 */
 const closeAccount = (): void => {
-  activeAccountWorkId.value = "";
+  activeAccountQueueId.value = "";
 };
 
 /** 关闭发布设置抽屉。 */
 const closeSettings = (): void => {
-  activeSettingsWorkId.value = "";
+  activeSettingsQueueId.value = "";
 };
 
 /** 保存当前作品的差异化平台发布参数。 */
 const saveSettings = (settings: PublishSettings): void => {
-  if (operationLocked.value || !activeSettingsWorkId.value) return;
-  publishQueue.updateSettings(activeSettingsWorkId.value, settings);
+  if (operationLocked.value || !activeSettingsQueueId.value) return;
+  publishQueue.updateSettings(activeSettingsQueueId.value, settings);
   closeSettings();
 };
 
 /** 保存当前作品绑定的发布账号。 */
 const saveAccount = (settings: PublishSettings): void => {
-  if (operationLocked.value || !activeAccountWorkId.value) return;
-  publishQueue.updateSettings(activeAccountWorkId.value, settings);
+  if (operationLocked.value || !activeAccountQueueId.value) return;
+  publishQueue.updateSettings(activeAccountQueueId.value, settings);
   closeAccount();
 };
 
@@ -95,7 +95,7 @@ const runPublishChecks = async (): Promise<void> => {
 
   const queuedItems = [...publishQueue.items.value];
   queuedItems.forEach((item) => {
-    publishQueue.updateCheckState(item.id, { errorMessage: "", status: "checking" });
+    publishQueue.updateCheckState(item.queueId, { errorMessage: "", status: "checking" });
   });
 
   const accountTargets = new Map<string, {
@@ -141,28 +141,28 @@ const runPublishChecks = async (): Promise<void> => {
   }
 
   queuedItems.forEach((item) => {
-    if (publishQueue.items.value.find((candidate) => candidate.id === item.id)?.checkState.status !== "checking") {
+    if (publishQueue.items.value.find((candidate) => candidate.queueId === item.queueId)?.checkState.status !== "checking") {
       return;
     }
 
     const { accountId, platform } = item.publishSettings;
     if (!accountId || !platform) {
-      publishQueue.updateCheckState(item.id, { errorMessage: "请先添加发布账号", status: "failed" });
+      publishQueue.updateCheckState(item.queueId, { errorMessage: "请先添加发布账号", status: "failed" });
       return;
     }
 
     const targetId = `${platform}:${accountId}`;
     const pingError = pingErrors.get(targetId);
     if (pingError) {
-      publishQueue.updateCheckState(item.id, { errorMessage: pingError, status: "failed" });
+      publishQueue.updateCheckState(item.queueId, { errorMessage: pingError, status: "failed" });
       return;
     }
     if (!settledAccountIds.has(targetId)) {
-      publishQueue.updateCheckState(item.id, { errorMessage: "账号检测超时", status: "failed" });
+      publishQueue.updateCheckState(item.queueId, { errorMessage: "账号检测超时", status: "failed" });
       return;
     }
     if (accountLoadError) {
-      publishQueue.updateCheckState(item.id, {
+      publishQueue.updateCheckState(item.queueId, {
         errorMessage: `账号状态刷新失败：${accountLoadError}`,
         status: "failed",
       });
@@ -173,14 +173,14 @@ const runPublishChecks = async (): Promise<void> => {
       (candidate) => candidate.id === accountId && candidate.platformKey === platform,
     );
     if (!account) {
-      publishQueue.updateCheckState(item.id, { errorMessage: "账号不存在", status: "failed" });
+      publishQueue.updateCheckState(item.queueId, { errorMessage: "账号不存在", status: "failed" });
       return;
     }
     if (account.status === "login_success" || account.status === "online") {
-      publishQueue.updateCheckState(item.id, { errorMessage: "", status: "success" });
+      publishQueue.updateCheckState(item.queueId, { errorMessage: "", status: "success" });
       return;
     }
-    publishQueue.updateCheckState(item.id, {
+    publishQueue.updateCheckState(item.queueId, {
       errorMessage: account.status === "offline" ? "账号已离线" : `账号状态异常：${account.statusLabel}`,
       status: "failed",
     });
@@ -326,12 +326,18 @@ const confirmPublish = async (): Promise<void> => {
   }
 };
 
-/** 从发布工作台移除指定作品。 */
-const removeWork = (workId: string): void => {
+/** 从发布工作台移除指定待发布条目。 */
+const removeWork = (queueId: string): void => {
   if (operationLocked.value) return;
-  if (activeAccountWorkId.value === workId) closeAccount();
-  if (activeSettingsWorkId.value === workId) closeSettings();
-  publishQueue.remove(workId);
+  if (activeAccountQueueId.value === queueId) closeAccount();
+  if (activeSettingsQueueId.value === queueId) closeSettings();
+  publishQueue.remove(queueId);
+};
+
+/** 复制指定待发布条目的作品和发布参数，但不复制账号。 */
+const duplicateWork = (queueId: string): void => {
+  if (operationLocked.value) return;
+  publishQueue.duplicate(queueId);
 };
 </script>
 
@@ -352,7 +358,7 @@ const removeWork = (workId: string): void => {
     >
       <article
         v-for="item in publishQueue.items.value"
-        :key="item.id"
+        :key="item.queueId"
         class="grid min-h-[138px] grid-cols-[minmax(380px,1.25fr)_minmax(220px,0.65fr)_178px] items-center overflow-hidden rounded-[26px] border border-[rgba(207,221,238,0.95)] bg-[linear-gradient(110deg,rgba(248,251,255,0.98),rgba(244,248,253,0.9))] shadow-[0_16px_38px_rgba(151,174,202,0.12)] max-[1180px]:grid-cols-[minmax(320px,1.2fr)_minmax(200px,0.6fr)_150px] max-[900px]:grid-cols-[1fr_auto] max-[620px]:flex max-[620px]:flex-col max-[620px]:items-stretch"
       >
         <div class="flex min-w-0 items-center gap-[17px] py-[18px] pr-0 pl-[18px] max-[900px]:col-span-full max-[900px]:pr-[18px] max-[900px]:pb-2.5 max-[620px]:p-4">
@@ -397,7 +403,7 @@ const removeWork = (workId: string): void => {
             type="button"
             :aria-label="`重新选择 ${item.publishSettings.accountName} 的发布账号`"
             :disabled="operationLocked"
-            @click="openAccount(item.id)"
+            @click="openAccount(item.queueId)"
           >
             <PlatformLogo
               class="size-12! shrink-0 rounded-full! border-2! border-white! shadow-[0_3px_10px_rgba(100,124,151,0.14)] transition-transform duration-150 group-hover:scale-[1.03]"
@@ -415,7 +421,7 @@ const removeWork = (workId: string): void => {
             class="group inline-flex min-w-24 flex-col items-center gap-[7px] rounded-2xl bg-transparent px-3 py-2 text-[13px] text-[#344b65] transition duration-150 enabled:hover:-translate-y-px enabled:hover:bg-[rgba(231,239,248,0.7)] enabled:hover:text-primary-strong disabled:cursor-not-allowed disabled:opacity-55"
             type="button"
             :disabled="operationLocked"
-            @click="openAccount(item.id)"
+            @click="openAccount(item.queueId)"
           >
             <span class="grid size-[34px] place-items-center rounded-full bg-[#aeb9c4] text-white transition group-hover:bg-[#7f9fc1]">
               <Plus :size="22" :stroke-width="2" aria-hidden="true" />
@@ -436,16 +442,25 @@ const removeWork = (workId: string): void => {
               : 'cursor-not-allowed text-ink-faint'"
             type="button"
             :disabled="operationLocked || !item.publishSettings.accountId"
-            @click="openSettings(item.id)"
+            @click="openSettings(item.queueId)"
           >
             <ListTodo :size="18" :stroke-width="1.9" aria-hidden="true" />
             发布设置
           </button>
           <button
+            class="inline-flex items-center gap-[9px] bg-transparent p-0 text-left text-sm font-bold transition duration-150 enabled:text-primary-strong enabled:hover:translate-x-0.5 disabled:cursor-not-allowed disabled:text-ink-faint"
+            type="button"
+            :disabled="operationLocked"
+            @click="duplicateWork(item.queueId)"
+          >
+            <Copy :size="18" :stroke-width="1.9" aria-hidden="true" />
+            复制
+          </button>
+          <button
             class="inline-flex items-center gap-[9px] bg-transparent p-0 text-left text-sm font-bold transition duration-150 enabled:text-[#d13e42] enabled:hover:translate-x-0.5 disabled:cursor-not-allowed disabled:text-ink-faint"
             type="button"
             :disabled="operationLocked"
-            @click="removeWork(item.id)"
+            @click="removeWork(item.queueId)"
           >
             <Trash2 :size="18" :stroke-width="1.9" aria-hidden="true" />
             删除

@@ -116,7 +116,7 @@ onBeforeUnmount(() => {
           :aria-label="props.label || '更多操作'"
         >
           <PopoverPanel
-            class="inline-grid max-w-[calc(100vw-16px)] grid-cols-[max-content] rounded-xl p-1.5 shadow-lg [&_[role=menuitem]]:inline-flex [&_[role=menuitem]]:h-10 [&_[role=menuitem]]:items-center [&_[role=menuitem]]:gap-[9px] [&_[role=menuitem]]:whitespace-nowrap [&_[role=menuitem]]:bg-transparent [&_[role=menuitem]]:px-3 [&_[role=menuitem]]:py-0 [&_[role=menuitem]]:text-left [&_[role=menuitem]]:text-sm [&_[role=menuitem]]:font-bold [&_[role=menuitem]]:transition [&_[role=menuitem]]:duration-150 [&_[role=menuitem]>svg]:shrink-0 [&_[role=menuitem]:enabled:hover]:translate-x-0.5 [&_[role=menuitem]:disabled]:cursor-not-allowed [&_[role=menuitem]:focus-visible]:outline-2 [&_[role=menuitem]:focus-visible]:outline-offset-[-2px] [&_[role=menuitem]:focus-visible]:outline-primary"
+            class="inline-grid max-w-[calc(100vw-16px)] grid-cols-[max-content] p-1.5 shadow-lg [&_[role=menuitem]]:inline-flex [&_[role=menuitem]]:h-10 [&_[role=menuitem]]:items-center [&_[role=menuitem]]:gap-[9px] [&_[role=menuitem]]:whitespace-nowrap [&_[role=menuitem]]:bg-transparent [&_[role=menuitem]]:px-3 [&_[role=menuitem]]:py-0 [&_[role=menuitem]]:text-left [&_[role=menuitem]]:text-sm [&_[role=menuitem]]:font-bold [&_[role=menuitem]]:transition [&_[role=menuitem]]:duration-150 [&_[role=menuitem]>svg]:shrink-0 [&_[role=menuitem]:enabled:hover]:translate-x-0.5 [&_[role=menuitem]:disabled]:cursor-not-allowed [&_[role=menuitem]:focus-visible]:outline-2 [&_[role=menuitem]:focus-visible]:outline-offset-[-2px] [&_[role=menuitem]:focus-visible]:outline-primary"
           >
             <slot :close="close" />
           </PopoverPanel>

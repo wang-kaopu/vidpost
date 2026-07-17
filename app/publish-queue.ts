@@ -25,15 +25,18 @@ export type PublishCheckState = {
 export type PublishQueueItem = WorkItem & {
   checkState: PublishCheckState;
   publishSettings: PublishSettings;
+  /** 当前待发布条目的唯一标识；同一作品可对应多个独立条目。 */
+  queueId: string;
 };
 
 export type PublishQueueApi = {
   items: Ref<PublishQueueItem[]>;
   add: (works: WorkItem[]) => number;
-  addRetry: (task: PublishTask) => boolean;
-  updateCheckState: (workId: string, state: PublishCheckState) => void;
-  updateSettings: (workId: string, settings: PublishSettings) => void;
-  remove: (workId: string) => void;
+  addRetry: (task: PublishTask) => void;
+  duplicate: (queueId: string) => void;
+  updateCheckState: (queueId: string, state: PublishCheckState) => void;
+  updateSettings: (queueId: string, settings: PublishSettings) => void;
+  remove: (queueId: string) => void;
   clear: () => void;
 };
 
@@ -145,6 +148,7 @@ export function createRetryPublishQueueItem(task: PublishTask): PublishQueueItem
     updatedAt: String(task.updated_at || task.created_at || "").trim(),
     orientation: "portrait",
     checkState: { errorMessage: "", status: "idle" },
+    queueId: crypto.randomUUID(),
     publishSettings: {
       accountId,
       accountName,
@@ -169,49 +173,66 @@ export function createRetryPublishQueueItem(task: PublishTask): PublishQueueItem
 export function createPublishQueue(): PublishQueueApi {
   const items = ref<PublishQueueItem[]>([]);
 
-  /** 将作品按 ID 去重后追加到发布页，并返回本次新增数量。 */
+  /** 将每次选择作为独立条目追加到发布页，并返回本次新增数量。 */
   const add = (works: WorkItem[]): number => {
-    const existingIds = new Set(items.value.map((item) => item.id));
-    const additions = works
-      .filter((item) => !existingIds.has(item.id))
-      .map((item): PublishQueueItem => ({
-        ...item,
-        checkState: {
-          errorMessage: "",
-          status: "idle",
-        },
-        publishSettings: {
-          accountId: "",
-          accountName: "",
-          channelId: null,
-          humanTypeId: null,
-          introduction: "",
-          platform: null,
-          platformLabel: "",
-          scheduledAt: "0",
-          title: item.title,
-          videoChannelId: null,
-          visibility: "public",
-        },
-      }));
+    const additions = works.map((item): PublishQueueItem => ({
+      ...item,
+      checkState: {
+        errorMessage: "",
+        status: "idle",
+      },
+      queueId: crypto.randomUUID(),
+      publishSettings: {
+        accountId: "",
+        accountName: "",
+        channelId: null,
+        humanTypeId: null,
+        introduction: "",
+        platform: null,
+        platformLabel: "",
+        scheduledAt: "0",
+        title: item.title,
+        videoChannelId: null,
+        visibility: "public",
+      },
+    }));
     items.value = [...items.value, ...additions];
     return additions.length;
   };
 
   /** 使用失败记录中保存的参数把作品重新加入发布页。 */
-  const addRetry = (task: PublishTask): boolean => {
-    const item = createRetryPublishQueueItem(task);
-    if (items.value.some((existing) => existing.id === item.id)) {
-      return false;
-    }
-    items.value = [...items.value, item];
-    return true;
+  const addRetry = (task: PublishTask): void => {
+    items.value = [...items.value, createRetryPublishQueueItem(task)];
   };
 
-  /** 保存指定作品的账号和平台差异化发布参数。 */
-  const updateSettings = (workId: string, settings: PublishSettings): void => {
+  /** 复制指定待发布条目的作品和发布参数，但不复制账号与检测结果。 */
+  const duplicate = (queueId: string): void => {
+    const sourceIndex = items.value.findIndex((item) => item.queueId === queueId);
+    if (sourceIndex < 0) return;
+    const source = items.value[sourceIndex];
+    if (!source) return;
+
+    const copy: PublishQueueItem = {
+      ...source,
+      checkState: { errorMessage: "", status: "idle" },
+      queueId: crypto.randomUUID(),
+      publishSettings: {
+        ...source.publishSettings,
+        accountId: "",
+        accountName: "",
+      },
+    };
+    items.value = [
+      ...items.value.slice(0, sourceIndex + 1),
+      copy,
+      ...items.value.slice(sourceIndex + 1),
+    ];
+  };
+
+  /** 保存指定待发布条目的账号和平台差异化发布参数。 */
+  const updateSettings = (queueId: string, settings: PublishSettings): void => {
     items.value = items.value.map((item) =>
-      item.id === workId
+      item.queueId === queueId
         ? {
             ...item,
             checkState: { errorMessage: "", status: "idle" },
@@ -221,16 +242,16 @@ export function createPublishQueue(): PublishQueueApi {
     );
   };
 
-  /** 更新指定作品的账号检测状态。 */
-  const updateCheckState = (workId: string, state: PublishCheckState): void => {
+  /** 更新指定待发布条目的账号检测状态。 */
+  const updateCheckState = (queueId: string, state: PublishCheckState): void => {
     items.value = items.value.map((item) =>
-      item.id === workId ? { ...item, checkState: { ...state } } : item,
+      item.queueId === queueId ? { ...item, checkState: { ...state } } : item,
     );
   };
 
-  /** 从发布页移除指定作品。 */
-  const remove = (workId: string): void => {
-    items.value = items.value.filter((item) => item.id !== workId);
+  /** 从发布页移除指定待发布条目。 */
+  const remove = (queueId: string): void => {
+    items.value = items.value.filter((item) => item.queueId !== queueId);
   };
 
   /** 清空当前用户的待发布作品。 */
@@ -238,7 +259,7 @@ export function createPublishQueue(): PublishQueueApi {
     items.value = [];
   };
 
-  return { items, add, addRetry, updateCheckState, updateSettings, remove, clear };
+  return { items, add, addRetry, duplicate, updateCheckState, updateSettings, remove, clear };
 }
 
 /**

@@ -12,6 +12,7 @@ import FilterPopover from "../ui/FilterPopover.vue";
 import PanelShell from "../ui/PanelShell.vue";
 import IconButton from "../ui/IconButton.vue";
 import ToneBadge from "../ui/ToneBadge.vue";
+import BottomFloatingBar from "../ui/BottomFloatingBar.vue";
 import { fetchWorkPublishPayload, fetchWorksPage } from "@/api/works";
 import { appConfig } from "@/config";
 import { mockWorks } from "@/mock";
@@ -401,16 +402,14 @@ useDialogLayer(() => previewVisible.value);
   </PanelShell>
 
   <!-- 底部批量操作栏 -->
-  <transition name="slide-up">
-    <div v-if="hasSelected" class="batch-action-bar">
-      <div class="batch-info">
-        已选择 <span class="batch-count">{{ selectedWorkIds.size }}</span> 个作品
-      </div>
-      <CapsuleButton class="shrink-0" variant="primary" size="md" type="button" @click="addSelectedWorksToPublish">
-        加入发布
-      </CapsuleButton>
+  <BottomFloatingBar :visible="hasSelected">
+    <div class="batch-info">
+      已选择 <span class="batch-count">{{ selectedWorkIds.size }}</span> 个作品
     </div>
-  </transition>
+    <CapsuleButton class="shrink-0" variant="primary" size="md" type="button" @click="addSelectedWorksToPublish">
+      加入发布
+    </CapsuleButton>
+  </BottomFloatingBar>
 
   <!-- 视频预览 -->
   <teleport to="body">

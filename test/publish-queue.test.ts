@@ -41,22 +41,26 @@ const createFailedTask = (
   },
 });
 
-test("publish queue appends works in selection order and ignores duplicate IDs", () => {
+test("publish queue appends every selection as an independent item", () => {
   const queue = createPublishQueue();
   const first = createWork("1", "标题 1");
   const second = createWork("2", "标题 2");
 
   assert.equal(queue.add([first, second]), 2);
-  assert.equal(queue.add([second]), 0);
-  assert.deepEqual(queue.items.value.map((item) => item.id), ["1", "2"]);
+  assert.equal(queue.add([second]), 1);
+  assert.deepEqual(queue.items.value.map((item) => item.id), ["1", "2", "2"]);
+  assert.equal(new Set(queue.items.value.map((item) => item.queueId)).size, 3);
 });
 
-test("publish queue removes one work and can be cleared on logout", () => {
+test("publish queue removes one queue item and can be cleared on logout", () => {
   const queue = createPublishQueue();
-  queue.add([createWork("1", "标题 1"), createWork("2", "标题 2")]);
+  const work = createWork("1", "标题 1");
+  queue.add([work, work]);
+  const firstQueueId = queue.items.value[0]?.queueId;
+  assert.ok(firstQueueId);
 
-  queue.remove("1");
-  assert.deepEqual(queue.items.value.map((item) => item.id), ["2"]);
+  queue.remove(firstQueueId);
+  assert.deepEqual(queue.items.value.map((item) => item.id), ["1"]);
 
   queue.clear();
   assert.deepEqual(queue.items.value, []);
@@ -65,8 +69,10 @@ test("publish queue removes one work and can be cleared on logout", () => {
 test("publish queue keeps platform-specific settings with the selected work", () => {
   const queue = createPublishQueue();
   queue.add([createWork("1", "标题 1")]);
+  const queueId = queue.items.value[0]?.queueId;
+  assert.ok(queueId);
 
-  queue.updateSettings("1", {
+  queue.updateSettings(queueId, {
     accountId: "account-1",
     accountName: "抖音账号",
     channelId: null,
@@ -95,11 +101,52 @@ test("publish queue keeps platform-specific settings with the selected work", ()
   });
 });
 
-test("publish queue stores account-check results and resets them after settings change", () => {
+test("publish queue duplicates video and settings without copying the account", () => {
   const queue = createPublishQueue();
   queue.add([createWork("1", "标题 1")]);
+  const sourceQueueId = queue.items.value[0]?.queueId;
+  assert.ok(sourceQueueId);
+  queue.updateSettings(sourceQueueId, {
+    accountId: "account-1",
+    accountName: "抖音账号",
+    channelId: null,
+    humanTypeId: null,
+    introduction: "复制的简介",
+    platform: "douyin",
+    platformLabel: "抖音",
+    scheduledAt: "2026-07-20 18:30",
+    title: "复制的标题",
+    videoChannelId: null,
+    visibility: "friends",
+  });
+  queue.updateCheckState(sourceQueueId, { errorMessage: "", status: "success" });
 
-  queue.updateCheckState("1", {
+  queue.duplicate(sourceQueueId);
+
+  assert.equal(queue.items.value.length, 2);
+  const source = queue.items.value[0];
+  const copy = queue.items.value[1];
+  assert.ok(source);
+  assert.ok(copy);
+  assert.equal(copy.id, source.id);
+  assert.equal(copy.cover, source.cover);
+  assert.notEqual(copy.queueId, source.queueId);
+  assert.deepEqual(copy.checkState, { errorMessage: "", status: "idle" });
+  assert.deepEqual(copy.publishSettings, {
+    ...source.publishSettings,
+    accountId: "",
+    accountName: "",
+  });
+});
+
+test("publish queue stores account-check results and resets them after settings change", () => {
+  const queue = createPublishQueue();
+  const work = createWork("1", "标题 1");
+  queue.add([work, work]);
+  const queueId = queue.items.value[0]?.queueId;
+  assert.ok(queueId);
+
+  queue.updateCheckState(queueId, {
     errorMessage: "账号登录已失效",
     status: "failed",
   });
@@ -107,10 +154,14 @@ test("publish queue stores account-check results and resets them after settings 
     errorMessage: "账号登录已失效",
     status: "failed",
   });
+  assert.deepEqual(queue.items.value[1]?.checkState, {
+    errorMessage: "",
+    status: "idle",
+  });
 
   const settings = queue.items.value[0]?.publishSettings;
   assert.ok(settings);
-  queue.updateSettings("1", { ...settings, title: "修改后的标题" });
+  queue.updateSettings(queueId, { ...settings, title: "修改后的标题" });
   assert.deepEqual(queue.items.value[0]?.checkState, {
     errorMessage: "",
     status: "idle",
@@ -120,8 +171,12 @@ test("publish queue stores account-check results and resets them after settings 
 test("publish queue replays all saved settings from a failed record", () => {
   const queue = createPublishQueue();
 
-  assert.equal(queue.addRetry(createFailedTask("douyin", { visibility: "friends" })), true);
-  assert.deepEqual(queue.items.value[0], {
+  queue.addRetry(createFailedTask("douyin", { visibility: "friends" }));
+  const item = queue.items.value[0];
+  assert.ok(item);
+  const { queueId, ...rest } = item;
+  assert.ok(queueId);
+  assert.deepEqual(rest, {
     id: "work-901",
     platform: "真人口播视频",
     platformShort: "播",
@@ -181,16 +236,20 @@ test("publish queue restores every platform-specific option from failed records"
   }
 });
 
-test("publish queue keeps the existing work when the same failed record is retried twice", () => {
+test("publish queue keeps repeated retries as independent items", () => {
   const queue = createPublishQueue();
   const task = createFailedTask("douyin", { visibility: "self" });
 
-  assert.equal(queue.addRetry(task), true);
-  queue.updateSettings("work-901", {
+  queue.addRetry(task);
+  const firstQueueId = queue.items.value[0]?.queueId;
+  assert.ok(firstQueueId);
+  queue.updateSettings(firstQueueId, {
     ...queue.items.value[0]!.publishSettings,
     title: "用户已经修改的标题",
   });
-  assert.equal(queue.addRetry(task), false);
-  assert.equal(queue.items.value.length, 1);
+  queue.addRetry(task);
+  assert.equal(queue.items.value.length, 2);
+  assert.notEqual(queue.items.value[0]?.queueId, queue.items.value[1]?.queueId);
   assert.equal(queue.items.value[0]?.publishSettings.title, "用户已经修改的标题");
+  assert.equal(queue.items.value[1]?.publishSettings.title, "历史发布标题");
 });
