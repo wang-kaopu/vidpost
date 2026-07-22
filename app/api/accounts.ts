@@ -102,19 +102,14 @@ export async function fetchAccounts(options?: FetchAccountsOptions): Promise<Acc
   return data.list.map(normalizeAccount);
 }
 
-// 重命名账号（本质上是更新昵称）
-export async function renameAccount(accountId: string, nickname: string): Promise<AccountItem> {
-  return updateAccount(accountId, { nickname });
-}
-
-// 更新账号信息（昵称、手机号、标签）
+// 更新账号信息（备注名、手机号、标签）
 export async function updateAccount(
   accountId: string,
-  payload: { nickname?: string; phoneNumber?: string; tags?: string[] },
+  payload: { remarkName?: string; phoneNumber?: string; tags?: string[] },
 ): Promise<AccountItem> {
   await requestSuccess(
     apiClient.put<ApiEnvelope<unknown>>(`/publish/accounts/${accountId}`, {
-      ...(payload.nickname !== undefined ? { nickname: payload.nickname } : {}),
+      ...(payload.remarkName !== undefined ? { remark_name: payload.remarkName } : {}),
       ...(payload.phoneNumber !== undefined ? { phone_number: payload.phoneNumber } : {}),
       ...(payload.tags !== undefined ? { tags: payload.tags } : {}),
     }),

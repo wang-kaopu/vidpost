@@ -205,7 +205,7 @@ const accountDialogVisible = computed(
 
 const openRenameDialog = (item: PublishAccountItem) => {
   renameDialogTarget.value = item;
-  renameDialogDraft.value = item.nickname;
+  renameDialogDraft.value = item.remarkName === "--" ? "" : item.remarkName;
   renameDialogError.value = "";
   renameDialogLoading.value = false;
   renameDialogVisible.value = true;
@@ -223,20 +223,20 @@ const confirmRenameDialog = async () => {
   const item = renameDialogTarget.value;
   if (!item) return;
   const next = renameDialogDraft.value.trim();
-  if (!next || next === item.nickname) {
+  if (!next || next === item.remarkName) {
     closeRenameDialog();
     return;
   }
   renameDialogLoading.value = true;
   renameDialogError.value = "";
   try {
-    await updateAccount(item.id, { nickname: next });
-    item.nickname = next;
+    await updateAccount(item.id, { remarkName: next });
+    item.remarkName = next;
     closeRenameDialog();
   } catch (error) {
-    const msg = error instanceof Error ? error.message : "重命名失败";
+    const msg = error instanceof Error ? error.message : "备注名修改失败";
     if (msg.toLowerCase() === "success") {
-      item.nickname = next;
+      item.remarkName = next;
       closeRenameDialog();
     } else {
       renameDialogError.value = msg;
@@ -663,7 +663,7 @@ useDialogLayer(() => accountDialogVisible.value);
                 @click="close(); openRenameDialog(item)"
               >
                 <SquarePen :size="18" :stroke-width="1.9" aria-hidden="true" />
-                重命名
+                修改备注
               </button>
               <button
                 type="button"
@@ -792,7 +792,7 @@ useDialogLayer(() => accountDialogVisible.value);
         <div v-if="renameDialogVisible" class="platform-dialog-mask" @click.self="closeRenameDialog">
           <div class="tag-dialog dialog-surface" @click.stop>
             <div class="tag-dialog-header">
-              <h3>重命名</h3>
+              <h3>修改备注名</h3>
               <button type="button" class="platform-dialog-close" @click="closeRenameDialog">×</button>
             </div>
             <div class="tag-dialog-body">
@@ -800,7 +800,7 @@ useDialogLayer(() => accountDialogVisible.value);
                 <TextInput
                   v-model="renameDialogDraft"
                   type="text"
-                  placeholder="请输入新的昵称"
+                  placeholder="请输入新的备注名"
                   maxlength="30"
                   :disabled="renameDialogLoading"
                   @keydown.enter="confirmRenameDialog"
