@@ -27,7 +27,7 @@ interface LogEvent {
   [key: string]: unknown;
 }
 
-interface SerializedAxiosResponse {
+export interface SerializedHttpResponse {
   body: unknown;
   headers: unknown;
   status: number;
@@ -116,14 +116,13 @@ export interface DouyinPreparedContext {
   coverUrl: string;
   credentials: DouyinUploadCredentials;
   csrfToken: string;
-  httpResponses: SerializedAxiosResponse[];
+  httpResponses: SerializedHttpResponse[];
   imageUri: string;
   imageNode: DouyinUploadNode;
   msToken: string;
   payload: Record<string, unknown>;
   profile: MachineProfile;
   publishText: PublishText;
-  signed: DouyinSigningResult;
   topics: PublishTopic[];
   uid: string;
   unsignedUrl: string;
@@ -138,7 +137,7 @@ export interface DouyinPreparedContext {
 
 export interface DouyinPublishResponse {
   itemId: string;
-  response: SerializedAxiosResponse;
+  response: SerializedHttpResponse;
 }
 
 export interface WorkerEnvelope {
@@ -154,14 +153,14 @@ let HTTP: AxiosInstance;
 let RENDERER_HTTP: AxiosInstance;
 let RENDERER_IPC: IpcRenderer;
 let RENDERER_LOGGER: Logger;
-let RENDERER_RESPONSES: SerializedAxiosResponse[];
+let RENDERER_RESPONSES: SerializedHttpResponse[];
 let RENDERER_CHANNELS = {
   command: "douyin:command",
   getSessionState: "douyin:get-session-state",
   log: "douyin:log",
   ready: "douyin:renderer-ready",
   result: "douyin:result",
-  signCreate: "douyin:sign-create-v2",
+  submitCreate: "douyin:submit-create-v2",
   signV4: "douyin:sign-v4",
 };
 
@@ -655,11 +654,6 @@ interface MultipartPartResult {
 export interface DouyinSessionState {
   cookieHeader: string;
   msToken: string;
-}
-
-export interface DouyinSigningResult {
-  signedUrl: string;
-  ticketHeaders: Record<string, string>;
 }
 
 /**
@@ -1494,13 +1488,6 @@ async function prepareInRenderer(options: DouyinWorkerOptions): Promise<DouyinPr
   const queryString = serializeQuery({ ...commonParams, read_aid: 2906, msToken });
   const unsignedUrl = `${CREATOR_ORIGIN}/web/api/media/aweme/create_v2/?${queryString}`;
 
-  await emitLog(RENDERER_LOGGER, { message: "[16/17] 使用 Creator 官方 BDMS 生成 a_bogus", type: "info" });
-  const signed = (await RENDERER_IPC.invoke(RENDERER_CHANNELS.signCreate, {
-    bodyText,
-    csrfToken,
-    unsignedUrl,
-  })) as DouyinSigningResult;
-
   return {
     bodyText,
     chunkDescriptors: descriptors,
@@ -1517,7 +1504,6 @@ async function prepareInRenderer(options: DouyinWorkerOptions): Promise<DouyinPr
     payload: publishPayload,
     profile,
     publishText,
-    signed,
     topics,
     uid,
     unsignedUrl,
@@ -1536,53 +1522,50 @@ async function prepareInRenderer(options: DouyinWorkerOptions): Promise<DouyinPr
 }
 
 /**
- * 在当前 Electron renderer 中执行最终 create_v2 请求。
+ * 校验签名窗口返回的 create_v2 响应。
  *
- * @param prepared - prepare 生成的完整签名上下文
- * @returns item_id 和完整响应
+ * @param response - window.fetch 序列化后的平台响应
+ * @returns 作品 ID 和完整响应
  */
-async function publishInRenderer(prepared: DouyinPreparedContext): Promise<DouyinPublishResponse> {
-  await emitLog(RENDERER_LOGGER, { message: `[17/17] 提交发布（可见性：${prepared.visibility}）`, type: "info" });
-  let response;
-  try {
-    response = await RENDERER_HTTP.post(prepared.signed.signedUrl, prepared.bodyText, {
-      headers: {
-        ...prepared.signed.ticketHeaders,
-        Cookie: prepared.cookieHeader,
-        "Content-Type": "application/json",
-        Referer: CREATOR_REFERER,
-        "User-Agent": prepared.profile.userAgent,
-        "X-Secsdk-Csrf-Token": prepared.csrfToken,
-      },
-      transformRequest: [() => prepared.bodyText],
-    });
-  } catch (error) {
-    const verificationMessage = axios.isAxiosError(error)
-      ? getDouyinVerificationErrorMessage(error.response?.headers)
-      : null;
-    if (verificationMessage) throw new Error(verificationMessage);
-    throw error;
-  }
+export function parseDouyinCreateResponse(response: SerializedHttpResponse): DouyinPublishResponse {
   const verificationMessage = getDouyinVerificationErrorMessage(response.headers);
   if (verificationMessage) throw new Error(verificationMessage);
-  const result = response.data as { item_id?: string | number; status_code?: number; status_msg?: string };
+  if (response.status < 200 || response.status >= 300) {
+    throw new Error(`create_v2 HTTP ${response.status}：${response.statusText || "请求失败"}`);
+  }
+  const result =
+    response.body && typeof response.body === "object" && !Array.isArray(response.body)
+      ? (response.body as { item_id?: string | number; status_code?: number; status_msg?: string })
+      : {};
   if (result.status_code !== 0 || !result.item_id) {
     throw new Error(
       `create_v2 失败：status_code=${result.status_code ?? "缺失"}，` +
         `${result.status_msg || "响应缺少成功 item_id"}，` +
-        `结构=${JSON.stringify(describeResponseShape(response.data))}`,
+        `结构=${JSON.stringify(describeResponseShape(response.body))}`,
     );
   }
-  await emitLog(RENDERER_LOGGER, { message: `发布成功，作品 ID：${result.item_id}`, type: "info" });
-  return {
-    itemId: String(result.item_id),
-    response: {
-      body: response.data,
-      headers: response.headers,
-      status: response.status,
-      statusText: response.statusText,
-    },
-  };
+  return { itemId: String(result.item_id), response };
+}
+
+/**
+ * 在当前 Electron renderer 中执行最终 create_v2 请求。
+ *
+ * @param prepared - prepare 生成的完整发布上下文
+ * @returns item_id 和完整响应
+ */
+async function publishInRenderer(prepared: DouyinPreparedContext): Promise<DouyinPublishResponse> {
+  await emitLog(RENDERER_LOGGER, {
+    message: `[16/17] 使用 Creator 官方 BDMS 签名并提交发布（可见性：${prepared.visibility}）`,
+    type: "info",
+  });
+  const response = (await RENDERER_IPC.invoke(RENDERER_CHANNELS.submitCreate, {
+    bodyText: prepared.bodyText,
+    csrfToken: prepared.csrfToken,
+    unsignedUrl: prepared.unsignedUrl,
+  })) as SerializedHttpResponse;
+  const result = parseDouyinCreateResponse(response);
+  await emitLog(RENDERER_LOGGER, { message: `[17/17] 发布成功，作品 ID：${result.itemId}`, type: "info" });
+  return result;
 }
 
 /**
@@ -1600,7 +1583,7 @@ export function runDouyinUploadRenderer(): void {
     log: `${channelPrefix}:log`,
     ready: `${channelPrefix}:renderer-ready`,
     result: `${channelPrefix}:result`,
-    signCreate: `${channelPrefix}:sign-create-v2`,
+    submitCreate: `${channelPrefix}:submit-create-v2`,
     signV4: `${channelPrefix}:sign-v4`,
   };
   RENDERER_RESPONSES = [];
@@ -1652,7 +1635,7 @@ export function runDouyinUploadRenderer(): void {
   });
   RENDERER_HTTP.interceptors.response.use(
     async (response) => {
-      const serialized: SerializedAxiosResponse = {
+      const serialized: SerializedHttpResponse = {
         body: response.data,
         headers: response.headers,
         status: response.status,

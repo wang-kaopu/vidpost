@@ -5,6 +5,7 @@ import { loadBrowserIdentity, type BrowserIdentity } from "@/src/infra/browser-i
 import type { AccountLoginOptions, AccountLoginResult } from "@/src/infra/account/account.ts";
 import { configureAccountBrowserWindow } from "@/src/infra/account/account-browser-window.ts";
 import { createAccountLoginWindow } from "@/src/infra/account/account-login-window.ts";
+import { attachAccountWindowNotice } from "@/src/infra/account/account-window-notice.ts";
 import {
   exportBrowserStorageState,
   injectCookiesIntoBrowserSession,
@@ -32,6 +33,7 @@ export interface AccountLoginHooks {
 
 /** 登录状态机依赖；生产环境使用默认 Electron 实现，测试可传入替身。 */
 export interface AccountLoginFlowRuntime {
+  attachWindowNotice(loginWindow: BrowserWindow, platform: string): void;
   configureLoginWindow(loginWindow: BrowserWindow, identity: BrowserIdentity): Promise<void>;
   createLoginWindow(
     title: string,
@@ -49,6 +51,7 @@ export interface AccountLoginFlowRuntime {
 }
 
 const DEFAULT_LOGIN_RUNTIME: AccountLoginFlowRuntime = {
+  attachWindowNotice: attachAccountWindowNotice,
   configureLoginWindow: configureAccountBrowserWindow,
   createLoginWindow: createAccountLoginWindow,
   exportStorageState: exportBrowserStorageState,
@@ -103,6 +106,7 @@ export async function runAccountLoginFlow(
     const loginWindow = runtime.createLoginWindow(hooks.title, partition, options.parentWindow, identity);
     const platform = hooks.partitionPrefix.replace(/-login$/u, "");
     const logPrefix = hooks.consolePrefix || platform;
+    runtime.attachWindowNotice(loginWindow, platform);
 
     const finish = (result: AccountLoginResult | Error): void => {
       if (settled) {

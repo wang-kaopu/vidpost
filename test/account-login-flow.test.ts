@@ -82,8 +82,10 @@ function createLoginWindowHarness() {
 function createRuntime(
   loginWindow: BrowserWindow,
   exportStorageState: AccountLoginFlowRuntime["exportStorageState"],
+  attachWindowNotice: AccountLoginFlowRuntime["attachWindowNotice"] = () => undefined,
 ): AccountLoginFlowRuntime {
   return {
+    attachWindowNotice,
     configureLoginWindow: async () => undefined,
     createLoginWindow: () => loginWindow,
     exportStorageState,
@@ -119,6 +121,32 @@ test("runAccountLoginFlow saves state once after a successful navigation", async
 
   assert.deepEqual(await resultPromise, { accountFile: "/tmp/account.json", loginSucceeded: true });
   assert.equal(exportCalls, 1);
+});
+
+test("runAccountLoginFlow attaches the Douyin native window notice", async () => {
+  const harness = createLoginWindowHarness();
+  let attachedPlatform = "";
+  const resultPromise = runAccountLoginFlow(
+    {
+      isSuccess: async () => false,
+      loginUrl: "https://creator.douyin.com/",
+      partitionPrefix: "douyin-login",
+      title: "抖音登录",
+    },
+    { accountFile: "/tmp/account.json", partition: "persist:test", timeoutMs: 1_000 },
+    createRuntime(
+      harness.loginWindow,
+      async () => undefined,
+      (_window, platform) => {
+        attachedPlatform = platform;
+      },
+    ),
+  );
+  await waitForLoginInitialization();
+
+  assert.equal(attachedPlatform, "douyin");
+  harness.userClose();
+  await assert.rejects(resultPromise, /登录窗口已关闭，未保存登录状态/u);
 });
 
 test("runAccountLoginFlow rejects a user-closed login window", async () => {

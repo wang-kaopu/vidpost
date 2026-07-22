@@ -1,5 +1,4 @@
-import { Buffer } from "node:buffer";
-import { createHash, createHmac, randomUUID, sign as signEcdsa } from "node:crypto";
+import { createHash, createHmac, randomUUID } from "node:crypto";
 import { access } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -13,6 +12,7 @@ import {
   parseDouyinScheduledAt,
   type DouyinPreparedContext,
   type DouyinPublishResponse,
+  type SerializedHttpResponse,
   type DouyinWorkerOptions,
   type WorkerEnvelope,
 } from "@/src/infra/video/douyin/upload.ts";
@@ -25,18 +25,12 @@ const CREATOR_REFERER = `${CREATOR_ORIGIN}/creator-micro/content/publish?enter_f
 const CREATOR_HOME = `${CREATOR_ORIGIN}/creator-micro/home`;
 const BDMS_READY_TIMEOUT = 60_000;
 const SIGNING_TIMEOUT = 30_000;
+const CREATE_REQUEST_TIMEOUT = 10 * 60 * 1_000;
 
 let MAIN_ELECTRON: typeof import("electron");
 
 interface SecurityStorage {
-  cryptSdk: string | null;
-  signData: string | null;
   xmst: string | null;
-}
-
-interface MainSigningResult {
-  signedUrl: string;
-  ticketHeaders: Record<string, string>;
 }
 
 interface InProcessWorker {
@@ -47,7 +41,7 @@ interface InProcessWorker {
     log: string;
     ready: string;
     result: string;
-    signCreate: string;
+    submitCreate: string;
     signV4: string;
   };
   id: string;
@@ -273,141 +267,32 @@ async function waitForBdms(window: BrowserWindow): Promise<void> {
  * 从 Creator origin 读取本次运行需要的 localStorage 字段。
  *
  * @param signerWindow - 已加载 Creator 页面且完成 BDMS 初始化的窗口
- * @returns 原始 xmst 与 security-sdk 字符串
+ * @returns Creator 页面保存的原始 xmst
  */
 async function readSecurityStorage(signerWindow: BrowserWindow): Promise<SecurityStorage> {
   return signerWindow.webContents.executeJavaScript(
     `({
     xmst: localStorage.getItem("xmst"),
-    signData: localStorage.getItem("security-sdk/s_sdk_sign_data_key/web_protect"),
-    cryptSdk: localStorage.getItem("security-sdk/s_sdk_crypt_sdk"),
   })`,
     true,
   ) as Promise<SecurityStorage>;
 }
 
 /**
- * 等待 ticket-guard 的签名数据与私钥完成异步恢复。
- *
- * BDMS 可用只表示请求拦截链已经安装，不能保证 security-sdk 的两个 localStorage 键已同时写入。
- *
- * @param signerWindow - 已加载 Creator 页面的签名窗口
- * @returns 同时包含 sign data 和 crypt SDK 的安全状态
- */
-async function waitForTicketSecurityStorage(
-  signerWindow: BrowserWindow,
-): Promise<SecurityStorage & { cryptSdk: string; signData: string }> {
-  const deadline = Date.now() + BDMS_READY_TIMEOUT;
-  while (Date.now() < deadline) {
-    const storage = await readSecurityStorage(signerWindow);
-    if (storage.signData && storage.cryptSdk) {
-      return { ...storage, cryptSdk: storage.cryptSdk, signData: storage.signData };
-    }
-    await new Promise((resolve) => setTimeout(resolve, 250));
-  }
-  throw new Error("等待 Creator ticket-guard security-sdk 数据超时");
-}
-
-/**
- * 解开 security-sdk 使用的 URI 编码与嵌套 JSON data 包装。
- *
- * @param raw - localStorage 原始字符串
- * @returns 最内层对象
- */
-function unwrapSecurityValue(raw: string): Record<string, unknown> {
-  let value: unknown;
-  try {
-    value = decodeURIComponent(raw);
-  } catch {
-    value = raw;
-  }
-
-  for (let depth = 0; depth < 5; depth += 1) {
-    if (typeof value === "string") {
-      value = JSON.parse(value) as unknown;
-      continue;
-    }
-    if (value && typeof value === "object" && "data" in value) {
-      value = value.data;
-      continue;
-    }
-    break;
-  }
-
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("security-sdk localStorage 格式无效");
-  }
-  return value as Record<string, unknown>;
-}
-
-/**
- * 按原包 `_ae/CIt` 逻辑生成 create_v2 ticket-guard Header 集。
- *
- * @param accountSession - 当前账号 Session
- * @param signerWindow - 可读取 Creator localStorage 的窗口
- * @returns 动态签名 Header 和 Cookie 中的四个版本 Header
- */
-async function createTicketGuardHeaders(
-  accountSession: Session,
-  signerWindow: BrowserWindow,
-): Promise<Record<string, string>> {
-  const storage = await waitForTicketSecurityStorage(signerWindow);
-  const signData = unwrapSecurityValue(storage.signData);
-  const cryptSdk = unwrapSecurityValue(storage.cryptSdk);
-  const ticket = typeof signData.ticket === "string" ? signData.ticket.trim() : "";
-  const tsSign = typeof signData.ts_sign === "string" ? signData.ts_sign : "";
-  const privateKey = typeof cryptSdk.ec_privateKey === "string" ? cryptSdk.ec_privateKey : "";
-  if (!ticket || !tsSign || !privateKey) {
-    throw new Error("ticket-guard 数据缺少 ticket、ts_sign 或 ec_privateKey");
-  }
-
-  const timestamp = Math.floor(Date.now() / 1_000);
-  const content = `ticket=${ticket}&path=/web/api/media/aweme/create_v2/&timestamp=${timestamp}`;
-  const signature = signEcdsa("sha256", Buffer.from(content, "utf8"), { dsaEncoding: "der", key: privateKey }).toString(
-    "base64",
-  );
-  const dynamicHeader = Buffer.from(
-    JSON.stringify({ ts_sign: tsSign, req_content: "ticket,path,timestamp", req_sign: signature, timestamp }),
-    "utf8",
-  ).toString("base64");
-
-  const ticketCookies = await accountSession.cookies.get({ name: "bd_ticket_guard_client_data" });
-  const ticketCookie = ticketCookies[0]?.value;
-  if (!ticketCookie) {
-    throw new Error("Creator partition 缺少 bd_ticket_guard_client_data Cookie");
-  }
-  let decoded: unknown;
-  try {
-    decoded = JSON.parse(Buffer.from(decodeURIComponent(ticketCookie), "base64").toString("utf8"));
-  } catch {
-    throw new Error("bd_ticket_guard_client_data Cookie 格式无效");
-  }
-  if (!decoded || typeof decoded !== "object" || Array.isArray(decoded)) {
-    throw new Error("bd_ticket_guard_client_data Cookie 内容无效");
-  }
-
-  const staticHeaders: Record<string, string> = {};
-  for (const [name, value] of Object.entries(decoded as Record<string, unknown>)) {
-    staticHeaders[name] = String(value);
-  }
-  return { "bd-ticket-guard-client-data": dynamicHeader, ...staticHeaders };
-}
-
-/**
- * 通过 BDMS 发起并在网络前终止 create_v2，取得完整签名 URL。
+ * 通过 Creator 页面的 BDMS 发起唯一一次真实 create_v2 请求并读取响应。
  *
  * @param signerWindow - Creator 签名窗口
  * @param unsignedUrl - 包含稳定 Query、但不含 a_bogus 的 URL
  * @param bodyText - 唯一序列化的发布 Body
  * @param csrfToken - 当前 Electron Session 的 CSRF Token
- * @returns 原样捕获的最终 URL
+ * @returns 平台响应
  */
-async function captureSignedUrl(
+async function submitCreateWithSignedFetch(
   signerWindow: BrowserWindow,
   unsignedUrl: string,
   bodyText: string,
   csrfToken: string,
-): Promise<string> {
+): Promise<SerializedHttpResponse> {
   const debuggerClient = signerWindow.webContents.debugger;
   if (debuggerClient.isAttached()) {
     debuggerClient.detach();
@@ -418,11 +303,13 @@ async function captureSignedUrl(
   });
 
   try {
-    return await new Promise<string>((resolve, reject) => {
+    let onMessage: ((_event: ElectronEvent, method: string, parameters: Record<string, unknown>) => void) | undefined;
+    const signedUrlPromise = new Promise<string>((resolve, reject) => {
       let settled = false;
       const timeout = setTimeout(() => {
         if (!settled) {
           settled = true;
+          if (onMessage) debuggerClient.off("message", onMessage);
           reject(new Error("等待 BDMS 签名请求超时"));
         }
       }, SIGNING_TIMEOUT);
@@ -433,7 +320,7 @@ async function captureSignedUrl(
         }
         settled = true;
         clearTimeout(timeout);
-        debuggerClient.off("message", onMessage);
+        if (onMessage) debuggerClient.off("message", onMessage);
         if (error) {
           reject(error);
         } else if (signedUrl) {
@@ -441,7 +328,7 @@ async function captureSignedUrl(
         }
       };
 
-      const onMessage = (_event: ElectronEvent, method: string, parameters: Record<string, unknown>): void => {
+      onMessage = (_event: ElectronEvent, method: string, parameters: Record<string, unknown>): void => {
         if (method !== "Fetch.requestPaused") {
           return;
         }
@@ -452,56 +339,75 @@ async function captureSignedUrl(
           return;
         }
 
+        let validationError: Error | null = null;
+        if (request.method !== "POST") {
+          validationError = new Error("BDMS 签名请求方法不是 POST");
+        } else if (request.postData !== bodyText) {
+          validationError = new Error("BDMS 签名请求 Body 与最终 bodyText 不一致");
+        } else {
+          const url = new URL(request.url);
+          if (url.searchParams.getAll("msToken").length !== 1) {
+            validationError = new Error("BDMS 签名 URL 中 msToken 数量不是 1");
+          } else if (url.searchParams.getAll("a_bogus").length !== 1 || !url.searchParams.get("a_bogus")) {
+            validationError = new Error("BDMS 未生成 a_bogus");
+          }
+        }
+
+        if (validationError) {
+          void debuggerClient
+            .sendCommand("Fetch.failRequest", { errorReason: "Aborted", requestId })
+            .then(() => finish(validationError))
+            .catch((error: unknown) => finish(error instanceof Error ? error : new Error(String(error))));
+          return;
+        }
+
         void debuggerClient
-          .sendCommand("Fetch.failRequest", { errorReason: "Aborted", requestId })
-          .then(() => {
-            if (request.method !== "POST") {
-              finish(new Error("BDMS 签名请求方法不是 POST"));
-              return;
-            }
-            if (request.postData !== bodyText) {
-              finish(new Error("BDMS 签名请求 Body 与最终 bodyText 不一致"));
-              return;
-            }
-            const url = new URL(request.url as string);
-            if (url.searchParams.getAll("msToken").length !== 1) {
-              finish(new Error("BDMS 签名 URL 中 msToken 数量不是 1"));
-              return;
-            }
-            if (url.searchParams.getAll("a_bogus").length !== 1 || !url.searchParams.get("a_bogus")) {
-              finish(new Error("BDMS 未生成 a_bogus"));
-              return;
-            }
-            finish(null, request.url);
-          })
-          .catch((error: unknown) => {
-            finish(error instanceof Error ? error : new Error(String(error)));
-          });
+          .sendCommand("Fetch.continueRequest", { requestId })
+          .then(() => finish(null, request.url))
+          .catch((error: unknown) => finish(error instanceof Error ? error : new Error(String(error))));
       };
 
       debuggerClient.on("message", onMessage);
-      const request = JSON.stringify({ bodyText, csrfToken, unsignedUrl });
-      void signerWindow.webContents
-        .executeJavaScript(
-          `(() => {
-        const input = ${request};
-        void window.fetch(input.unsignedUrl, {
-          method: "POST",
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/json",
-            "Referer": ${JSON.stringify(CREATOR_REFERER)},
-            "X-Secsdk-Csrf-Token": input.csrfToken,
-          },
-          body: input.bodyText,
-        }).catch(() => undefined);
-      })()`,
-          true,
-        )
-        .catch((error: unknown) => {
-          finish(error instanceof Error ? error : new Error(String(error)));
-        });
     });
+    const request = JSON.stringify({ bodyText, csrfToken, timeoutMs: CREATE_REQUEST_TIMEOUT, unsignedUrl });
+    const responsePromise = signerWindow.webContents.executeJavaScript(
+      `(async () => {
+        const input = ${request};
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), input.timeoutMs);
+        try {
+          const response = await window.fetch(input.unsignedUrl, {
+            method: "POST",
+            credentials: "include",
+            headers: {
+              "Content-Type": "application/json",
+              "Referer": ${JSON.stringify(CREATOR_REFERER)},
+              "X-Secsdk-Csrf-Token": input.csrfToken,
+            },
+            body: input.bodyText,
+            signal: controller.signal,
+          });
+          const responseText = await response.text();
+          let body = responseText;
+          try {
+            body = JSON.parse(responseText);
+          } catch {
+            // 非 JSON 响应保留原文，交由发布响应校验生成结构错误。
+          }
+          return {
+            body,
+            headers: Object.fromEntries(response.headers.entries()),
+            status: response.status,
+            statusText: response.statusText,
+          };
+        } finally {
+          clearTimeout(timeout);
+        }
+      })()`,
+      true,
+    ) as Promise<SerializedHttpResponse>;
+    const [, response] = await Promise.all([signedUrlPromise, responsePromise]);
+    return response;
   } finally {
     try {
       await debuggerClient.sendCommand("Fetch.disable");
@@ -599,7 +505,7 @@ async function createInProcessWorker(options: DouyinWorkerOptions, logger: Logge
     log: `${channelPrefix}:log`,
     ready: `${channelPrefix}:renderer-ready`,
     result: `${channelPrefix}:result`,
-    signCreate: `${channelPrefix}:sign-create-v2`,
+    submitCreate: `${channelPrefix}:submit-create-v2`,
     signV4: `${channelPrefix}:sign-v4`,
   };
   const accountSession = electron.session.fromPartition(options.browserPartition, { cache: true });
@@ -668,21 +574,18 @@ async function createInProcessWorker(options: DouyinWorkerOptions, logger: Logge
       return signDouyinV4(input);
     });
     electron.ipcMain.handle(
-      channels.signCreate,
+      channels.submitCreate,
       async (
         event,
         input: { bodyText: string; csrfToken: string; unsignedUrl: string },
-      ): Promise<MainSigningResult> => {
-        if (event.sender.id !== networkWindow?.webContents.id) throw new Error("非法抖音投稿签名请求来源");
-        return {
-          signedUrl: await captureSignedUrl(
-            signerWindow as BrowserWindow,
-            input.unsignedUrl,
-            input.bodyText,
-            input.csrfToken,
-          ),
-          ticketHeaders: await createTicketGuardHeaders(accountSession, signerWindow as BrowserWindow),
-        };
+      ): Promise<SerializedHttpResponse> => {
+        if (event.sender.id !== networkWindow?.webContents.id) throw new Error("非法抖音投稿请求来源");
+        return submitCreateWithSignedFetch(
+          signerWindow as BrowserWindow,
+          input.unsignedUrl,
+          input.bodyText,
+          input.csrfToken,
+        );
       },
     );
     electron.ipcMain.on(channels.ready, readyListener);
@@ -710,7 +613,7 @@ async function createInProcessWorker(options: DouyinWorkerOptions, logger: Logge
     clearTimeout(readyTimeout);
     electron.ipcMain.removeHandler(channels.getSessionState);
     electron.ipcMain.removeHandler(channels.signV4);
-    electron.ipcMain.removeHandler(channels.signCreate);
+    electron.ipcMain.removeHandler(channels.submitCreate);
     electron.ipcMain.removeListener(channels.ready, readyListener);
     electron.ipcMain.removeListener(channels.log, logListener);
     electron.ipcMain.removeListener(channels.result, resultListener);
@@ -747,7 +650,7 @@ async function disposeWorker(worker: InProcessWorker): Promise<void> {
   let cleanupError: unknown;
   electron.ipcMain.removeHandler(worker.channels.getSessionState);
   electron.ipcMain.removeHandler(worker.channels.signV4);
-  electron.ipcMain.removeHandler(worker.channels.signCreate);
+  electron.ipcMain.removeHandler(worker.channels.submitCreate);
   electron.ipcMain.removeAllListeners(worker.channels.ready);
   electron.ipcMain.removeAllListeners(worker.channels.log);
   electron.ipcMain.removeAllListeners(worker.channels.result);
@@ -768,7 +671,7 @@ async function disposeWorker(worker: InProcessWorker): Promise<void> {
   if (cleanupError) throw cleanupError;
 }
 
-/** 完成抖音最终发布前的全部校验、签名和素材上传。 */
+/** 完成抖音最终发布前的全部校验和素材上传。 */
 export async function prepareDouyinPublish(input: DouyinVideoUploadPayload): Promise<DouyinPreparedContext> {
   const timing = parseDouyinScheduledAt(input.scheduledAt);
   const browserPartition = input.browserPartition.trim();
@@ -822,7 +725,7 @@ export async function prepareDouyinPublish(input: DouyinVideoUploadPayload): Pro
   }
 }
 
-/** 发送抖音最后一次 create_v2 发布请求。 */
+/** 发送抖音唯一一次真实 create_v2 发布请求。 */
 export async function commitDouyinPublish(prepared: DouyinPreparedContext): Promise<VideoUploadResult> {
   const worker = preparedWorkers.get(prepared);
   if (!worker) throw new Error("抖音准备上下文无效或已经释放");

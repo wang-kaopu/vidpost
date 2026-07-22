@@ -1,6 +1,7 @@
 import electron, { type BrowserWindow } from "electron";
 
 import type { Platform } from "@shared/electron-api.ts";
+import { attachAccountWindowNotice } from "@/src/infra/account/account-window-notice.ts";
 import { logger } from "@/src/utils/logger.ts";
 
 const { BrowserWindow: ElectronBrowserWindow, shell } = electron;
@@ -56,6 +57,7 @@ export function runWithAccountBackendWindow<TResult>(
     },
   });
   activeBackendWindow = backendWindow;
+  attachAccountWindowNotice(backendWindow, options.platform);
 
   backendWindow.webContents.setWindowOpenHandler(({ url }) => {
     void shell.openExternal(url).catch((error: unknown) => {

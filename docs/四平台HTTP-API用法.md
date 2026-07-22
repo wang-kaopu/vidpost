@@ -664,7 +664,7 @@ Creator 公共 Query：
 | `aid` | `1128` |
 | `support_h265` | `1` |
 
-发布 renderer 的 Axios 超时为 10 分钟，不自动重试；视频分片由业务代码按 1/2/4 秒退避，单片最多请求 4 次。
+发布 renderer 的 Axios 超时为 10 分钟，不自动重试；最终 `create_v2` 使用签名窗口中的 `window.fetch()` 并设置 10 分钟中止超时。视频分片由业务代码按 1/2/4 秒退避，单片最多请求 4 次。
 
 ### 5.2 接口总览
 
@@ -937,7 +937,7 @@ User-Agent: <UA>
 https://creator.douyin.com/web/api/media/aweme/create_v2/?<COMMON_PARAMS>&read_aid=2906&msToken=<MS_TOKEN>
 ```
 
-项目先在签名窗口中用完全相同的 JSON Body 发起一次 `window.fetch()`。Creator 官方 BDMS 在页面内为 URL 添加 `a_bogus` 后，CDP 在请求真正上网前捕获并主动中止这次签名请求；因此它是一个被拦截的 HTTP 请求构造动作，不会在平台侧创建作品。随后项目使用捕获到的 `signedUrl` 和可能的 ticket Header，发送唯一一次真正的发布请求：
+只有正式提交阶段才会在 Creator 签名窗口中用最终 JSON Body 发起 `window.fetch()`。Creator 官方 BDMS 为 URL 添加 `a_bogus` 及安全 Header，CDP 在 Request 阶段校验方法、Body、`msToken` 和 `a_bogus` 后放行请求。该 `window.fetch()` 是唯一一次真实投稿请求，项目直接读取它的响应，不再使用 Axios 重复提交。`dryRun()` 只完成素材上传和 Payload 构造，不调用 `create_v2`。
 
 ```http
 POST /web/api/media/aweme/create_v2/?...&a_bogus=<BDMS_SIGNATURE> HTTP/1.1
@@ -947,7 +947,7 @@ Content-Type: application/json
 Referer: https://creator.douyin.com/creator-micro/content/publish?enter_from=publish_page
 User-Agent: <UA>
 X-Secsdk-Csrf-Token: <CSRF>
-<TICKET_HEADERS>
+<BDMS_SECURITY_HEADERS>
 ```
 
 Body 顶层为 `item`，核心字段：
@@ -2026,7 +2026,7 @@ interface DouyinTopicSearchResponse {
 
 #### 6.4.11 `POST /web/api/media/aweme/create_v2/` 完整请求 Body
 
-Query：全部 `<COMMON_PARAMS>`、`read_aid=2906`、`msToken=<TOKEN>`，BDMS 再追加唯一非空 `a_bogus`。ticket Header 的键和值由 BDMS/验证链路动态返回，项目原样附加。
+Query：全部 `<COMMON_PARAMS>`、`read_aid=2906`、`msToken=<TOKEN>`，BDMS 再追加唯一非空 `a_bogus`。安全 Header 由 Creator 页面内的 BDMS/验证链路在 `window.fetch()` 发出前动态生成。
 
 Body 的完整顶层结构：
 
