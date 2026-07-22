@@ -48,7 +48,9 @@ const runningCheck = computed(() =>
 const operationLocked = computed(() => runningCheck.value || submittingPublish.value);
 const allChecksSucceeded = computed(() =>
   publishQueue.items.value.length > 0
-  && publishQueue.items.value.every((item) => item.checkState.status === "success"),
+  && publishQueue.items.value.every((item) =>
+    item.checkState.status === "success" || item.checkState.status === "deferred"
+  ),
 );
 const activeAccountItem = computed(() =>
   publishQueue.items.value.find((item) => item.queueId === activeAccountQueueId.value) || null,
@@ -135,6 +137,7 @@ const runPublishChecks = async (): Promise<void> => {
   });
 
   const pingErrors = new Map<string, string>();
+  const deferredAccountIds = new Set<string>();
   const settledAccountIds = new Set<string>();
   await runAccountPingBatch(
     [...accountTargets.values()],
@@ -144,12 +147,17 @@ const runPublishChecks = async (): Promise<void> => {
         if (!ping) throw new Error("当前环境未提供账号检测能力");
         await ping({ accountId: target.accountId, platform: target.platform });
       } catch (error) {
+        const errorMessage = error instanceof Error && error.message.trim() ? error.message.trim() : "账号检测失败";
+        if (/正在发布，暂时不能检测或更新账号状态/u.test(errorMessage)) {
+          deferredAccountIds.add(target.id);
+          return;
+        }
         logger.error("renderer.publish-check.error 账号检测失败", {
           accountId: target.accountId,
           error,
           platform: target.platform,
         });
-        pingErrors.set(target.id, error instanceof Error && error.message.trim() ? error.message.trim() : "账号检测失败");
+        pingErrors.set(target.id, errorMessage);
         throw error;
       }
     },
@@ -181,6 +189,13 @@ const runPublishChecks = async (): Promise<void> => {
     }
 
     const targetId = `${platform}:${accountId}`;
+    if (deferredAccountIds.has(targetId)) {
+      publishQueue.updateCheckState(item.queueId, {
+        errorMessage: "账号正在发布，将在执行前重新检测",
+        status: "deferred",
+      });
+      return;
+    }
     const pingError = pingErrors.get(targetId);
     if (pingError) {
       publishQueue.updateCheckState(item.queueId, { errorMessage: pingError, status: "failed" });
@@ -230,126 +245,130 @@ const formatPublishFailureReason = (error: unknown): string => {
 const confirmPublish = async (): Promise<void> => {
   if (operationLocked.value || !allChecksSucceeded.value) return;
   submittingPublish.value = true;
+  const queuedItems = [...publishQueue.items.value];
 
   try {
     const publishApi = window.electronAPI?.publish;
     if (!publishApi) throw new Error("当前环境未提供发布能力");
-
-    const queuedItems = [...publishQueue.items.value];
-    const publishTasks = await Promise.all(queuedItems.map(async (item) => {
-      const settings = item.publishSettings;
-      if (!settings.accountId || !settings.accountName || !settings.platform) {
-        throw new Error(`《${item.title}》缺少发布账号`);
-      }
-      if (!settings.title.trim()) {
-        throw new Error(`${settings.platformLabel}账号「${settings.accountName}」的发布标题不能为空`);
-      }
-
-      const scheduleError = validateScheduledAt(settings.platform, settings.scheduledAt);
-      if (scheduleError) {
-        throw new Error(`${settings.platformLabel}账号「${settings.accountName}」《${settings.title}》：${scheduleError}`);
-      }
-
-      const workPayload = await fetchWorkPublishPayload(item.id);
-      if (!workPayload.coverPath) {
-        throw new Error(`${settings.platformLabel}账号「${settings.accountName}」的任务缺少封面`);
-      }
-      const baseInput: BasePublishInput = {
-        accountId: settings.accountId,
-        accountName: settings.accountName,
-        coverUrl: workPayload.coverPath,
-        introduction: settings.introduction,
-        progressId: crypto.randomUUID(),
-        scheduledAt: settings.scheduledAt,
-        title: settings.title,
-        videoType: workPayload.videoType,
-        videoUrl: workPayload.videoPath,
-        workId: workPayload.workId,
-      };
-
-      let input: PublishInput;
-      switch (settings.platform) {
-        case "baijiahao":
-          input = { ...baseInput, platform: settings.platform };
-          break;
-        case "bilibili":
-          if (
-            typeof settings.humanTypeId !== "number"
-            || !Number.isSafeInteger(settings.humanTypeId)
-            || settings.humanTypeId <= 0
-          ) {
-            throw new Error(`Bilibili 账号「${settings.accountName}」必须选择投稿分区`);
-          }
-          input = {
-            ...baseInput,
-            humanTypeId: settings.humanTypeId,
-            platform: settings.platform,
-          };
-          break;
-        case "douyin":
-          input = {
-            ...baseInput,
-            platform: settings.platform,
-            visibility: settings.visibility,
-          };
-          break;
-        case "sohu":
-          if (
-            typeof settings.channelId !== "number"
-            || !Number.isSafeInteger(settings.channelId)
-            || settings.channelId <= 0
-            || typeof settings.videoChannelId !== "number"
-            || !Number.isSafeInteger(settings.videoChannelId)
-            || settings.videoChannelId <= 0
-          ) {
-            throw new Error(`搜狐账号「${settings.accountName}」必须选择一级频道和二级频道`);
-          }
-          input = {
-            ...baseInput,
-            channelId: settings.channelId,
-            platform: settings.platform,
-            videoChannelId: settings.videoChannelId,
-          };
-          break;
-      }
-
-      return { input, platformLabel: settings.platformLabel };
-    }));
-
-    publishProgressCenter.openBatch(publishTasks.map(({ input, platformLabel }) => ({
-      id: input.progressId,
-      platformKey: input.platform,
-      platformLabel,
-      accountName: input.accountName,
-      title: input.title,
-      scheduled: input.scheduledAt !== IMMEDIATE_PUBLISH_VALUE,
-    })));
-    publishQueue.clear();
+    publishQueue.removeMany(queuedItems.map((item) => item.queueId));
     closeAccount();
     closeSettings();
 
-    publishTasks.forEach(({ input, platformLabel }) => {
-      void publishApi(input)
-        .then(() => publishProgressCenter.complete(input.progressId))
-        .catch((error: unknown) => {
-          logger.error("renderer.publish.error 发布任务执行失败", {
-            accountId: input.accountId,
-            error,
-            platform: input.platform,
-            progressId: input.progressId,
+    await publishQueue.runSubmission(async () => {
+      const publishTasks = await Promise.all(queuedItems.map(async (item) => {
+        const settings = item.publishSettings;
+        if (!settings.accountId || !settings.accountName || !settings.platform) {
+          throw new Error(`《${item.title}》缺少发布账号`);
+        }
+        if (!settings.title.trim()) {
+          throw new Error(`${settings.platformLabel}账号「${settings.accountName}」的发布标题不能为空`);
+        }
+
+        const scheduleError = validateScheduledAt(settings.platform, settings.scheduledAt);
+        if (scheduleError) {
+          throw new Error(`${settings.platformLabel}账号「${settings.accountName}」《${settings.title}》：${scheduleError}`);
+        }
+
+        const workPayload = await fetchWorkPublishPayload(item.id);
+        if (!workPayload.coverPath) {
+          throw new Error(`${settings.platformLabel}账号「${settings.accountName}」的任务缺少封面`);
+        }
+        const baseInput: BasePublishInput = {
+          accountId: settings.accountId,
+          accountName: settings.accountName,
+          coverUrl: workPayload.coverPath,
+          introduction: settings.introduction,
+          progressId: crypto.randomUUID(),
+          scheduledAt: settings.scheduledAt,
+          title: settings.title,
+          videoType: workPayload.videoType,
+          videoUrl: workPayload.videoPath,
+          workId: workPayload.workId,
+        };
+
+        let input: PublishInput;
+        switch (settings.platform) {
+          case "baijiahao":
+            input = { ...baseInput, platform: settings.platform };
+            break;
+          case "bilibili":
+            if (
+              typeof settings.humanTypeId !== "number"
+              || !Number.isSafeInteger(settings.humanTypeId)
+              || settings.humanTypeId <= 0
+            ) {
+              throw new Error(`Bilibili 账号「${settings.accountName}」必须选择投稿分区`);
+            }
+            input = {
+              ...baseInput,
+              humanTypeId: settings.humanTypeId,
+              platform: settings.platform,
+            };
+            break;
+          case "douyin":
+            input = {
+              ...baseInput,
+              platform: settings.platform,
+              visibility: settings.visibility,
+            };
+            break;
+          case "sohu":
+            if (
+              typeof settings.channelId !== "number"
+              || !Number.isSafeInteger(settings.channelId)
+              || settings.channelId <= 0
+              || typeof settings.videoChannelId !== "number"
+              || !Number.isSafeInteger(settings.videoChannelId)
+              || settings.videoChannelId <= 0
+            ) {
+              throw new Error(`搜狐账号「${settings.accountName}」必须选择一级频道和二级频道`);
+            }
+            input = {
+              ...baseInput,
+              channelId: settings.channelId,
+              platform: settings.platform,
+              videoChannelId: settings.videoChannelId,
+            };
+            break;
+        }
+
+        return { input, platformLabel: settings.platformLabel };
+      }));
+
+      publishProgressCenter.openBatch(publishTasks.map(({ input, platformLabel }) => ({
+        id: input.progressId,
+        platformKey: input.platform,
+        platformLabel,
+        accountName: input.accountName,
+        title: input.title,
+        scheduled: input.scheduledAt !== IMMEDIATE_PUBLISH_VALUE,
+      })));
+
+      publishTasks.forEach(({ input, platformLabel }) => {
+        void Promise.resolve()
+          .then(() => publishApi(input))
+          .then(() => publishProgressCenter.complete(input.progressId))
+          .catch((error: unknown) => {
+            logger.error("renderer.publish.error 发布任务执行失败", {
+              accountId: input.accountId,
+              error,
+              platform: input.platform,
+              progressId: input.progressId,
+            });
+            const failureReason = formatPublishFailureReason(error);
+            publishProgressCenter.fail(input.progressId, failureReason);
+            notificationCenter.push({
+              title: `${platformLabel}发布失败`,
+              message: `账号「${input.accountName}」《${input.title}》：${failureReason}`,
+              source: "发布任务",
+              tone: "error",
+              unread: true,
+            });
           });
-          const failureReason = formatPublishFailureReason(error);
-          publishProgressCenter.fail(input.progressId, failureReason);
-          notificationCenter.push({
-            title: `${platformLabel}发布失败`,
-            message: `账号「${input.accountName}」《${input.title}》：${failureReason}`,
-            source: "发布任务",
-            tone: "error",
-            unread: true,
-          });
-        });
+      });
     });
   } catch (error) {
+    publishQueue.restore(queuedItems);
     logger.error("renderer.publish.prepare-error 发布任务准备失败", error);
     notificationCenter.push({
       title: "发布提交失败",
@@ -423,7 +442,7 @@ onBeforeUnmount(() => {
               aria-live="polite"
             >
               <LoaderCircle v-if="item.checkState.status === 'checking'" class="animate-spin" :size="13" aria-hidden="true" />
-              <CircleCheck v-else-if="item.checkState.status === 'success'" :size="13" aria-hidden="true" />
+              <CircleCheck v-else-if="item.checkState.status === 'success' || item.checkState.status === 'deferred'" :size="13" aria-hidden="true" />
               <CircleX v-else-if="item.checkState.status === 'failed'" :size="13" aria-hidden="true" />
               <span
                 class="min-w-0 max-w-[260px] truncate"
@@ -431,6 +450,7 @@ onBeforeUnmount(() => {
               >
                 <template v-if="item.checkState.status === 'checking'">检测中</template>
                 <template v-else-if="item.checkState.status === 'success'">检测成功</template>
+                <template v-else-if="item.checkState.status === 'deferred'">已排队，执行前检测</template>
                 <template v-else-if="item.checkState.status === 'failed'">检测失败：{{ item.checkState.errorMessage }}</template>
                 <template v-else>未检测</template>
               </span>

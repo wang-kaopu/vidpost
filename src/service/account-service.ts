@@ -34,6 +34,11 @@ import { logger } from "@/src/utils/logger.ts";
 
 type AccountTask<T> = () => Promise<T>;
 
+export interface AccountQueueOptions {
+  /** 判断当前错误是否表示账号不可继续使用，需要暂停后续任务。 */
+  shouldPauseOnError?: (error: unknown) => boolean;
+}
+
 interface AccountQueueState {
   paused: boolean;
   resume?: () => void;
@@ -43,6 +48,38 @@ interface AccountQueueState {
 }
 
 const accountQueues = new Map<string, AccountQueueState>();
+
+const ACCOUNT_BLOCKING_ERROR_PATTERNS = [
+  /验证码/u,
+  /身份验证/u,
+  /重新登录/u,
+  /登录状态/u,
+  /未登录|已离线|登录失效/u,
+  /账号凭据/u,
+  /账号状态/u,
+  /发布频率/u,
+  /发布额度/u,
+];
+
+/** 账号执行前探活未通过时使用的队列阻断错误。 */
+export class AccountPublishQueueBlockedError extends Error {
+  /**
+   * 创建账号队列阻断错误。
+   *
+   * @param message - 用户可据此恢复账号的错误说明
+   */
+  constructor(message: string) {
+    super(message);
+    this.name = "AccountPublishQueueBlockedError";
+  }
+}
+
+/** 判断发布错误是否需要暂停当前账号的后续任务。 */
+export function isAccountBlockingPublishError(error: unknown): boolean {
+  if (error instanceof AccountPublishQueueBlockedError) return true;
+  const message = error instanceof Error ? error.message : String(error || "");
+  return ACCOUNT_BLOCKING_ERROR_PATTERNS.some((pattern) => pattern.test(message));
+}
 
 /** 获取账号发布队列，不存在时创建空队列。 */
 function getAccountQueueState(accountId: string): AccountQueueState {
@@ -67,9 +104,14 @@ function getAccountQueueState(accountId: string): AccountQueueState {
  *
  * @param accountId - 全局唯一账号 ID
  * @param task - 需要串行执行的发布任务
+ * @param options - 当前任务的账号队列错误策略
  * @returns 发布任务执行结果
  */
-export async function runInAccountQueue<T>(accountId: string, task: AccountTask<T>): Promise<T> {
+export async function runInAccountQueue<T>(
+  accountId: string,
+  task: AccountTask<T>,
+  options: AccountQueueOptions = {},
+): Promise<T> {
   const normalizedAccountId = String(accountId || "").trim();
   if (!normalizedAccountId) {
     throw new Error("发布任务缺少 accountId，无法定位账号发布队列");
@@ -85,7 +127,8 @@ export async function runInAccountQueue<T>(accountId: string, task: AccountTask<
     try {
       return await task();
     } catch (error) {
-      if (!state.paused) {
+      const shouldPause = options.shouldPauseOnError?.(error) ?? true;
+      if (shouldPause && !state.paused) {
         state.paused = true;
         state.resumePromise = new Promise<void>((resolve) => {
           state.resume = resolve;
@@ -234,8 +277,45 @@ export async function loginAndCreateRemoteAccount(
  * @returns 同步后的账号页面模型
  */
 export async function updateRemoteAccount(input: PingInput, accountResource: Account) {
-  const { accountId, platform } = input;
+  const { accountId } = input;
   assertAccountQueueNotRunning(accountId);
+  const model = await detectAndUpdateRemoteAccount(input, accountResource);
+  if (model.status === "online") resumeAccountPublishQueue(accountId);
+  return model;
+}
+
+/**
+ * 在发布任务到达账号队首后重新验证登录态。
+ *
+ * 此检测已经位于账号串行队列内部，不执行外部运行态断言，也不自行恢复暂停队列。
+ *
+ * @param input - 账号 ID 和平台标识
+ * @param accountResource - 平台账号探活实现
+ * @returns 已同步的在线账号页面模型
+ */
+export async function checkRemoteAccountBeforePublish(input: PingInput, accountResource: Account) {
+  let model;
+  try {
+    model = await detectAndUpdateRemoteAccount(input, accountResource);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new AccountPublishQueueBlockedError(`账号执行前检测失败：${message}`);
+  }
+  if (model.status !== "online") {
+    throw new AccountPublishQueueBlockedError(`账号 ${input.accountId} 登录状态已失效，请重新登录后恢复队列`);
+  }
+  return model;
+}
+
+/**
+ * 检查账号本地状态与平台登录态，并同步远程账号，但不改变账号队列状态。
+ *
+ * @param input - 账号 ID 和平台标识
+ * @param accountResource - 平台账号探活实现
+ * @returns 同步后的账号页面模型
+ */
+async function detectAndUpdateRemoteAccount(input: PingInput, accountResource: Account) {
+  const { accountId, platform } = input;
   const accountFile = resolveAccountFilePath(accountId, platform);
   const partition = readPartitionForAccount(createPartitionStore(), accountId);
   const accountFileExists = fs.existsSync(accountFile);
@@ -257,8 +337,6 @@ export async function updateRemoteAccount(input: PingInput, accountResource: Acc
     status: nextStatus,
     ...(latestNickname ? { nickname: latestNickname } : {}),
   });
-  resumeAccountPublishQueue(accountId);
-
   return createAccountPageModel({
     id: accountId,
     platform,
@@ -320,7 +398,7 @@ async function persistAccountBackendState(
       status: pingResult.online ? "online" : "offline",
       ...(latestNickname && latestNickname !== nickname ? { nickname: latestNickname } : {}),
     });
-    resumeAccountPublishQueue(accountId);
+    if (pingResult.online) resumeAccountPublishQueue(accountId);
     if (finalPingError) throw finalPingError;
     return pingResult.online;
   } finally {

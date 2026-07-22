@@ -7,6 +7,7 @@ import {
   parseShanghaiScheduledAt,
   supportsScheduledPublish,
   validateScheduledAt,
+  validateScheduledAtBeforeExecution,
 } from "@/app/utils/publish-schedule.ts";
 
 const NOW_MS = Date.UTC(2026, 6, 13, 4, 0);
@@ -31,6 +32,12 @@ test("scheduled publish validation enforces platform windows without queue-posit
   assert.equal(validateScheduledAt("baijiahao", "2026-07-20 12:00", NOW_MS), null);
   assert.match(validateScheduledAt("baijiahao", "2026-07-20 12:01", NOW_MS) ?? "", /7 天/u);
   assert.match(validateScheduledAt("sohu", "2026-07-13 14:10", NOW_MS) ?? "", /仅支持立即发布/u);
+});
+
+test("queue-head validation uses the platform minimum without adding a second upload buffer", () => {
+  assert.equal(validateScheduledAtBeforeExecution("bilibili", "2026-07-13 14:00", NOW_MS), null);
+  assert.match(validateScheduledAtBeforeExecution("bilibili", "2026-07-13 13:59", NOW_MS) ?? "", /2 小时/u);
+  assert.equal(validateScheduledAtBeforeExecution("baijiahao", "0", NOW_MS), null);
 });
 
 test("scheduled publish values use a strict minute-level Shanghai contract", () => {

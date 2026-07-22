@@ -20,7 +20,7 @@ export type PublishSettings = {
 
 export type PublishCheckState = {
   errorMessage: string;
-  status: "checking" | "failed" | "idle" | "success";
+  status: "checking" | "deferred" | "failed" | "idle" | "success";
 };
 
 export type PublishQueueItem = WorkItem & {
@@ -38,6 +38,9 @@ export type PublishQueueApi = {
   updateCheckState: (queueId: string, state: PublishCheckState) => void;
   updateSettings: (queueId: string, settings: PublishSettings) => void;
   remove: (queueId: string) => void;
+  removeMany: (queueIds: string[]) => void;
+  restore: (restoredItems: PublishQueueItem[]) => void;
+  runSubmission: <T>(submission: () => Promise<T>) => Promise<T>;
   clear: () => void;
 };
 
@@ -222,6 +225,7 @@ export function findFirstPublishQueueValidationError(items: PublishQueueItem[]):
  */
 export function createPublishQueue(): PublishQueueApi {
   const items = ref<PublishQueueItem[]>([]);
+  let submissionTail: Promise<unknown> = Promise.resolve();
 
   /** 将每次选择作为独立条目追加到发布页，并返回本次新增数量。 */
   const add = (works: WorkItem[]): number => {
@@ -304,12 +308,43 @@ export function createPublishQueue(): PublishQueueApi {
     items.value = items.value.filter((item) => item.queueId !== queueId);
   };
 
+  /** 仅移除本次确认提交的队列条目，保留提交准备期间新追加的任务。 */
+  const removeMany = (queueIds: string[]): void => {
+    const removedIds = new Set(queueIds);
+    items.value = items.value.filter((item) => !removedIds.has(item.queueId));
+  };
+
+  /** 将准备失败的提交快照恢复到当前待发布队列前方。 */
+  const restore = (restoredItems: PublishQueueItem[]): void => {
+    const existingIds = new Set(items.value.map((item) => item.queueId));
+    items.value = [...restoredItems.filter((item) => !existingIds.has(item.queueId)), ...items.value];
+  };
+
+  /** 按用户确认顺序串行完成批次准备和主进程派发。 */
+  const runSubmission = <T>(submission: () => Promise<T>): Promise<T> => {
+    const run = submissionTail.then(submission);
+    submissionTail = run.catch(() => undefined);
+    return run;
+  };
+
   /** 清空当前用户的待发布作品。 */
   const clear = (): void => {
     items.value = [];
   };
 
-  return { items, add, addRetry, duplicate, updateCheckState, updateSettings, remove, clear };
+  return {
+    items,
+    add,
+    addRetry,
+    duplicate,
+    updateCheckState,
+    updateSettings,
+    remove,
+    removeMany,
+    restore,
+    runSubmission,
+    clear,
+  };
 }
 
 /**

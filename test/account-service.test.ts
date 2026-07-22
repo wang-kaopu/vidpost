@@ -7,6 +7,7 @@ import test from 'node:test'
 import { apiClient } from '@/src/api/api-client.ts'
 import { createPartitionStore, readPartitionMapTable, resolvePartitionForAccount } from '@/src/db/partition-store.ts'
 import {
+  checkRemoteAccountBeforePublish,
   resetAccountQueuesForTest,
   resumeAccountPublishQueue,
   runInAccountQueue,
@@ -221,6 +222,46 @@ test('account service resumes the account publish queue after updating status', 
   )
 
   assert.equal(await waitingTask, 'published')
+})
+
+test('account service keeps a paused publish queue blocked after an offline detection', async (t) => {
+  useTemporaryHome(t)
+  createLocalAccountState('109', 'douyin')
+  resetAccountQueuesForTest()
+  t.after(resetAccountQueuesForTest)
+  t.mock.method(apiClient, 'put', async () => ({ data: { code: 0 } }))
+
+  await assert.rejects(runInAccountQueue('109', async () => {
+    throw new Error('账号登录状态已失效')
+  }), /登录状态已失效/u)
+  let waitingTaskStarted = false
+  const waitingTask = runInAccountQueue('109', async () => {
+    waitingTaskStarted = true
+  })
+
+  await updateRemoteAccount(
+    { accountId: '109', platform: 'douyin' },
+    createAccountResource({ online: false }),
+  )
+  await Promise.resolve()
+  assert.equal(waitingTaskStarted, false)
+
+  resumeAccountPublishQueue('109')
+  await waitingTask
+})
+
+test('account service turns a queue-head offline result into an account-blocking error', async (t) => {
+  useTemporaryHome(t)
+  createLocalAccountState('110', 'bilibili')
+  t.mock.method(apiClient, 'put', async () => ({ data: { code: 0 } }))
+
+  await assert.rejects(
+    checkRemoteAccountBeforePublish(
+      { accountId: '110', platform: 'bilibili' },
+      createAccountResource({ online: false }),
+    ),
+    /账号 110 登录状态已失效，请重新登录后恢复队列/u,
+  )
 })
 
 test('account service preserves the account publish queue when status update fails', async (t) => {

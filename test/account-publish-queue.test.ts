@@ -70,6 +70,34 @@ test('account publish queue keeps later tasks waiting after a failure', async ()
   assert.deepEqual(events, ['failed:start', 'waiting:start'])
 })
 
+test('account publish queue continues after a task-level failure', async () => {
+  const { runInAccountQueue, resetAccountQueuesForTest } = await loadQueueModule()
+  resetAccountQueuesForTest()
+  const events: string[] = []
+
+  const failedTask = runInAccountQueue('1001', async () => {
+    events.push('failed')
+    throw new Error('素材不存在')
+  }, { shouldPauseOnError: () => false })
+  const continuedTask = runInAccountQueue('1001', async () => {
+    events.push('continued')
+  })
+
+  await assert.rejects(failedTask, /素材不存在/u)
+  await continuedTask
+  assert.deepEqual(events, ['failed', 'continued'])
+})
+
+test('account publish error classification pauses only account-level failures', async () => {
+  const { isAccountBlockingPublishError } = await loadQueueModule()
+
+  assert.equal(isAccountBlockingPublishError(new Error('账号需要身份验证')), true)
+  assert.equal(isAccountBlockingPublishError(new Error('账号已离线')), true)
+  assert.equal(isAccountBlockingPublishError(new Error('发布频率过快，请稍后重试')), true)
+  assert.equal(isAccountBlockingPublishError(new Error('视频素材不存在')), false)
+  assert.equal(isAccountBlockingPublishError(new Error('定时发布时间已失效')), false)
+})
+
 test('account publish queue can pause and resume repeatedly', async () => {
   const { resumeAccountPublishQueue, runInAccountQueue, resetAccountQueuesForTest } = await loadQueueModule()
   resetAccountQueuesForTest()

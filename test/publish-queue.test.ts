@@ -69,6 +69,43 @@ test("publish queue removes one queue item and can be cleared on logout", () => 
   assert.deepEqual(queue.items.value, []);
 });
 
+test("publish queue removes only the confirmed snapshot and preserves later additions", () => {
+  const queue = createPublishQueue();
+  queue.add([createWork("1", "标题 1"), createWork("2", "标题 2")]);
+  const confirmedItems = [...queue.items.value];
+  queue.add([createWork("3", "标题 3")]);
+
+  queue.removeMany(confirmedItems.map((item) => item.queueId));
+  assert.deepEqual(queue.items.value.map((item) => item.id), ["3"]);
+
+  queue.restore(confirmedItems);
+  assert.deepEqual(queue.items.value.map((item) => item.id), ["1", "2", "3"]);
+});
+
+test("publish queue serializes submission preparation in confirmation order", async () => {
+  const queue = createPublishQueue();
+  const events: string[] = [];
+  let finishFirst: (() => void) | undefined;
+  const firstBarrier = new Promise<void>((resolve) => {
+    finishFirst = resolve;
+  });
+
+  const first = queue.runSubmission(async () => {
+    events.push("first:start");
+    await firstBarrier;
+    events.push("first:end");
+  });
+  const second = queue.runSubmission(async () => {
+    events.push("second:start");
+  });
+  await Promise.resolve();
+  assert.deepEqual(events, ["first:start"]);
+
+  finishFirst?.();
+  await Promise.all([first, second]);
+  assert.deepEqual(events, ["first:start", "first:end", "second:start"]);
+});
+
 test("publish queue keeps platform-specific settings with the selected work", () => {
   const queue = createPublishQueue();
   queue.add([createWork("1", "标题 1")]);
