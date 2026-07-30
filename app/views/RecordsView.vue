@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { Input as AntInput, Select as AntSelect, Tooltip as AntTooltip } from "ant-design-vue";
-import { Download, Info, LayoutList, RefreshCw, Search, Trash2 } from "lucide-vue-next";
+import { Download, Info, LayoutList, Link, RefreshCw, Search, Trash2 } from "lucide-vue-next";
 import PlatformLogo from "@/components/PlatformLogo.vue";
 import ActionMenu from "@/components/ui/ActionMenu.vue";
 import BottomFloatingBar from "@/components/ui/BottomFloatingBar.vue";
@@ -9,6 +9,7 @@ import CapsuleButton from "@/components/ui/CapsuleButton.vue";
 import CircleCheckbox from "@/components/ui/CircleCheckbox.vue";
 import DataList from "@/components/ui/DataList.vue";
 import FilterPopover from "@/components/ui/FilterPopover.vue";
+import IconButton from "@/components/ui/IconButton.vue";
 import PanelShell from "@/components/ui/PanelShell.vue";
 import StateMessage from "@/components/ui/StateMessage.vue";
 import TextInput from "@/components/ui/TextInput.vue";
@@ -27,9 +28,11 @@ const selectedIds = ref<Set<number>>(new Set());
 const notificationCenter = useNotificationStore();
 const publishQueue = usePublishQueueStore();
 const retryToastVisible = ref(false);
+const copiedLinkRecordId = ref<number | null>(null);
 let cancelTaskStateListener: (() => void) | null = null;
 let taskStateRefreshTimer: number | null = null;
 let retryToastTimer: number | null = null;
+let copiedLinkResetTimer: number | null = null;
 
 const pushRecordsError = (title: string, message: string): void => {
   notificationCenter.push({
@@ -262,6 +265,30 @@ const handleDelete = async (item: PublishTask) => {
   }
 };
 
+/** 取得发布记录可复制的非空链接。 */
+const getRecordLink = (item: PublishTask): string => String(item.link || "").trim();
+
+/** 将发布记录链接复制到系统剪贴板。 */
+const handleCopyRecordLink = async (item: PublishTask): Promise<void> => {
+  const link = getRecordLink(item);
+  if (!link) return;
+  try {
+    await navigator.clipboard.writeText(link);
+    if (copiedLinkResetTimer !== null) window.clearTimeout(copiedLinkResetTimer);
+    copiedLinkRecordId.value = item.id;
+    copiedLinkResetTimer = window.setTimeout(() => {
+      copiedLinkRecordId.value = null;
+      copiedLinkResetTimer = null;
+    }, 1500);
+  } catch (error) {
+    logger.error("renderer.records.copy-link-error 复制发布记录链接失败", {
+      error,
+      taskId: item.id,
+    });
+    pushRecordsError("链接复制失败", "发布记录链接没有复制成功，请稍后重试");
+  }
+};
+
 /** 显示重新发布成功轻提示，并在短暂展示后自动隐藏。 */
 const showRetryToast = (): void => {
   if (retryToastTimer !== null) window.clearTimeout(retryToastTimer);
@@ -344,6 +371,8 @@ onUnmounted(() => {
   taskStateRefreshTimer = null;
   if (retryToastTimer !== null) window.clearTimeout(retryToastTimer);
   retryToastTimer = null;
+  if (copiedLinkResetTimer !== null) window.clearTimeout(copiedLinkResetTimer);
+  copiedLinkResetTimer = null;
 });
 </script>
 
@@ -503,7 +532,7 @@ onUnmounted(() => {
             {{ formatCreatedAt(item.created_at) }}
           </td>
           <td>
-            <div class="flex items-center justify-center whitespace-nowrap">
+            <div class="flex items-center justify-start gap-1 whitespace-nowrap">
               <ActionMenu
                 v-slot="{ close }"
                 :panel-id="`record-actions-${item.id}`"
@@ -541,6 +570,26 @@ onUnmounted(() => {
                   删除
                 </button>
               </ActionMenu>
+              <AntTooltip
+                v-if="getRecordLink(item)"
+                :title="copiedLinkRecordId === item.id ? '已复制' : '复制链接'"
+                placement="top"
+                :mouse-enter-delay="0.1"
+              >
+                <IconButton
+                  size="sm"
+                  appearance="ghost"
+                  :aria-label="`复制发布记录链接 ${item.title || item.id}`"
+                  @click="handleCopyRecordLink(item)"
+                >
+                  <Link
+                    :class="{ 'text-primary': copiedLinkRecordId === item.id }"
+                    :size="18"
+                    :stroke-width="1.9"
+                    aria-hidden="true"
+                  />
+                </IconButton>
+              </AntTooltip>
             </div>
           </td>
         </tr>
@@ -563,11 +612,11 @@ onUnmounted(() => {
 .records-table .records-col-title { width: auto; }
 .records-table .records-col-status { width: 240px; }
 .records-table .records-col-created { width: 168px; }
-.records-table .records-col-actions { width: 64px; }
+.records-table .records-col-actions { width: 96px; }
 .records-table :deep(th:first-child),
-.records-table :deep(td:first-child),
+.records-table :deep(td:first-child) { text-align: center; }
 .records-table :deep(th:last-child),
-.records-table :deep(td:last-child) { text-align: center; }
+.records-table :deep(td:last-child) { text-align: left; }
 .records-account-cell,
 .records-created-cell,
 .records-status-cell,
