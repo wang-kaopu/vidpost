@@ -24,7 +24,7 @@ const toneClasses = {
 
 const sizeClasses = {
   sm: "min-h-7 px-2.5 text-xs",
-  md: "min-h-8 px-3 text-[13px]",
+  md: "min-h-8 px-3 text-sm",
 } as const;
 </script>
 

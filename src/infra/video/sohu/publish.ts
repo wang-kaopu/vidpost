@@ -600,7 +600,13 @@ export async function commitSohuPublish(prepared: SohuPreparedContext): Promise<
   );
   assertSohuSuccess(response.data, [2_000_000], "发布搜狐视频");
   const postId = extractSohuPublishedPostId(response.data);
-  return { success: true, title: prepared.publication.title, postId, response: response.data };
+  return {
+    success: true,
+    title: prepared.publication.title,
+    postId,
+    link: `https://www.sohu.com/a/${encodeURIComponent(postId)}_${encodeURIComponent(prepared.account.accountId)}`,
+    response: response.data,
+  };
 }
 
 /** 从搜狐投稿成功响应的标量 data 中提取视频唯一 ID。 */

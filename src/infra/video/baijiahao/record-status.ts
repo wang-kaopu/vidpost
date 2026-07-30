@@ -31,6 +31,7 @@ async function loadBaijiahaoStatusCookieHeader(accountFile: string): Promise<str
 }
 
 const BAIJIAHAO_RECORD_STATUS_URL = "https://baijiahao.baidu.com/pcui/article/lists";
+const BAIJIAHAO_STATUS_PAGINATION_ATTEMPTS = 3;
 
 /** 将未知值收窄为普通记录。 */
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -50,23 +51,28 @@ export function parseBaijiahaoRecordStatus(rawRecord: unknown): PublishedStateRe
   if (!record || (typeof record.status !== "string" && typeof record.status !== "number")) return null;
   const status = String(record.status).trim();
   if (!status) return null;
-  const link = asString(record.share_url) ?? asString(record.url);
   if (status === "publish" || status === "pre_publish") {
-    return { status: "public", link, raw: rawRecord, matchedBy: "platform_work_id", reason: null };
+    return {
+      status: "public",
+      link: asString(record.url),
+      raw: rawRecord,
+      matchedBy: "platform_work_id",
+      reason: null,
+    };
   }
   if (status === "rejected") {
     return {
       status: "non_public",
-      link,
+      link: null,
       raw: rawRecord,
       matchedBy: "platform_work_id",
       reason: `${asString(record.audit_msg) ?? "审核未通过"} 状态码${status}`,
     };
   }
   if (status === "withdraw") {
-    return { status: "non_public", link, raw: rawRecord, matchedBy: "platform_work_id", reason: "作品已撤回" };
+    return { status: "non_public", link: null, raw: rawRecord, matchedBy: "platform_work_id", reason: "作品已撤回" };
   }
-  return { status: "reviewing", link, raw: rawRecord, matchedBy: "platform_work_id", reason: null };
+  return { status: "reviewing", link: null, raw: rawRecord, matchedBy: "platform_work_id", reason: null };
 }
 
 /** 从文章列表接口的数组或数字键对象中提取记录。 */
@@ -107,27 +113,33 @@ export async function fetchBaijiahaoPublishedState(
     loadBaijiahaoStatusCookieHeader(resolvedAccountFile),
     loadBrowserIdentity().then((identity) => identity.userAgent),
   ]);
-  const response = await axios.get(BAIJIAHAO_RECORD_STATUS_URL, {
-    headers: { Cookie: cookieHeader, Referer: `${BAIJIAHAO_ORIGIN}/builder/rc/content`, "User-Agent": userAgent },
-    params: { collection: "", currentPage: 1, dynamic: 1, pageSize: 10, search: "", type: "" },
-    signal: payload.abortSignal,
-    timeout,
-  });
-  const root = asRecord(response.data);
-  if (!root || Number(root.errno) !== 0 || !Array.isArray(asRecord(root.data)?.list)) {
-    throw new Error("百家号文章列表响应结构错误");
+  let lastPayload: unknown = null;
+  for (let pageNumber = 1; pageNumber <= BAIJIAHAO_STATUS_PAGINATION_ATTEMPTS; pageNumber += 1) {
+    const response = await axios.get(BAIJIAHAO_RECORD_STATUS_URL, {
+      headers: { Cookie: cookieHeader, Referer: `${BAIJIAHAO_ORIGIN}/builder/rc/content`, "User-Agent": userAgent },
+      params: { collection: "", currentPage: pageNumber, dynamic: 1, pageSize: 10, search: "", type: "" },
+      signal: payload.abortSignal,
+      timeout,
+    });
+    const root = asRecord(response.data);
+    if (!root || Number(root.errno) !== 0 || !Array.isArray(asRecord(root.data)?.list)) {
+      throw new Error("百家号文章列表响应结构错误");
+    }
+    lastPayload = root;
+    const records = collectBaijiahaoRecordsFromPayload(root);
+    const matched = findBaijiahaoRecordInList(records, payload);
+    if (matched) {
+      const parsed = parseBaijiahaoRecordStatus(matched.record);
+      if (!parsed) throw new Error("百家号作品状态响应结构错误");
+      return parsed;
+    }
+    if (records.length === 0) break;
   }
-  const matched = findBaijiahaoRecordInList(collectBaijiahaoRecordsFromPayload(root), payload);
-  if (!matched) {
-    return {
-      status: "non_public",
-      link: payload.link ?? null,
-      raw: root,
-      matchedBy: "platform_work_id",
-      reason: "未找到该作品，请前往官方后台查看发布情况",
-    };
-  }
-  const parsed = parseBaijiahaoRecordStatus(matched.record);
-  if (!parsed) throw new Error("百家号作品状态响应结构错误");
-  return { ...parsed, link: parsed.link ?? payload.link ?? null };
+  return {
+    status: "non_public",
+    link: null,
+    raw: lastPayload,
+    matchedBy: "platform_work_id",
+    reason: "未找到该作品，请前往官方后台查看发布情况",
+  };
 }
