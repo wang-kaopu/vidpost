@@ -3,11 +3,19 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
+import type { BrowserWindow } from 'electron'
 
 import { apiClient } from '@/src/api/api-client.ts'
-import { createPartitionStore, readPartitionMapTable, resolvePartitionForAccount } from '@/src/db/partition-store.ts'
 import {
+  createPartitionStore,
+  readPartitionForAccount,
+  readPartitionMapTable,
+  resolvePartitionForAccount,
+} from '@/src/db/partition-store.ts'
+import {
+  type AccountBackendPersistenceState,
   checkRemoteAccountBeforePublish,
+  persistAccountBackendState,
   resetAccountQueuesForTest,
   resumeAccountPublishQueue,
   runInAccountQueue,
@@ -39,6 +47,9 @@ function createAccountResource(result: unknown) {
     login: async () => ({ accountFile: '', loginSucceeded: true }),
     ping: async () => {
       if (result instanceof Error) throw result
+      if (result && typeof result === 'object' && 'online' in result && result.online === true) {
+        return { ...result, platformAccountId: 'test-platform-account' }
+      }
       return result
     },
   }
@@ -59,13 +70,48 @@ function createLoginAccountResource(
     ping: async () => {
       events.push('ping')
       if (pingResult instanceof Error) throw pingResult
+      if (pingResult && typeof pingResult === 'object' && 'online' in pingResult && pingResult.online === true) {
+        return { ...pingResult, platformAccountId: 'test-platform-account' }
+      }
       return pingResult
     },
   }
 }
 
+/** 模拟不存在待回填历史账号的账号列表。 */
+function mockEmptyAccountList(t: test.TestContext): void {
+  t.mock.method(apiClient, 'get', async () => ({
+    data: { code: 0, data: { is_end: true, last_id: 0, list: [] } },
+  }))
+}
+
+/** 创建可导出 Cookie 与 localStorage 的账号后台窗口替身。 */
+function createStorageExportWindow(): BrowserWindow {
+  return {
+    webContents: {
+      executeJavaScript: async () => [],
+      getURL: () => 'https://creator.douyin.com/creator-micro/home',
+      session: {
+        cookies: {
+          get: async () => [{
+            domain: '.douyin.com',
+            expirationDate: -1,
+            httpOnly: true,
+            name: 'sessionid',
+            path: '/',
+            sameSite: 'lax',
+            secure: true,
+            value: 'new-session',
+          }],
+        },
+      },
+    },
+  } as unknown as BrowserWindow
+}
+
 test('login verifies the saved account with ping before creating the remote account', async (t) => {
   useTemporaryHome(t)
+  mockEmptyAccountList(t)
   const events: string[] = []
   const requests: Array<{
     data: Record<string, unknown> & {
@@ -94,7 +140,12 @@ test('login verifies the saved account with ping before creating the remote acco
 
   assert.deepEqual(events, ['login', 'ping', 'create'])
   assert.deepEqual(requests[0], {
-    data: { nickname: '平台昵称', platform: 'douyin', status: 'online' },
+    data: {
+      nickname: '平台昵称',
+      platform: 'douyin',
+      platform_account_id: 'test-platform-account',
+      status: 'online',
+    },
     method: 'post',
     url: '/publish/accounts',
   })
@@ -152,6 +203,7 @@ test('login propagates ping errors before creating the remote account', async (t
 
 test('login uses the remote account id when ping returns no nickname', async (t) => {
   useTemporaryHome(t)
+  mockEmptyAccountList(t)
   const requests: Array<{
     data: Record<string, unknown> & {
       attributes?: { browserPartition?: unknown; cookieFilePath?: unknown }
@@ -176,10 +228,70 @@ test('login uses the remote account id when ping returns no nickname', async (t)
     createLoginAccountResource([], { online: true, nickname: '   ' }),
   )
 
-  assert.deepEqual(requests[0]?.data, { platform: 'sohu', status: 'online' })
-  assert.equal(requests[1]?.data.nickname, '204')
+  assert.deepEqual(requests[0]?.data, {
+    platform: 'sohu',
+    platform_account_id: 'test-platform-account',
+    status: 'online',
+  })
+  assert.equal('nickname' in requests[1]!.data, false)
   assert.ok(requests[1]?.data.attributes)
   assert.equal(model.nickname, '204')
+})
+
+test('account backend switches the live state to an existing platform account', async (t) => {
+  useTemporaryHome(t)
+  mockEmptyAccountList(t)
+  createLocalAccountState('301', 'douyin')
+  createLocalAccountState('302', 'douyin')
+  const partitionStore = createPartitionStore()
+  const originalSourcePartition = readPartitionForAccount(partitionStore, '301')
+  const updates: Array<{ data: Record<string, unknown>; url: string }> = []
+  t.mock.method(apiClient, 'post', async () => ({
+    data: { code: 0, data: { account_id: 302 } },
+  }))
+  t.mock.method(apiClient, 'put', async (url: string, data: Record<string, unknown>) => {
+    updates.push({ data, url })
+    return { data: { code: 0 } }
+  })
+  const state: AccountBackendPersistenceState = {
+    active: {
+      accountFile: resolveAccountFilePath('301', 'douyin'),
+      accountId: '301',
+      nickname: '账号 A',
+    },
+    initialAccountId: '301',
+    initialNickname: '账号 A',
+    legacyBackfilled: false,
+  }
+
+  const online = await persistAccountBackendState(
+    createStorageExportWindow(),
+    state,
+    'douyin',
+    createAccountResource({
+      online: true,
+      nickname: '账号 B',
+      platformAccountId: 'douyin-account-b',
+    }),
+    true,
+  )
+
+  assert.equal(online, true)
+  assert.equal(state.outcome, 'switched')
+  assert.equal(state.active.accountId, '302')
+  assert.equal(fs.existsSync(resolveAccountFilePath('301', 'douyin')), false)
+  assert.equal(fs.existsSync(resolveAccountFilePath('302', 'douyin')), true)
+  assert.equal(readPartitionForAccount(partitionStore, '302'), originalSourcePartition)
+  assert.notEqual(readPartitionForAccount(partitionStore, '301'), originalSourcePartition)
+  assert.deepEqual(updates.map((update) => update.url), [
+    '/publish/accounts/302',
+    '/publish/accounts/301',
+  ])
+  assert.equal(updates[1]?.data.status, 'offline')
+  assert.deepEqual(updates[1]?.data.attributes, {
+    browserPartition: readPartitionForAccount(partitionStore, '301'),
+    cookieFilePath: null,
+  })
 })
 
 test('account service updates online status and platform nickname together', async (t) => {
@@ -196,7 +308,14 @@ test('account service updates online status and platform nickname together', asy
     createAccountResource({ online: true, nickname: '新昵称' }),
   )
 
-  assert.deepEqual(updates, [{ url: '/publish/accounts/101', data: { status: 'online', nickname: '新昵称' } }])
+  assert.deepEqual(updates, [{
+    url: '/publish/accounts/101',
+    data: {
+      status: 'online',
+      platform_account_id: 'test-platform-account',
+      nickname: '新昵称',
+    },
+  }])
   assert.equal(model.nickname, '新昵称')
   assert.equal(model.status, 'online')
 })

@@ -13,6 +13,7 @@ export interface FetchAccountsOptions {
 
 interface BackendAccount {
   id: number | string;
+  platform_account_id?: string | null;
   nickname?: string | null;
   platform?: string | null;
   status?: string | null;
@@ -61,6 +62,7 @@ function normalizeAccount(account: BackendAccount): AccountItem {
   const rawStatus = String(account.status || "").trim().toLowerCase();
   return {
     id: String(account.id ?? ""),
+    platformAccountId: String(account.platform_account_id || "").trim() || undefined,
     rawStatus: rawStatus || undefined,
     platformKey: String(account.platform || "").trim().toLowerCase() || undefined,
     platform: mapPlatformName(account.platform),

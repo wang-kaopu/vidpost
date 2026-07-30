@@ -357,6 +357,22 @@ const handleOpenAccountBackend = async (item: PublishAccountItem): Promise<void>
         platform: item.platformKey,
       });
       pushAccountError("账号状态保存失败", "请重新打开账号后台重试");
+    } else if (result.outcome === "switched") {
+      notificationCenter.push({
+        title: "账号切换成功",
+        message: `已切换为「${result.nickname || result.accountId}」，原账号「${result.previousNickname || item.nickname}」已离线`,
+        source: "账号管理",
+        tone: "success",
+        unread: true,
+      });
+    } else if (result.outcome === "logged-out") {
+      notificationCenter.push({
+        title: "账号已退出登录",
+        message: `「${result.nickname || item.nickname}」已退出登录并标记为离线`,
+        source: "账号管理",
+        tone: "success",
+        unread: true,
+      });
     }
   } catch (error) {
     logger.error("renderer.account-backend.open-error 平台后台打开失败", {

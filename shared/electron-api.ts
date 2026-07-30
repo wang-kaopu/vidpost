@@ -72,6 +72,11 @@ export interface OpenAccountBackendInput extends PingInput {
 
 /** 账号平台后台关闭后的保存结果。 */
 export interface OpenAccountBackendResult {
+  accountId?: string;
+  nickname?: string;
+  outcome?: "logged-out" | "switched" | "unchanged";
+  previousAccountId?: string;
+  previousNickname?: string;
   saveError?: string;
 }
 

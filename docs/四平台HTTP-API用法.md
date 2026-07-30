@@ -71,7 +71,7 @@ User-Agent: <UA>
 
 判断规则：
 
-- `data.isLogin === true`：在线；昵称优先取 `data.name`，其次取 `data.uname`。
+- `data.isLogin === true`：在线；昵称优先取 `data.name`，其次取 `data.uname`，稳定账号 ID 取 `data.mid`。
 - `data.isLogin === false` 或 HTTP 401/403：离线。
 - 整体超时 20 秒；业务代码最多尝试 3 次，但非 HTTP 异常会立即抛出。
 
@@ -263,7 +263,7 @@ Cookie: <COOKIE>
 User-Agent: <UA>
 ```
 
-- 在线检测：`data.user` 为对象即在线，昵称取 `data.user.name`；HTTP 401/403 为离线。
+- 在线检测：`data.user` 为对象即在线，昵称取 `data.user.name`，稳定账号 ID 取 `data.user.app_id`；HTTP 401/403 为离线。
 - 发布准备：读取 `data.user.app_id`，缺失时终止发布。
 - 在线检测整体超时 20 秒，最多尝试 3 次。
 
@@ -474,7 +474,7 @@ Host: mp.sohu.com
 ```
 
 - 两个接口都要求 `code === 2000000`。
-- 昵称取 `data.nickName`。
+- 昵称取 `data.nickName`，稳定账号 ID 只取 `data.id`。
 - 鉴权 HTTP 401/403 视为离线；整体超时 20 秒，最多尝试 3 次。
 - 发布准备阶段只调用 `check/user`，不调用 `account/info`，且不附加 `_`。
 
@@ -699,7 +699,7 @@ Cookie: <COOKIE>
 User-Agent: <UA>
 ```
 
-`user` 为对象即在线，昵称取 `user.nickname`；HTTP 401/403 为离线。整体超时 20 秒，最多尝试 3 次。
+`user` 为对象即在线，昵称取 `user.nickname`，稳定账号 ID 取 `user.uid`；HTTP 401/403 为离线。整体超时 20 秒，最多尝试 3 次。
 
 发布链路再次调用同一接口获取 VOD 所需 UID；Query 仍为 `msToken` 和空 `a_bogus`，成功响应必须包含 `user.uid`。
 
@@ -1812,7 +1812,7 @@ interface DouyinUserInfoResponse {
 }
 ```
 
-在线检测读取 `user` 和 `user.nickname`；发布准备要求 `user.uid` 非空。错误诊断读取 `status_code/status_msg`。
+在线检测读取 `user`、`user.nickname` 和稳定账号 ID `user.uid`；发布准备仍单独请求并要求 `user.uid` 非空。错误诊断读取 `status_code/status_msg`。
 
 #### 6.4.3 `HEAD /web/api/media/anchor/search`
 

@@ -71,7 +71,15 @@ async function pingDouyinAccount(accountFile: string): Promise<AccountPingResult
         });
         const user = response.data?.user;
         if (user && typeof user === "object") {
-          return { online: true, nickname: typeof user.nickname === "string" ? user.nickname : undefined };
+          const platformAccountId = String(user.uid ?? "").trim();
+          if (!platformAccountId) {
+            throw new Error("抖音账号信息响应格式异常：user.uid 不能为空");
+          }
+          return {
+            online: true,
+            nickname: typeof user.nickname === "string" ? user.nickname : undefined,
+            platformAccountId,
+          };
         }
       } catch (error) {
         if (axios.isAxiosError(error) && (error.response?.status === 401 || error.response?.status === 403)) {

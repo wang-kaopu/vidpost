@@ -22,24 +22,27 @@ const PLATFORM_CASES = [
     account: () => new DouyinAccount(),
     cookie: { domain: '.douyin.com', expires: -1, name: 'msToken', value: 'douyin-ms-token' },
     endpoint: 'https://creator.douyin.com/web/api/media/user/info/',
-    onlineBody: { user: { nickname: '抖音账号' } },
+    onlineBody: { user: { nickname: '抖音账号', uid: 'douyin-1001' } },
     nickname: '抖音账号',
+    platformAccountId: 'douyin-1001',
     platform: 'douyin',
   },
   {
     account: () => new BilibiliAccount(),
     cookie: { domain: '.bilibili.com', expires: -1, name: 'SESSDATA', value: 'bilibili-session' },
     endpoint: 'https://api.bilibili.com/x/web-interface/nav',
-    onlineBody: { data: { isLogin: true, name: 'B站账号' } },
+    onlineBody: { data: { isLogin: true, mid: 1002, name: 'B站账号' } },
     nickname: 'B站账号',
+    platformAccountId: '1002',
     platform: 'bilibili',
   },
   {
     account: () => new BaijiahaoAccount(),
     cookie: { domain: '.baidu.com', expires: -1, name: 'BDUSS', value: 'baidu-session' },
     endpoint: 'https://baijiahao.baidu.com/builder/app/appinfo',
-    onlineBody: { data: { user: { name: '百家号账号' } } },
+    onlineBody: { data: { user: { app_id: 'baijiahao-1003', name: '百家号账号' } } },
     nickname: '百家号账号',
+    platformAccountId: 'baijiahao-1003',
     platform: 'baijiahao',
   },
 ] as const
@@ -90,7 +93,11 @@ for (const platformCase of PLATFORM_CASES) {
 
     const result = await platformCase.account().ping(accountFile)
 
-    assert.deepEqual(result, { online: true, nickname: platformCase.nickname })
+    assert.deepEqual(result, {
+      online: true,
+      nickname: platformCase.nickname,
+      platformAccountId: platformCase.platformAccountId,
+    })
     assert.equal(calls.length, 1)
     assert.equal(calls[0]?.url, platformCase.endpoint)
     assert.match(String(calls[0]?.config.headers.Cookie), /=/)
@@ -166,12 +173,30 @@ test('douyin ping sends an empty msToken when the Cookie snapshot does not conta
   let requestConfig: TestRequestConfig | undefined
   t.mock.method(axios, 'get', async (_url: string, config: TestRequestConfig) => {
     requestConfig = config
-    return { data: { user: { nickname: '抖音账号' } } }
+    return { data: { user: { nickname: '抖音账号', uid: 'douyin-1001' } } }
   })
 
-  assert.deepEqual(await new DouyinAccount().ping(accountFile), { online: true, nickname: '抖音账号' })
+  assert.deepEqual(await new DouyinAccount().ping(accountFile), {
+    online: true,
+    nickname: '抖音账号',
+    platformAccountId: 'douyin-1001',
+  })
   assert.deepEqual(requestConfig?.params, { msToken: '', a_bogus: '' })
 })
+
+for (const platformCase of PLATFORM_CASES) {
+  test(`${platformCase.platform} ping rejects an online response without a stable platform account id`, async (t) => {
+    const accountFile = createAccountFile(platformCase.cookie)
+    const onlineBody = platformCase.platform === 'douyin'
+      ? { user: { nickname: '账号' } }
+      : platformCase.platform === 'bilibili'
+        ? { data: { isLogin: true, name: '账号' } }
+        : { data: { user: { name: '账号' } } }
+    t.mock.method(axios, 'get', async () => ({ data: onlineBody }))
+
+    await assert.rejects(platformCase.account().ping(accountFile), /不能为空/u)
+  })
+}
 
 test('sohu ping checks authentication and then reads the nickname with fresh cache stamps', async (t) => {
   const accountFile = createSohuAccountFile()
@@ -185,10 +210,14 @@ test('sohu ping checks authentication and then reads the nickname with fresh cac
     calls.push({ config, url })
     return url.endsWith('/check/user')
       ? { data: { code: 2_000_000 } }
-      : { data: { code: 2_000_000, data: { nickName: '  搜狐账号  ', status: 0 } } }
+      : { data: { code: 2_000_000, data: { id: 456, nickName: '  搜狐账号  ', status: 0 } } }
   })
 
-  assert.deepEqual(await new SohuAccount().ping(accountFile), { online: true, nickname: '搜狐账号' })
+  assert.deepEqual(await new SohuAccount().ping(accountFile), {
+    online: true,
+    nickname: '搜狐账号',
+    platformAccountId: '456',
+  })
   assert.equal(calls.length, 2)
   assert.equal(calls[0]?.url, 'https://mp.sohu.com/mpbp/bp/account/check/user')
   assert.equal(calls[1]?.url, 'https://mp.sohu.com/mpbp/bp/account/info')
@@ -207,18 +236,18 @@ test('sohu ping returns online without a nickname when account info omits it', a
   const accountFile = createSohuAccountFile()
   t.mock.method(axios, 'get', async (url: string) => url.endsWith('/check/user')
     ? { data: { code: 2_000_000 } }
-    : { data: { code: 2_000_000, data: {} } })
+    : { data: { code: 2_000_000, data: { id: 456 } } })
 
-  assert.deepEqual(await new SohuAccount().ping(accountFile), { online: true })
+  assert.deepEqual(await new SohuAccount().ping(accountFile), { online: true, platformAccountId: '456' })
 })
 
 test('sohu ping returns online without a nickname when account info contains only whitespace', async (t) => {
   const accountFile = createSohuAccountFile()
   t.mock.method(axios, 'get', async (url: string) => url.endsWith('/check/user')
     ? { data: { code: 2_000_000 } }
-    : { data: { code: 2_000_000, data: { nickName: '   ' } } })
+    : { data: { code: 2_000_000, data: { id: 456, nickName: '   ' } } })
 
-  assert.deepEqual(await new SohuAccount().ping(accountFile), { online: true })
+  assert.deepEqual(await new SohuAccount().ping(accountFile), { online: true, platformAccountId: '456' })
 })
 
 test('sohu ping rejects malformed account info data', async (t) => {
@@ -230,11 +259,20 @@ test('sohu ping rejects malformed account info data', async (t) => {
   await assert.rejects(new SohuAccount().ping(accountFile), /data 必须是对象/u)
 })
 
+test('sohu ping rejects account info without data.id', async (t) => {
+  const accountFile = createSohuAccountFile()
+  t.mock.method(axios, 'get', async (url: string) => url.endsWith('/check/user')
+    ? { data: { code: 2_000_000 } }
+    : { data: { code: 2_000_000, data: { nickName: '搜狐账号' } } })
+
+  await assert.rejects(new SohuAccount().ping(accountFile), /data.id 不能为空/u)
+})
+
 test('sohu ping rejects a non-string account info nickname', async (t) => {
   const accountFile = createSohuAccountFile()
   t.mock.method(axios, 'get', async (url: string) => url.endsWith('/check/user')
     ? { data: { code: 2_000_000 } }
-    : { data: { code: 2_000_000, data: { nickName: 123 } } })
+    : { data: { code: 2_000_000, data: { id: 456, nickName: 123 } } })
 
   await assert.rejects(new SohuAccount().ping(accountFile), /nickName 必须是字符串/u)
 })

@@ -12,6 +12,7 @@ import {
   readPartitionForAccount,
   readPartitionMapTable,
   resolvePartitionForAccount,
+  switchPartitionMapping,
 } from "@/src/db/partition-store.ts";
 
 /** 创建使用临时 JSON 文件的 partition store。 */
@@ -66,6 +67,21 @@ test("movePartitionMapping migrates a draft partition to the remote account id",
   assert.equal(table["1001"], draftPartition);
   assert.equal(table["draft:douyin:abc.json"], undefined);
   assert.deepEqual(Object.keys(store.get(PARTITION_MAP_TABLE_KEY)), ["1001"]);
+});
+
+test("switchPartitionMapping transfers the live session and gives the source account a fresh partition", () => {
+  const store = createTempStore();
+  const sourcePartition = resolvePartitionForAccount(store, "1001");
+  const oldTargetPartition = resolvePartitionForAccount(store, "1002");
+
+  const result = switchPartitionMapping(store, "1001", "1002");
+  const table = readPartitionMapTable(store);
+
+  assert.equal(result.targetPartition, sourcePartition);
+  assert.equal(table["1002"], sourcePartition);
+  assert.equal(table["1001"], result.sourcePartition);
+  assert.notEqual(result.sourcePartition, sourcePartition);
+  assert.notEqual(result.sourcePartition, oldTargetPartition);
 });
 
 test("deletePartitionMapping removes only the selected map entry", () => {

@@ -59,7 +59,15 @@ async function pingBaijiahaoAccount(accountFile: string): Promise<AccountPingRes
         });
         const user = response.data?.data?.user;
         if (user && typeof user === "object") {
-          return { online: true, nickname: typeof user.name === "string" ? user.name : undefined };
+          const platformAccountId = String(user.app_id ?? "").trim();
+          if (!platformAccountId) {
+            throw new Error("百家号账号信息响应格式异常：data.user.app_id 不能为空");
+          }
+          return {
+            online: true,
+            nickname: typeof user.name === "string" ? user.name : undefined,
+            platformAccountId,
+          };
         }
       } catch (error) {
         if (axios.isAxiosError(error) && (error.response?.status === 401 || error.response?.status === 403)) {

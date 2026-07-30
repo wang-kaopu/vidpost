@@ -60,9 +60,13 @@ async function pingBilibiliAccount(accountFile: string): Promise<AccountPingResu
         });
         const data = response.data?.data;
         if (data?.isLogin === true) {
+          const platformAccountId = String(data.mid ?? "").trim();
+          if (!platformAccountId) {
+            throw new Error("Bilibili 账号信息响应格式异常：data.mid 不能为空");
+          }
           const nickname =
             typeof data.name === "string" ? data.name : typeof data.uname === "string" ? data.uname : undefined;
-          return { online: true, nickname };
+          return { online: true, nickname, platformAccountId };
         }
         if (data?.isLogin === false) {
           return { online: false };

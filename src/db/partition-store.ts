@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 
 export const PARTITION_MAP_TABLE_KEY = "partition_map_table";
 const DEFAULT_STORE_FILE = "partition-map.json";
@@ -159,6 +160,35 @@ export function movePartitionMapping(
   delete latestTable[sourceId];
   store.set(PARTITION_MAP_TABLE_KEY, latestTable);
   return partition;
+}
+
+/**
+ * 将当前账号 partition 转移给目标账号，并为当前账号分配全新的空 partition。
+ *
+ * @param store - 本地持久化 Store
+ * @param fromAccountId - 当前后台窗口原绑定账号
+ * @param toAccountId - 当前窗口中新登录的目标账号
+ * @returns 目标账号与原账号的新 partition
+ */
+export function switchPartitionMapping(
+  store: PartitionStore,
+  fromAccountId: string | number,
+  toAccountId: string | number,
+): { sourcePartition: string; targetPartition: string } {
+  const sourceId = String(fromAccountId || "").trim();
+  const targetId = String(toAccountId || "").trim();
+  if (!sourceId || !targetId || sourceId === targetId) {
+    throw new Error("switchPartitionMapping requires different non-empty account ids");
+  }
+
+  const table = readPartitionMapTable(store);
+  const targetPartition = table[sourceId] || resolvePartitionForAccount(store, sourceId);
+  const latestTable = readPartitionMapTable(store);
+  const sourcePartition = `persist:rpa-${encodePartitionAccountId(sourceId)}-${randomUUID()}`;
+  latestTable[sourceId] = sourcePartition;
+  latestTable[targetId] = targetPartition;
+  store.set(PARTITION_MAP_TABLE_KEY, latestTable);
+  return { sourcePartition, targetPartition };
 }
 
 /**

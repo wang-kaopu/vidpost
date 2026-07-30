@@ -66,6 +66,7 @@ export interface PublishTask {
 // Account
 export interface BackendAccount {
   id: string | number;
+  platform_account_id?: string;
   nickname?: string;
   platform?: string;
   status?: string;
@@ -79,6 +80,7 @@ export interface BackendAccount {
 
 export interface PublishAccountItem {
   id: string;
+  platformAccountId?: string;
   nickname: string;
   platformKey: string;
   platform: string;
@@ -114,6 +116,7 @@ export function normalizePublishAccount(raw: BackendAccount): PublishAccountItem
 
   return {
     id: String(raw.id ?? ""),
+    platformAccountId: String(raw.platform_account_id || "").trim() || undefined,
     nickname: String(raw.nickname || raw.id || "未命名账号"),
     platformKey,
     platform: getPlatformLabel(platformKey),

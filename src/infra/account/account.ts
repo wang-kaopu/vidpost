@@ -30,6 +30,8 @@ export interface AccountPingResult {
   online: boolean;
   /** 平台返回的最新账号昵称。 */
   nickname?: string;
+  /** 平台返回的稳定账号 ID。 */
+  platformAccountId?: string;
 }
 
 /** 平台账号资源需要实现的统一能力。 */

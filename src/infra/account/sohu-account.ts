@@ -114,15 +114,19 @@ async function pingSohuAccount(accountFile: string): Promise<AccountPingResult> 
       if (!info || typeof info !== "object" || Array.isArray(info)) {
         throw new Error("搜狐账号信息响应格式异常：data 必须是对象");
       }
+      const platformAccountId = String(info.id ?? "").trim();
+      if (!platformAccountId) {
+        throw new Error("搜狐账号信息响应格式异常：data.id 不能为空");
+      }
       const rawNickname = info.nickName;
       if (rawNickname === undefined || rawNickname === null) {
-        return { online: true };
+        return { online: true, platformAccountId };
       }
       if (typeof rawNickname !== "string") {
         throw new Error("搜狐账号信息响应格式异常：nickName 必须是字符串");
       }
       const nickname = rawNickname.trim();
-      return nickname ? { online: true, nickname } : { online: true };
+      return nickname ? { online: true, nickname, platformAccountId } : { online: true, platformAccountId };
     }
     return { online: false };
   })();

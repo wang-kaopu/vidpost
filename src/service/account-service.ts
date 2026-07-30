@@ -10,13 +10,18 @@ import type {
   PingInput,
   Platform,
 } from "@shared/electron-api.ts";
-import { createPublishAccount, updatePublishAccount } from "@/src/api/account-api.ts";
+import {
+  createPublishAccount,
+  listPublishAccounts,
+  updatePublishAccount,
+} from "@/src/api/account-api.ts";
 import {
   createPartitionStore,
   deletePartitionMapping,
   movePartitionMapping,
   readPartitionForAccount,
   resolvePartitionForAccount,
+  switchPartitionMapping,
 } from "@/src/db/partition-store.ts";
 import { createAccountPageModel } from "@/src/page-model/account-page-model.ts";
 import type { Account } from "@/src/infra/account/account.ts";
@@ -45,6 +50,22 @@ interface AccountQueueState {
   resumePromise?: Promise<void>;
   running: boolean;
   tail: Promise<unknown>;
+}
+
+/** 账号后台窗口当前绑定的系统账号与本地状态文件。 */
+interface AccountBackendBinding {
+  accountFile: string;
+  accountId: string;
+  nickname: string;
+}
+
+/** 账号后台窗口跨多次登录探测维护的动态账号归属。 */
+export interface AccountBackendPersistenceState {
+  active: AccountBackendBinding;
+  initialAccountId: string;
+  initialNickname: string;
+  legacyBackfilled: boolean;
+  outcome?: NonNullable<OpenAccountBackendResult["outcome"]>;
 }
 
 const accountQueues = new Map<string, AccountQueueState>();
@@ -203,8 +224,71 @@ function finalizeAccountFile(accountFile: string, accountId: string | number, pl
   }
 
   fs.mkdirSync(path.dirname(targetFile), { recursive: true });
-  fs.renameSync(accountFile, targetFile);
+  fs.copyFileSync(accountFile, targetFile);
+  fs.rmSync(accountFile, { force: true });
   return targetFile;
+}
+
+/**
+ * 从在线探活结果中读取非空的平台稳定账号 ID。
+ *
+ * @param platform - 平台标识
+ * @param platformAccountId - 平台探活返回的账号 ID
+ * @returns 规范化后的平台账号 ID
+ */
+function requirePlatformAccountId(platform: Platform, platformAccountId: string | undefined): string {
+  const normalized = String(platformAccountId || "").trim();
+  if (!normalized) {
+    throw new Error(`${platform} account ping did not return platformAccountId`);
+  }
+  return normalized;
+}
+
+/**
+ * 使用仍有效的本地登录态回填同平台历史账号的稳定 ID。
+ *
+ * 无法读取或已经离线的历史账号保持原状，后续仍可在单账号探活时回填。
+ *
+ * @param platform - 平台标识
+ * @param accountResource - 平台账号探活实现
+ */
+async function backfillLegacyPlatformAccountIds(platform: Platform, accountResource: Account): Promise<void> {
+  let accounts;
+  try {
+    accounts = await listPublishAccounts();
+  } catch (error) {
+    logger.info(`[account:${platform}] legacy account list unavailable`, { error: String(error) });
+    return;
+  }
+  const partitionStore = createPartitionStore();
+  for (const remoteAccount of accounts) {
+    if (remoteAccount.platform !== platform || remoteAccount.platformAccountId?.trim()) {
+      continue;
+    }
+    const accountId = String(remoteAccount.id);
+    const accountFile = resolveAccountFilePath(accountId, platform);
+    if (!fs.existsSync(accountFile) || !readPartitionForAccount(partitionStore, accountId)) {
+      continue;
+    }
+    try {
+      const pingResult = await accountResource.ping(accountFile);
+      if (!pingResult.online) {
+        continue;
+      }
+      const platformAccountId = requirePlatformAccountId(platform, pingResult.platformAccountId);
+      const nickname = pingResult.nickname?.trim();
+      await updatePublishAccount(accountId, {
+        platform_account_id: platformAccountId,
+        status: "online",
+        ...(nickname ? { nickname } : {}),
+      });
+    } catch (error) {
+      logger.info(`[account:${platform}] legacy platform account id backfill skipped`, {
+        accountId,
+        error: String(error),
+      });
+    }
+  }
 }
 
 // 登录并创建远程账号
@@ -232,19 +316,21 @@ export async function loginAndCreateRemoteAccount(
     if (!pingResult.online) {
       throw new Error(`${platform} login verification failed: account is offline`);
     }
+    const platformAccountId = requirePlatformAccountId(platform, pingResult.platformAccountId);
     const nickname = pingResult.nickname?.trim() || undefined;
     logger.info(`登录完成，${platform} 账号在线，获取到的昵称为: ${nickname}`);
 
+    await backfillLegacyPlatformAccountIds(platform, account);
     const { remoteAccountId } = await createPublishAccount({
       ...(nickname ? { nickname } : {}),
       platform,
+      platform_account_id: platformAccountId,
       status: "online",
     });
     const effectiveNickname = nickname || String(remoteAccountId);
     const finalizedAccountFile = finalizeAccountFile(accountFile, remoteAccountId, platform);
     const accountPartition = movePartitionMapping(partitionStore, draftPartitionAccountId, String(remoteAccountId));
     await updatePublishAccount(remoteAccountId, {
-      ...(!nickname ? { nickname: effectiveNickname } : {}),
       attributes: { cookieFilePath: finalizedAccountFile, browserPartition: accountPartition },
     });
 
@@ -335,6 +421,9 @@ async function detectAndUpdateRemoteAccount(input: PingInput, accountResource: A
   const latestNickname = pingResult.online ? pingResult.nickname?.trim() : undefined;
   await updatePublishAccount(accountId, {
     status: nextStatus,
+    ...(pingResult.online
+      ? { platform_account_id: requirePlatformAccountId(platform, pingResult.platformAccountId) }
+      : {}),
     ...(latestNickname ? { nickname: latestNickname } : {}),
   });
   return createAccountPageModel({
@@ -355,25 +444,21 @@ async function detectAndUpdateRemoteAccount(input: PingInput, accountResource: A
  * 非最终探测只有在登录态有效时才替换正式账号文件；关闭窗口时始终保存当前状态，确保主动退出登录也会生效。
  *
  * @param backendWindow - 当前账号后台窗口
- * @param accountId - 系统内账号 ID
+ * @param state - 当前窗口动态绑定的账号
  * @param platform - 平台标识
- * @param nickname - 列表中的当前昵称
- * @param accountFile - 正式账号文件路径
  * @param accountResource - 平台账号实现
  * @param final - 是否为窗口关闭前的最终保存
  * @returns 当前快照是否通过平台在线校验
  */
-async function persistAccountBackendState(
+export async function persistAccountBackendState(
   backendWindow: BrowserWindow,
-  accountId: string,
+  state: AccountBackendPersistenceState,
   platform: Platform,
-  nickname: string,
-  accountFile: string,
   accountResource: Account,
   final: boolean,
 ): Promise<boolean> {
-  assertAccountQueueNotRunning(accountId);
-  const snapshotFile = `${accountFile}.${randomUUID()}.tmp`;
+  assertAccountQueueNotRunning(state.active.accountId);
+  const snapshotFile = `${state.active.accountFile}.${randomUUID()}.tmp`;
   try {
     await exportBrowserStorageState(backendWindow, snapshotFile, `${platform}-backend`);
 
@@ -391,16 +476,74 @@ async function persistAccountBackendState(
       return false;
     }
 
-    await fs.promises.mkdir(path.dirname(accountFile), { recursive: true });
-    await fs.promises.copyFile(snapshotFile, accountFile);
-    const latestNickname = pingResult.online ? pingResult.nickname?.trim() : undefined;
-    await updatePublishAccount(accountId, {
-      status: pingResult.online ? "online" : "offline",
-      ...(latestNickname && latestNickname !== nickname ? { nickname: latestNickname } : {}),
+    if (!pingResult.online) {
+      await fs.promises.rm(state.active.accountFile, { force: true });
+      const browserPartition = resolvePartitionForAccount(createPartitionStore(), state.active.accountId);
+      await updatePublishAccount(state.active.accountId, {
+        status: "offline",
+        attributes: { cookieFilePath: null, browserPartition },
+      });
+      state.outcome = "logged-out";
+      if (finalPingError) throw finalPingError;
+      return false;
+    }
+
+    const platformAccountId = requirePlatformAccountId(platform, pingResult.platformAccountId);
+    const latestNickname = pingResult.nickname?.trim();
+    if (!state.legacyBackfilled) {
+      await backfillLegacyPlatformAccountIds(platform, accountResource);
+      state.legacyBackfilled = true;
+    }
+    const { remoteAccountId } = await createPublishAccount({
+      ...(latestNickname ? { nickname: latestNickname } : {}),
+      platform,
+      platform_account_id: platformAccountId,
+      status: "online",
     });
-    if (pingResult.online) resumeAccountPublishQueue(accountId);
+    const targetAccountId = String(remoteAccountId);
+    const targetNickname = latestNickname || state.active.nickname || targetAccountId;
+    const partitionStore = createPartitionStore();
+
+    if (targetAccountId === state.active.accountId) {
+      await fs.promises.mkdir(path.dirname(state.active.accountFile), { recursive: true });
+      await fs.promises.copyFile(snapshotFile, state.active.accountFile);
+      const browserPartition = resolvePartitionForAccount(partitionStore, targetAccountId);
+      await updatePublishAccount(targetAccountId, {
+        ...(latestNickname && latestNickname !== state.active.nickname ? { nickname: latestNickname } : {}),
+        platform_account_id: platformAccountId,
+        status: "online",
+        attributes: { cookieFilePath: state.active.accountFile, browserPartition },
+      });
+      state.active.nickname = targetNickname;
+      state.outcome ??= "unchanged";
+    } else {
+      const source = state.active;
+      const targetFile = resolveAccountFilePath(targetAccountId, platform);
+      await fs.promises.mkdir(path.dirname(targetFile), { recursive: true });
+      await fs.promises.copyFile(snapshotFile, targetFile);
+      const { sourcePartition, targetPartition } = switchPartitionMapping(
+        partitionStore,
+        source.accountId,
+        targetAccountId,
+      );
+      await fs.promises.rm(source.accountFile, { force: true });
+      await updatePublishAccount(targetAccountId, {
+        ...(latestNickname ? { nickname: latestNickname } : {}),
+        platform_account_id: platformAccountId,
+        status: "online",
+        attributes: { cookieFilePath: targetFile, browserPartition: targetPartition },
+      });
+      await updatePublishAccount(source.accountId, {
+        status: "offline",
+        attributes: { cookieFilePath: null, browserPartition: sourcePartition },
+      });
+      state.active = { accountFile: targetFile, accountId: targetAccountId, nickname: targetNickname };
+      state.outcome = "switched";
+    }
+
+    resumeAccountPublishQueue(targetAccountId);
     if (finalPingError) throw finalPingError;
-    return pingResult.online;
+    return true;
   } finally {
     await fs.promises.rm(snapshotFile, { force: true }).catch(() => undefined);
   }
@@ -431,7 +574,13 @@ export async function openExistingAccountBackend(
   }
 
   const platformConfig = resolveAccountBackendPlatformConfig(input.platform);
-  return runWithAccountBackendWindow(
+  const persistenceState: AccountBackendPersistenceState = {
+    active: { accountFile, accountId: input.accountId, nickname: input.nickname },
+    initialAccountId: input.accountId,
+    initialNickname: input.nickname,
+    legacyBackfilled: false,
+  };
+  const result = await runWithAccountBackendWindow(
     {
       title: `${platformConfig.label} · ${input.nickname} · 账号后台`,
       parentWindow,
@@ -445,13 +594,22 @@ export async function openExistingAccountBackend(
         persistState: (window, final) =>
           persistAccountBackendState(
             window,
-            input.accountId,
+            persistenceState,
             input.platform,
-            input.nickname,
-            accountFile,
             accountResource,
             final,
           ),
       }),
   );
+  if (!persistenceState.outcome) {
+    return result;
+  }
+  return {
+    ...result,
+    accountId: persistenceState.active.accountId,
+    nickname: persistenceState.active.nickname,
+    outcome: persistenceState.outcome,
+    previousAccountId: persistenceState.initialAccountId,
+    previousNickname: persistenceState.initialNickname,
+  };
 }

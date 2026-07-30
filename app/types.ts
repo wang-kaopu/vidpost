@@ -20,6 +20,7 @@ export interface User {
 
 export interface AccountItem {
   id: string;
+  platformAccountId?: string;
   rawStatus?: string;
   platformKey?: string;
   platform: string;
