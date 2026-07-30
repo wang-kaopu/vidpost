@@ -1,20 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import type { NotificationCenterItem, NotificationTone } from "@/store/notification";
 import CapsuleButton from "../ui/CapsuleButton.vue";
 import IconButton from "../ui/IconButton.vue";
-
-type NotificationTone = "info" | "success" | "warning" | "error";
-
-export type NotificationCenterItem = {
-  id: string;
-  title: string;
-  message: string;
-  source?: string;
-  timestamp?: string;
-  tone?: NotificationTone;
-  unread?: boolean;
-  actionLabel?: string;
-};
 
 const props = withDefaults(defineProps<{
   items: NotificationCenterItem[];

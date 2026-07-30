@@ -2,7 +2,7 @@
 import { ChevronDown, ChevronUp } from "lucide-vue-next";
 import PlatformLogo from "../PlatformLogo.vue";
 import IconButton from "../ui/IconButton.vue";
-import type { PublishProgressPhase, PublishProgressTask } from "@/publish-progress";
+import type { PublishProgressPhase, PublishProgressTask } from "@/store/publish-progress";
 
 defineProps<{
   items: PublishProgressTask[];

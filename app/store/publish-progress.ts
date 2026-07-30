@@ -1,4 +1,5 @@
-import { computed, inject, ref, type ComputedRef, type InjectionKey, type Ref } from "vue";
+import { computed, ref } from "vue";
+import { defineStore } from "pinia";
 
 export type PublishProgressPhase =
   "waiting" | "preparing" | "queued" | "publishing" | "completed" | "scheduled" | "failed";
@@ -13,21 +14,6 @@ export type PublishProgressTaskInput = {
 };
 
 export type PublishProgressTask = PublishProgressTaskInput & { phase: PublishProgressPhase; errorMessage: string };
-
-export type PublishProgressCenterApi = {
-  items: Ref<PublishProgressTask[]>;
-  visible: Ref<boolean>;
-  collapsed: Ref<boolean>;
-  hasActiveTasks: ComputedRef<boolean>;
-  openBatch: (tasks: PublishProgressTaskInput[]) => void;
-  updatePhase: (taskId: string, phase: PublishProgressPhase) => void;
-  complete: (taskId: string) => void;
-  fail: (taskId: string, errorMessage: string) => void;
-  toggleCollapsed: () => void;
-  close: () => void;
-};
-
-export const publishProgressCenterKey: InjectionKey<PublishProgressCenterApi> = Symbol("publish-progress-center");
 
 const terminalPhases = new Set<PublishProgressPhase>(["completed", "scheduled", "failed"]);
 const unhandledPublishFailureMessage = "请前往账号后台重新登录或手动发布一次";
@@ -53,7 +39,7 @@ export function resolvePublishProgressFailureMessage(errorMessage: string): stri
  *
  * @returns 发布进度状态及操作方法
  */
-export function createPublishProgressCenter(): PublishProgressCenterApi {
+export const usePublishProgressStore = defineStore("publishProgress", () => {
   const items = ref<PublishProgressTask[]>([]);
   const visible = ref(false);
   const collapsed = ref(false);
@@ -98,17 +84,4 @@ export function createPublishProgressCenter(): PublishProgressCenterApi {
   };
 
   return { items, visible, collapsed, hasActiveTasks, openBatch, updatePhase, complete, fail, toggleCollapsed, close };
-}
-
-/**
- * 获取由应用根组件提供的发布进度状态。
- *
- * @returns 发布进度状态及操作方法
- */
-export function usePublishProgressCenter(): PublishProgressCenterApi {
-  const api = inject(publishProgressCenterKey, null);
-  if (!api) {
-    throw new Error("PublishProgressCenter 未初始化");
-  }
-  return api;
-}
+});

@@ -24,8 +24,8 @@ import {
 } from "@/api/publish";
 import { removeAccount, updateAccount } from "@/api/accounts";
 import type { PublishAccountItem, PlatformOption, BackendPlatform } from "@/api/publish";
-import { useNotificationCenter } from "@/notifications";
-import { usePublishProgressCenter } from "@/publish-progress";
+import { useNotificationStore } from "@/store/notification";
+import { usePublishProgressStore } from "@/store/publish-progress";
 import { logger } from "@/src/utils/logger";
 import { runAccountPingBatch } from "@/utils/account-ping-batch";
 import { useDialogLayer } from "../composables/useDialogLayer";
@@ -81,8 +81,8 @@ const pendingPingAccountIds = ref<string[]>([]);
 const activePingAccountIds = ref<string[]>([]);
 const backendOpeningAccountId = ref("");
 const backendWindowVisible = ref(false);
-const notificationCenter = useNotificationCenter();
-const publishProgressCenter = usePublishProgressCenter();
+const notificationCenter = useNotificationStore();
+const publishProgressCenter = usePublishProgressStore();
 const accountBackendPlatforms = new Set<string>(PLATFORMS);
 
 const pushAccountError = (title: string, message: string): void => {
@@ -365,7 +365,7 @@ const handlePingAccount = async (item: PublishAccountItem) => {
 /** 打开账号专属平台后台，并在窗口关闭后刷新账号状态。 */
 const handleOpenAccountBackend = async (item: PublishAccountItem): Promise<void> => {
   if (backendWindowVisible.value) return;
-  if (publishProgressCenter.hasActiveTasks.value) {
+  if (publishProgressCenter.hasActiveTasks) {
     notificationCenter.push({
       title: "暂时无法打开账号后台",
       message: "发布视频中, 完成后再打开",

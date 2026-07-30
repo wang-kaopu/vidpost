@@ -14,11 +14,11 @@ import { fetchWorkPublishPayload } from "@/api/works";
 import type { MenuKey } from "@/types";
 import {
   findFirstPublishQueueValidationError,
-  usePublishQueue,
+  usePublishQueueStore,
   type PublishSettings,
-} from "@/publish-queue";
-import { useNotificationCenter } from "@/notifications";
-import { usePublishProgressCenter } from "@/publish-progress";
+} from "@/store/publish-queue";
+import { useNotificationStore } from "@/store/notification";
+import { usePublishProgressStore } from "@/store/publish-progress";
 import { logger } from "@/src/utils/logger";
 import { runAccountPingBatch } from "@/utils/account-ping-batch";
 import { IMMEDIATE_PUBLISH_VALUE, validateScheduledAt } from "@/utils/publish-schedule";
@@ -34,29 +34,29 @@ const emit = defineEmits<{
   navigate: [value: MenuKey];
 }>();
 
-const publishQueue = usePublishQueue();
-const notificationCenter = useNotificationCenter();
-const publishProgressCenter = usePublishProgressCenter();
+const publishQueue = usePublishQueueStore();
+const notificationCenter = useNotificationStore();
+const publishProgressCenter = usePublishProgressStore();
 const activeAccountQueueId = ref("");
 const activeSettingsQueueId = ref("");
 const submittingPublish = ref(false);
 const publishValidationMessage = ref("");
 let publishValidationMessageTimer: number | null = null;
 const runningCheck = computed(() =>
-  publishQueue.items.value.some((item) => item.checkState.status === "checking"),
+  publishQueue.items.some((item) => item.checkState.status === "checking"),
 );
 const operationLocked = computed(() => runningCheck.value || submittingPublish.value);
 const allChecksSucceeded = computed(() =>
-  publishQueue.items.value.length > 0
-  && publishQueue.items.value.every((item) =>
+  publishQueue.items.length > 0
+  && publishQueue.items.every((item) =>
     item.checkState.status === "success" || item.checkState.status === "deferred"
   ),
 );
 const activeAccountItem = computed(() =>
-  publishQueue.items.value.find((item) => item.queueId === activeAccountQueueId.value) || null,
+  publishQueue.items.find((item) => item.queueId === activeAccountQueueId.value) || null,
 );
 const activeSettingsItem = computed(() =>
-  publishQueue.items.value.find((item) => item.queueId === activeSettingsQueueId.value) || null,
+  publishQueue.items.find((item) => item.queueId === activeSettingsQueueId.value) || null,
 );
 
 /** 显示发布检测前的首个参数错误，并在短暂展示后自动隐藏。 */
@@ -72,7 +72,7 @@ const showPublishValidationMessage = (message: string): void => {
 /** 打开指定待发布条目的发布设置抽屉。 */
 const openSettings = (queueId: string): void => {
   if (operationLocked.value) return;
-  const item = publishQueue.items.value.find((candidate) => candidate.queueId === queueId);
+  const item = publishQueue.items.find((candidate) => candidate.queueId === queueId);
   if (!item?.publishSettings.accountId) return;
   activeAccountQueueId.value = "";
   activeSettingsQueueId.value = queueId;
@@ -111,15 +111,15 @@ const saveAccount = (settings: PublishSettings): void => {
 
 /** 批量探活当前发布页绑定的账号，并把最新账号状态同步回每个作品。 */
 const runPublishChecks = async (): Promise<void> => {
-  if (operationLocked.value || !publishQueue.items.value.length) return;
+  if (operationLocked.value || !publishQueue.items.length) return;
 
-  const validationError = findFirstPublishQueueValidationError(publishQueue.items.value);
+  const validationError = findFirstPublishQueueValidationError(publishQueue.items);
   if (validationError) {
     showPublishValidationMessage(validationError);
     return;
   }
 
-  const queuedItems = [...publishQueue.items.value];
+  const queuedItems = [...publishQueue.items];
   queuedItems.forEach((item) => {
     publishQueue.updateCheckState(item.queueId, { errorMessage: "", status: "checking" });
   });
@@ -178,7 +178,7 @@ const runPublishChecks = async (): Promise<void> => {
   }
 
   queuedItems.forEach((item) => {
-    if (publishQueue.items.value.find((candidate) => candidate.queueId === item.queueId)?.checkState.status !== "checking") {
+    if (publishQueue.items.find((candidate) => candidate.queueId === item.queueId)?.checkState.status !== "checking") {
       return;
     }
 
@@ -245,7 +245,7 @@ const formatPublishFailureReason = (error: unknown): string => {
 const confirmPublish = async (): Promise<void> => {
   if (operationLocked.value || !allChecksSucceeded.value) return;
   submittingPublish.value = true;
-  const queuedItems = [...publishQueue.items.value];
+  const queuedItems = [...publishQueue.items];
 
   try {
     const publishApi = window.electronAPI?.publish;
@@ -406,19 +406,19 @@ onBeforeUnmount(() => {
   <PanelShell title="发布">
     <template #actions>
       <span
-        v-if="publishQueue.items.value.length"
+        v-if="publishQueue.items.length"
         class="inline-flex min-h-[34px] items-center rounded-full bg-primary-soft px-[13px] text-[13px] font-semibold text-primary-strong"
       >
-        {{ publishQueue.items.value.length }} 个待发布作品
+        {{ publishQueue.items.length }} 个待发布作品
       </span>
     </template>
 
     <div
-      v-if="publishQueue.items.value.length"
+      v-if="publishQueue.items.length"
       class="flex flex-col gap-4 px-7 pb-[30px] max-[900px]:px-[18px] max-[900px]:pb-6"
     >
       <article
-        v-for="item in publishQueue.items.value"
+        v-for="item in publishQueue.items"
         :key="item.queueId"
         class="grid min-h-[138px] grid-cols-[minmax(380px,1.25fr)_minmax(220px,0.65fr)_178px] items-center overflow-hidden rounded-[26px] border border-[rgba(207,221,238,0.95)] bg-[linear-gradient(110deg,rgba(248,251,255,0.98),rgba(244,248,253,0.9))] shadow-[0_16px_38px_rgba(151,174,202,0.12)] max-[1180px]:grid-cols-[minmax(320px,1.2fr)_minmax(200px,0.6fr)_150px] max-[900px]:grid-cols-[1fr_auto] max-[620px]:flex max-[620px]:flex-col max-[620px]:items-stretch"
       >
@@ -561,7 +561,7 @@ onBeforeUnmount(() => {
       leave-to-class="translate-y-3 opacity-0"
     >
       <CapsuleButton
-        v-if="publishQueue.items.value.length"
+        v-if="publishQueue.items.length"
         class="fixed right-10 bottom-8 z-[100] min-w-[136px] rounded-full! shadow-[0_16px_34px_rgba(31,111,220,0.3)] max-[680px]:right-4 max-[680px]:bottom-4"
         variant="primary"
         size="lg"

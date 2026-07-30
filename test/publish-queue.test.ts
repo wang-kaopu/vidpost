@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createPinia, setActivePinia } from "pinia";
 
 import {
-  createPublishQueue,
   findFirstPublishQueueValidationError,
-} from "@/app/publish-queue.ts";
+  usePublishQueueStore,
+} from "@/app/store/publish-queue.ts";
 import type { PublishTask } from "@/app/api/publish.ts";
 import type { WorkItem } from "@/app/types.ts";
 
@@ -44,46 +45,52 @@ const createFailedTask = (
   },
 });
 
+/** 为单个测试创建隔离的发布队列 Store。 */
+const createQueue = (): ReturnType<typeof usePublishQueueStore> => {
+  setActivePinia(createPinia());
+  return usePublishQueueStore();
+};
+
 test("发布队列将每次选择追加为独立条目", () => {
-  const queue = createPublishQueue();
+  const queue = createQueue();
   const first = createWork("1", "标题 1");
   const second = createWork("2", "标题 2");
 
   assert.equal(queue.add([first, second]), 2);
   assert.equal(queue.add([second]), 1);
-  assert.deepEqual(queue.items.value.map((item) => item.id), ["1", "2", "2"]);
-  assert.equal(new Set(queue.items.value.map((item) => item.queueId)).size, 3);
+  assert.deepEqual(queue.items.map((item) => item.id), ["1", "2", "2"]);
+  assert.equal(new Set(queue.items.map((item) => item.queueId)).size, 3);
 });
 
 test("发布队列支持删除单个条目并在退出登录时清空", () => {
-  const queue = createPublishQueue();
+  const queue = createQueue();
   const work = createWork("1", "标题 1");
   queue.add([work, work]);
-  const firstQueueId = queue.items.value[0]?.queueId;
+  const firstQueueId = queue.items[0]?.queueId;
   assert.ok(firstQueueId);
 
   queue.remove(firstQueueId);
-  assert.deepEqual(queue.items.value.map((item) => item.id), ["1"]);
+  assert.deepEqual(queue.items.map((item) => item.id), ["1"]);
 
   queue.clear();
-  assert.deepEqual(queue.items.value, []);
+  assert.deepEqual(queue.items, []);
 });
 
 test("发布队列仅删除已确认快照并保留后续新增条目", () => {
-  const queue = createPublishQueue();
+  const queue = createQueue();
   queue.add([createWork("1", "标题 1"), createWork("2", "标题 2")]);
-  const confirmedItems = [...queue.items.value];
+  const confirmedItems = [...queue.items];
   queue.add([createWork("3", "标题 3")]);
 
   queue.removeMany(confirmedItems.map((item) => item.queueId));
-  assert.deepEqual(queue.items.value.map((item) => item.id), ["3"]);
+  assert.deepEqual(queue.items.map((item) => item.id), ["3"]);
 
   queue.restore(confirmedItems);
-  assert.deepEqual(queue.items.value.map((item) => item.id), ["1", "2", "3"]);
+  assert.deepEqual(queue.items.map((item) => item.id), ["1", "2", "3"]);
 });
 
 test("发布队列按确认顺序串行准备提交", async () => {
-  const queue = createPublishQueue();
+  const queue = createQueue();
   const events: string[] = [];
   let finishFirst: (() => void) | undefined;
   const firstBarrier = new Promise<void>((resolve) => {
@@ -107,9 +114,9 @@ test("发布队列按确认顺序串行准备提交", async () => {
 });
 
 test("发布队列为所选作品保留平台专属设置", () => {
-  const queue = createPublishQueue();
+  const queue = createQueue();
   queue.add([createWork("1", "标题 1")]);
-  const queueId = queue.items.value[0]?.queueId;
+  const queueId = queue.items[0]?.queueId;
   assert.ok(queueId);
 
   queue.updateSettings(queueId, {
@@ -126,7 +133,7 @@ test("发布队列为所选作品保留平台专属设置", () => {
     visibility: "friends",
   });
 
-  assert.deepEqual(queue.items.value[0]?.publishSettings, {
+  assert.deepEqual(queue.items[0]?.publishSettings, {
     accountId: "account-1",
     accountName: "抖音账号",
     channelId: null,
@@ -142,9 +149,9 @@ test("发布队列为所选作品保留平台专属设置", () => {
 });
 
 test("发布队列复制视频和设置但不复制账号", () => {
-  const queue = createPublishQueue();
+  const queue = createQueue();
   queue.add([createWork("1", "标题 1")]);
-  const sourceQueueId = queue.items.value[0]?.queueId;
+  const sourceQueueId = queue.items[0]?.queueId;
   assert.ok(sourceQueueId);
   queue.updateSettings(sourceQueueId, {
     accountId: "account-1",
@@ -163,9 +170,9 @@ test("发布队列复制视频和设置但不复制账号", () => {
 
   queue.duplicate(sourceQueueId);
 
-  assert.equal(queue.items.value.length, 2);
-  const source = queue.items.value[0];
-  const copy = queue.items.value[1];
+  assert.equal(queue.items.length, 2);
+  const source = queue.items[0];
+  const copy = queue.items[1];
   assert.ok(source);
   assert.ok(copy);
   assert.equal(copy.id, source.id);
@@ -180,19 +187,19 @@ test("发布队列复制视频和设置但不复制账号", () => {
 });
 
 test("发布队列校验在账号探活前仅返回首个错误", () => {
-  const queue = createPublishQueue();
+  const queue = createQueue();
   queue.add([createWork("1", "第一个作品"), createWork("2", "第二个作品")]);
 
   assert.equal(
-    findFirstPublishQueueValidationError(queue.items.value),
+    findFirstPublishQueueValidationError(queue.items),
     "《第一个作品》请先添加发布账号",
   );
 });
 
 test("发布队列校验在账号探活前检查平台设置和发布时间", () => {
-  const queue = createPublishQueue();
+  const queue = createQueue();
   queue.add([createWork("1", "标题 1")]);
-  const queueId = queue.items.value[0]?.queueId;
+  const queueId = queue.items[0]?.queueId;
   assert.ok(queueId);
   queue.updateSettings(queueId, {
     accountId: "account-1",
@@ -209,55 +216,55 @@ test("发布队列校验在账号探活前检查平台设置和发布时间", ()
   });
 
   assert.equal(
-    findFirstPublishQueueValidationError(queue.items.value),
+    findFirstPublishQueueValidationError(queue.items),
     "哔哩哔哩 账号「Bilibili 账号」视频 「标题 1」必须选择投稿分区",
   );
 
   queue.updateSettings(queueId, {
-    ...queue.items.value[0]!.publishSettings,
+    ...queue.items[0]!.publishSettings,
     humanTypeId: 171,
     scheduledAt: "invalid",
   });
   assert.match(
-    findFirstPublishQueueValidationError(queue.items.value),
+    findFirstPublishQueueValidationError(queue.items),
     /发布时间格式必须为 YYYY-MM-DD HH:mm/u,
   );
 });
 
 test("发布队列保存账号检查结果并在设置变化后重置", () => {
-  const queue = createPublishQueue();
+  const queue = createQueue();
   const work = createWork("1", "标题 1");
   queue.add([work, work]);
-  const queueId = queue.items.value[0]?.queueId;
+  const queueId = queue.items[0]?.queueId;
   assert.ok(queueId);
 
   queue.updateCheckState(queueId, {
     errorMessage: "账号登录已失效",
     status: "failed",
   });
-  assert.deepEqual(queue.items.value[0]?.checkState, {
+  assert.deepEqual(queue.items[0]?.checkState, {
     errorMessage: "账号登录已失效",
     status: "failed",
   });
-  assert.deepEqual(queue.items.value[1]?.checkState, {
+  assert.deepEqual(queue.items[1]?.checkState, {
     errorMessage: "",
     status: "idle",
   });
 
-  const settings = queue.items.value[0]?.publishSettings;
+  const settings = queue.items[0]?.publishSettings;
   assert.ok(settings);
   queue.updateSettings(queueId, { ...settings, title: "修改后的标题" });
-  assert.deepEqual(queue.items.value[0]?.checkState, {
+  assert.deepEqual(queue.items[0]?.checkState, {
     errorMessage: "",
     status: "idle",
   });
 });
 
 test("发布队列从失败记录恢复全部已保存设置", () => {
-  const queue = createPublishQueue();
+  const queue = createQueue();
 
   queue.addRetry(createFailedTask("douyin", { visibility: "friends" }));
-  const item = queue.items.value[0];
+  const item = queue.items[0];
   assert.ok(item);
   const { queueId, ...rest } = item;
   assert.ok(queueId);
@@ -308,9 +315,9 @@ test("发布队列从失败记录恢复各平台专属选项", () => {
   ];
 
   for (const testCase of cases) {
-    const queue = createPublishQueue();
+    const queue = createQueue();
     queue.addRetry(createFailedTask(testCase.platform, testCase.options));
-    const settings = queue.items.value[0]?.publishSettings;
+    const settings = queue.items[0]?.publishSettings;
     assert.ok(settings);
     assert.deepEqual({
       channelId: settings.channelId,
@@ -322,19 +329,19 @@ test("发布队列从失败记录恢复各平台专属选项", () => {
 });
 
 test("发布队列将重复重试保留为独立条目", () => {
-  const queue = createPublishQueue();
+  const queue = createQueue();
   const task = createFailedTask("douyin", { visibility: "self" });
 
   queue.addRetry(task);
-  const firstQueueId = queue.items.value[0]?.queueId;
+  const firstQueueId = queue.items[0]?.queueId;
   assert.ok(firstQueueId);
   queue.updateSettings(firstQueueId, {
-    ...queue.items.value[0]!.publishSettings,
+    ...queue.items[0]!.publishSettings,
     title: "用户已经修改的标题",
   });
   queue.addRetry(task);
-  assert.equal(queue.items.value.length, 2);
-  assert.notEqual(queue.items.value[0]?.queueId, queue.items.value[1]?.queueId);
-  assert.equal(queue.items.value[0]?.publishSettings.title, "用户已经修改的标题");
-  assert.equal(queue.items.value[1]?.publishSettings.title, "历史发布标题");
+  assert.equal(queue.items.length, 2);
+  assert.notEqual(queue.items[0]?.queueId, queue.items[1]?.queueId);
+  assert.equal(queue.items[0]?.publishSettings.title, "用户已经修改的标题");
+  assert.equal(queue.items[1]?.publishSettings.title, "历史发布标题");
 });

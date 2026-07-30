@@ -8,7 +8,7 @@ import {
   type SohuChannel,
 } from "@shared/electron-api";
 import { useDialogLayer } from "@/composables/useDialogLayer";
-import type { PublishQueueItem, PublishSettings } from "@/publish-queue";
+import type { PublishQueueItem, PublishSettings } from "@/store/publish-queue";
 import { logger } from "@/src/utils/logger";
 import {
   getScheduledPublishBounds,

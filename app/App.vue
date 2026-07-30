@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, provide, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import LoginView from "./components/LoginView.vue";
 import SidebarNav from "./components/SidebarNav.vue";
 import AccountTable from "./components/AccountTable.vue";
@@ -11,12 +11,12 @@ import { clearSessionTokens, getAccessToken, getRefreshToken, setAccessToken, se
 import type { LoginForm, MenuKey, User } from "./types";
 import Work from "./components/Work/Work.vue";
 import NotificationCenter from "./components/NotificationCenter/NotificationCenter.vue";
-import { createNotificationCenter, notificationCenterKey } from "./notifications";
+import { useNotificationStore } from "./store/notification";
 import PublishProgressPanel from "./components/PublishProgressPanel/PublishProgressPanel.vue";
-import { createPublishProgressCenter, publishProgressCenterKey } from "./publish-progress";
+import { usePublishProgressStore } from "./store/publish-progress";
 import type { LaunchIntent } from "@shared/electron-api";
 import PublishView from "./components/Publish.vue";
-import { createPublishQueue, publishQueueKey } from "./publish-queue";
+import { usePublishQueueStore } from "./store/publish-queue";
 
 type AppNotificationEventDetail = {
   title: string;
@@ -35,9 +35,9 @@ let removeLaunchIntentListener: (() => void) | null = null;
 let removeNotificationEventListener: (() => void) | null = null;
 let removePublishProgressListener: (() => void) | null = null;
 let tokenRefreshFailureNotified = false;
-const notificationCenter = createNotificationCenter();
-const publishProgressCenter = createPublishProgressCenter();
-const publishQueue = createPublishQueue();
+const notificationCenter = useNotificationStore();
+const publishProgressCenter = usePublishProgressStore();
+const publishQueue = usePublishQueueStore();
 
 const pushSystemError = (title: string, message: string): void => {
   notificationCenter.push({
@@ -168,10 +168,6 @@ const handleAppNotificationEvent = (event: Event): void => {
   });
 };
 
-provide(notificationCenterKey, notificationCenter);
-provide(publishProgressCenterKey, publishProgressCenter);
-provide(publishQueueKey, publishQueue);
-
 const refreshAccessToken = async () => {
   const refreshTokenValue = getRefreshToken();
   if (!refreshTokenValue) {
@@ -261,7 +257,7 @@ onBeforeUnmount(() => {
     </div>
 
     <NotificationCenter
-      :items="notificationCenter.items.value"
+      :items="notificationCenter.items"
       title="系统通知"
       empty-text="新的发布结果会显示在这里"
       :default-collapsed="true"
@@ -271,9 +267,9 @@ onBeforeUnmount(() => {
     />
     <transition name="publish-progress-panel">
       <PublishProgressPanel
-        v-if="publishProgressCenter.visible.value && publishProgressCenter.items.value.length > 0"
-        :items="publishProgressCenter.items.value"
-        :collapsed="publishProgressCenter.collapsed.value"
+        v-if="publishProgressCenter.visible && publishProgressCenter.items.length > 0"
+        :items="publishProgressCenter.items"
+        :collapsed="publishProgressCenter.collapsed"
         @toggle-collapsed="publishProgressCenter.toggleCollapsed"
         @close="publishProgressCenter.close"
       />

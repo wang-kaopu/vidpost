@@ -11,7 +11,7 @@ import {
   type PublishAccountItem,
 } from "@/api/publish";
 import { useDialogLayer } from "@/composables/useDialogLayer";
-import type { PublishQueueItem, PublishSettings } from "@/publish-queue";
+import type { PublishQueueItem, PublishSettings } from "@/store/publish-queue";
 import CapsuleButton from "./ui/CapsuleButton.vue";
 import IconButton from "./ui/IconButton.vue";
 import StateMessage from "./ui/StateMessage.vue";

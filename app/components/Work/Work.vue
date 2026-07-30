@@ -16,8 +16,8 @@ import { fetchWorkPublishPayload, fetchWorksPage } from "@/api/works";
 import { appConfig } from "@/config";
 import { mockWorks } from "@/mock";
 import type { MenuKey, WorkItem } from "@/types";
-import { useNotificationCenter } from "@/notifications";
-import { usePublishQueue } from "@/publish-queue";
+import { useNotificationStore } from "@/store/notification";
+import { usePublishQueueStore } from "@/store/publish-queue";
 import { useDialogLayer } from "@/composables/useDialogLayer";
 
 const emit = defineEmits<{
@@ -67,8 +67,8 @@ const toggleSelect = (workId: string) => {
 };
 
 const hasSelected = computed(() => selectedWorkIds.value.size > 0);
-const notificationCenter = useNotificationCenter();
-const publishQueue = usePublishQueue();
+const notificationCenter = useNotificationStore();
+const publishQueue = usePublishQueueStore();
 
 const pushWorksError = (title: string, messageText: string): void => {
   notificationCenter.push({

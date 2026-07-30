@@ -1,8 +1,9 @@
-import { inject, ref, type InjectionKey, type Ref } from "vue";
+import { ref } from "vue";
+import { defineStore } from "pinia";
 import type { DouyinVisibility, Platform } from "@shared/electron-api";
-import type { PublishTask } from "./api/publish";
-import type { WorkItem } from "./types";
-import { validateScheduledAt } from "./utils/publish-schedule";
+import type { PublishTask } from "../api/publish";
+import type { WorkItem } from "../types";
+import { validateScheduledAt } from "../utils/publish-schedule";
 
 export type PublishSettings = {
   accountId: string;
@@ -29,22 +30,6 @@ export type PublishQueueItem = WorkItem & {
   /** 当前待发布条目的唯一标识；同一作品可对应多个独立条目。 */
   queueId: string;
 };
-
-export type PublishQueueApi = {
-  items: Ref<PublishQueueItem[]>;
-  add: (works: WorkItem[]) => number;
-  addRetry: (task: PublishTask) => void;
-  duplicate: (queueId: string) => void;
-  updateCheckState: (queueId: string, state: PublishCheckState) => void;
-  updateSettings: (queueId: string, settings: PublishSettings) => void;
-  remove: (queueId: string) => void;
-  removeMany: (queueIds: string[]) => void;
-  restore: (restoredItems: PublishQueueItem[]) => void;
-  runSubmission: <T>(submission: () => Promise<T>) => Promise<T>;
-  clear: () => void;
-};
-
-export const publishQueueKey: InjectionKey<PublishQueueApi> = Symbol("publish-queue");
 
 /**
  * 从失败发布记录恢复作品信息和已保存的平台发布参数。
@@ -223,7 +208,7 @@ export function findFirstPublishQueueValidationError(items: PublishQueueItem[]):
  *
  * @returns 待发布作品及其增删操作
  */
-export function createPublishQueue(): PublishQueueApi {
+export const usePublishQueueStore = defineStore("publishQueue", () => {
   const items = ref<PublishQueueItem[]>([]);
   let submissionTail: Promise<unknown> = Promise.resolve();
 
@@ -345,17 +330,4 @@ export function createPublishQueue(): PublishQueueApi {
     runSubmission,
     clear,
   };
-}
-
-/**
- * 获取由应用根组件提供的待发布作品队列。
- *
- * @returns 待发布作品队列
- */
-export function usePublishQueue(): PublishQueueApi {
-  const api = inject(publishQueueKey, null);
-  if (!api) {
-    throw new Error("PublishQueue 未初始化");
-  }
-  return api;
-}
+});
