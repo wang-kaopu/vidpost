@@ -4,7 +4,7 @@ import http from "node:http";
 import path from "node:path";
 import fs from "node:fs/promises";
 
-import { PublishAssetCache } from "@/src/service/publish-asset-cache.ts";
+import { PublishAssetCache } from "@/src/service/task-service.ts";
 import { TemporaryDirectoryScope } from "@/test/helpers/temporary-directory.ts";
 
 const BASE_PUBLISH_INPUT = {
