@@ -471,7 +471,12 @@ onUnmounted(() => {
               <PlatformLogo :platform="platformLabelMap[item.platform || ''] || item.platform || '未知平台'" />
             </div>
           </td>
-          <td class="records-account-cell">--</td>
+          <td
+            class="records-account-cell"
+            :title="item.attributes?.account_name || '--'"
+          >
+            {{ item.attributes?.account_name || "--" }}
+          </td>
           <td class="records-title-cell" :title="item.title || '--'">{{ item.title || "--" }}</td>
           <td class="records-status-cell">
             <span class="records-status-wrap">

@@ -657,7 +657,7 @@ useDialogLayer(() => accountDialogVisible.value);
       </template>
       <template #head>
         <tr>
-          <th>平台</th>
+          <th><span class="flex justify-center">平台</span></th>
           <th>账号昵称</th>
           <th>账号ID</th>
           <th>备注名</th>
@@ -709,30 +709,12 @@ useDialogLayer(() => accountDialogVisible.value);
             </div>
           </td>
           <td>
-            <ToneBadge :tone="statusToneMap[item.status] || 'danger'" dot>
-              {{ statusLabelMap[item.status] || item.status }}
-            </ToneBadge>
-          </td>
-          <td>
-            <div class="flex items-center justify-center gap-1">
-              <AntTooltip title="检测" placement="top" :mouse-enter-delay="0.1">
-                <IconButton
-                  size="sm"
-                  appearance="ghost"
-                  :aria-label="`检测账号 ${item.nickname}`"
-                  :disabled="Boolean(renameDialogLoading || deletingAccountId || pingingAccountId || pingingAll)"
-                  @click="handlePingAccount(item)"
-                >
-                  <TestTubeDiagonal
-                    :class="{ 'animate-pulse': getPingButtonLabel(item.id) !== '检测' }"
-                    :size="18"
-                    :stroke-width="1.9"
-                    aria-hidden="true"
-                  />
-                </IconButton>
-              </AntTooltip>
+            <div class="flex items-center gap-1">
+              <ToneBadge :tone="statusToneMap[item.status] || 'danger'" dot>
+                {{ statusLabelMap[item.status] || item.status }}
+              </ToneBadge>
               <AntTooltip
-                v-if="accountBackendPlatforms.has(item.platformKey)"
+                v-if="item.status === 'offline' && accountBackendPlatforms.has(item.platformKey)"
                 title="重新登录"
                 placement="top"
                 :mouse-enter-delay="0.1"
@@ -749,6 +731,26 @@ useDialogLayer(() => accountDialogVisible.value);
                   @click="handleOpenAccountBackend(item)"
                 >
                   <Monitor :size="18" :stroke-width="1.9" aria-hidden="true" />
+                </IconButton>
+              </AntTooltip>
+            </div>
+          </td>
+          <td>
+            <div class="flex items-center gap-1">
+              <AntTooltip title="检测" placement="top" :mouse-enter-delay="0.1">
+                <IconButton
+                  size="sm"
+                  appearance="ghost"
+                  :aria-label="`检测账号 ${item.nickname}`"
+                  :disabled="Boolean(renameDialogLoading || deletingAccountId || pingingAccountId || pingingAll)"
+                  @click="handlePingAccount(item)"
+                >
+                  <TestTubeDiagonal
+                    :class="{ 'animate-pulse': getPingButtonLabel(item.id) !== '检测' }"
+                    :size="18"
+                    :stroke-width="1.9"
+                    aria-hidden="true"
+                  />
                 </IconButton>
               </AntTooltip>
               <ActionMenu v-slot="{ close }" :panel-id="`account-actions-${item.id}`" :label="`${item.nickname}的账号操作`">
@@ -929,8 +931,6 @@ useDialogLayer(() => accountDialogVisible.value);
 .accounts-table .accounts-col-tags { width: 200px; }
 .accounts-table .accounts-col-status { width: 120px; }
 .accounts-table .accounts-col-actions { width: 174px; }
-.accounts-table :deep(th:last-child),
-.accounts-table :deep(td:last-child) { text-align: center; }
 
 .account-tags-cell { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .account-tag-chip { display: inline-flex; align-items: center; gap: 4px; min-height: 26px; padding: 0 8px 0 10px; border: 1px solid #dbe4ef; border-radius: 999px; background: #f4f8fc; color: #39506a; font-size: 13px; }
