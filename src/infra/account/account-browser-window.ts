@@ -55,7 +55,6 @@ export async function configureAccountBrowserWindow(
   const accountSession = accountWindow.webContents.session;
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Shanghai";
   accountWindow.webContents.setUserAgent(identity.userAgent);
-  await accountSession.setProxy({ mode: "direct" });
   accountSession.webRequest.onBeforeSendHeaders((details, callback) => {
     callback({
       requestHeaders: {
