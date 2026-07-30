@@ -20,6 +20,7 @@ const VOD_ENDPOINT = "https://vod.bytedanceapi.com/";
 const IMAGEX_ENDPOINT = "https://imagex.bytedanceapi.com";
 const CHUNK_CONCURRENCY = 3;
 const REQUEST_TIMEOUT = 10 * 60 * 1000;
+const DOUYIN_VERIFICATION_USER_MESSAGE = "账号需要身份验证，请前往“账号后台”进行一次人工发布";
 
 interface LogEvent {
   message?: string;
@@ -736,43 +737,7 @@ export function getDouyinVerificationErrorMessage(headers: unknown): string | nu
   } catch {
     return null;
   }
-  if (decision.account_flow !== "verify") return null;
-
-  const fields: string[] = [];
-  const userInfo =
-    decision.user_info && typeof decision.user_info === "object" && !Array.isArray(decision.user_info)
-      ? (decision.user_info as Record<string, unknown>)
-      : null;
-  let nickname = typeof userInfo?.nickname === "string" ? userInfo.nickname.trim() : "";
-  if (nickname && !/\p{Script=Han}/u.test(nickname)) {
-    const decodedNickname = Buffer.from(nickname, "latin1").toString("utf8");
-    if (!decodedNickname.includes("\uFFFD") && /\p{Script=Han}/u.test(decodedNickname)) {
-      nickname = decodedNickname;
-    }
-  }
-  if (nickname) fields.push(`账号=${nickname}`);
-
-  const eventParams =
-    decision.event_params && typeof decision.event_params === "object" && !Array.isArray(decision.event_params)
-      ? (decision.event_params as Record<string, unknown>)
-      : null;
-  const verifyReason = typeof eventParams?.verify_reason === "string" ? eventParams.verify_reason.trim() : "";
-  const verifyScene = typeof eventParams?.verify_scene === "string" ? eventParams.verify_scene.trim() : "";
-  if (verifyReason) fields.push(`验证原因=${verifyReason}`);
-  if (verifyScene) fields.push(`验证场景=${verifyScene}`);
-
-  const rawVerifyWays = decision.verify_way_name_list;
-  const verifyWays = Array.isArray(rawVerifyWays)
-    ? rawVerifyWays
-        .filter((value): value is string => typeof value === "string" && Boolean(value.trim()))
-        .map((value) => value.trim())
-        .join(",")
-    : typeof rawVerifyWays === "string"
-      ? rawVerifyWays.trim()
-      : "";
-  if (verifyWays) fields.push(`验证方式=${verifyWays}`);
-
-  return fields.length > 0 ? `账号需要身份验证：${fields.join("，")}` : "账号需要身份验证";
+  return decision.account_flow === "verify" ? DOUYIN_VERIFICATION_USER_MESSAGE : null;
 }
 
 /**
