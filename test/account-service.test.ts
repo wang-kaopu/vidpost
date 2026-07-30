@@ -78,13 +78,6 @@ function createLoginAccountResource(
   }
 }
 
-/** 模拟不存在待回填历史账号的账号列表。 */
-function mockEmptyAccountList(t: test.TestContext): void {
-  t.mock.method(apiClient, 'get', async () => ({
-    data: { code: 0, data: { is_end: true, last_id: 0, list: [] } },
-  }))
-}
-
 /** 创建可导出 Cookie 与 localStorage 的账号后台窗口替身。 */
 function createStorageExportWindow(): BrowserWindow {
   return {
@@ -111,7 +104,6 @@ function createStorageExportWindow(): BrowserWindow {
 
 test('login verifies the saved account with ping before creating the remote account', async (t) => {
   useTemporaryHome(t)
-  mockEmptyAccountList(t)
   const events: string[] = []
   const requests: Array<{
     data: Record<string, unknown> & {
@@ -123,7 +115,7 @@ test('login verifies the saved account with ping before creating the remote acco
   t.mock.method(apiClient, 'post', async (url: string, data: Record<string, unknown>) => {
     events.push('create')
     requests.push({ data, method: 'post', url })
-    return { data: { code: 0, data: { account_id: 201 } } }
+    return { data: { code: 0, data: { account_id: 201, affected_rows: 1 } } }
   })
   t.mock.method(apiClient, 'put', async (url: string, data: Record<string, unknown>) => {
     requests.push({ data, method: 'put', url })
@@ -166,7 +158,7 @@ test('login rejects an offline ping result before creating the remote account', 
   let createCalls = 0
   t.mock.method(apiClient, 'post', async () => {
     createCalls += 1
-    return { data: { code: 0, data: { account_id: 202 } } }
+    return { data: { code: 0, data: { account_id: 202, affected_rows: 1 } } }
   })
 
   await assert.rejects(
@@ -186,7 +178,7 @@ test('login propagates ping errors before creating the remote account', async (t
   let createCalls = 0
   t.mock.method(apiClient, 'post', async () => {
     createCalls += 1
-    return { data: { code: 0, data: { account_id: 203 } } }
+    return { data: { code: 0, data: { account_id: 203, affected_rows: 1 } } }
   })
 
   await assert.rejects(
@@ -203,7 +195,6 @@ test('login propagates ping errors before creating the remote account', async (t
 
 test('login uses the remote account id when ping returns no nickname', async (t) => {
   useTemporaryHome(t)
-  mockEmptyAccountList(t)
   const requests: Array<{
     data: Record<string, unknown> & {
       attributes?: { browserPartition?: unknown; cookieFilePath?: unknown }
@@ -214,7 +205,7 @@ test('login uses the remote account id when ping returns no nickname', async (t)
   }> = []
   t.mock.method(apiClient, 'post', async (url: string, data: Record<string, unknown>) => {
     requests.push({ data, method: 'post', url })
-    return { data: { code: 0, data: { account_id: 204 } } }
+    return { data: { code: 0, data: { account_id: 204, affected_rows: 0 } } }
   })
   t.mock.method(apiClient, 'put', async (url: string, data: Record<string, unknown>) => {
     requests.push({ data, method: 'put', url })
@@ -240,14 +231,13 @@ test('login uses the remote account id when ping returns no nickname', async (t)
 
 test('account backend switches the live state to an existing platform account', async (t) => {
   useTemporaryHome(t)
-  mockEmptyAccountList(t)
   createLocalAccountState('301', 'douyin')
   createLocalAccountState('302', 'douyin')
   const partitionStore = createPartitionStore()
   const originalSourcePartition = readPartitionForAccount(partitionStore, '301')
   const updates: Array<{ data: Record<string, unknown>; url: string }> = []
   t.mock.method(apiClient, 'post', async () => ({
-    data: { code: 0, data: { account_id: 302 } },
+    data: { code: 0, data: { account_id: 302, affected_rows: 2 } },
   }))
   t.mock.method(apiClient, 'put', async (url: string, data: Record<string, unknown>) => {
     updates.push({ data, url })
@@ -261,7 +251,6 @@ test('account backend switches the live state to an existing platform account', 
     },
     initialAccountId: '301',
     initialNickname: '账号 A',
-    legacyBackfilled: false,
   }
 
   const online = await persistAccountBackendState(

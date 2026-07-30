@@ -10,11 +10,7 @@ import type {
   PingInput,
   Platform,
 } from "@shared/electron-api.ts";
-import {
-  createPublishAccount,
-  listPublishAccounts,
-  updatePublishAccount,
-} from "@/src/api/account-api.ts";
+import { createPublishAccount, updatePublishAccount } from "@/src/api/account-api.ts";
 import {
   createPartitionStore,
   deletePartitionMapping,
@@ -64,7 +60,6 @@ export interface AccountBackendPersistenceState {
   active: AccountBackendBinding;
   initialAccountId: string;
   initialNickname: string;
-  legacyBackfilled: boolean;
   outcome?: NonNullable<OpenAccountBackendResult["outcome"]>;
 }
 
@@ -244,53 +239,6 @@ function requirePlatformAccountId(platform: Platform, platformAccountId: string 
   return normalized;
 }
 
-/**
- * 使用仍有效的本地登录态回填同平台历史账号的稳定 ID。
- *
- * 无法读取或已经离线的历史账号保持原状，后续仍可在单账号探活时回填。
- *
- * @param platform - 平台标识
- * @param accountResource - 平台账号探活实现
- */
-async function backfillLegacyPlatformAccountIds(platform: Platform, accountResource: Account): Promise<void> {
-  let accounts;
-  try {
-    accounts = await listPublishAccounts();
-  } catch (error) {
-    logger.info(`[account:${platform}] legacy account list unavailable`, { error: String(error) });
-    return;
-  }
-  const partitionStore = createPartitionStore();
-  for (const remoteAccount of accounts) {
-    if (remoteAccount.platform !== platform || remoteAccount.platformAccountId?.trim()) {
-      continue;
-    }
-    const accountId = String(remoteAccount.id);
-    const accountFile = resolveAccountFilePath(accountId, platform);
-    if (!fs.existsSync(accountFile) || !readPartitionForAccount(partitionStore, accountId)) {
-      continue;
-    }
-    try {
-      const pingResult = await accountResource.ping(accountFile);
-      if (!pingResult.online) {
-        continue;
-      }
-      const platformAccountId = requirePlatformAccountId(platform, pingResult.platformAccountId);
-      const nickname = pingResult.nickname?.trim();
-      await updatePublishAccount(accountId, {
-        platform_account_id: platformAccountId,
-        status: "online",
-        ...(nickname ? { nickname } : {}),
-      });
-    } catch (error) {
-      logger.info(`[account:${platform}] legacy platform account id backfill skipped`, {
-        accountId,
-        error: String(error),
-      });
-    }
-  }
-}
-
 // 登录并创建远程账号
 export async function loginAndCreateRemoteAccount(
   platform: Platform,
@@ -320,13 +268,13 @@ export async function loginAndCreateRemoteAccount(
     const nickname = pingResult.nickname?.trim() || undefined;
     logger.info(`登录完成，${platform} 账号在线，获取到的昵称为: ${nickname}`);
 
-    await backfillLegacyPlatformAccountIds(platform, account);
-    const { remoteAccountId } = await createPublishAccount({
+    const { affectedRows, remoteAccountId } = await createPublishAccount({
       ...(nickname ? { nickname } : {}),
       platform,
       platform_account_id: platformAccountId,
       status: "online",
     });
+    const isExistingAccount = affectedRows !== 1;
     const effectiveNickname = nickname || String(remoteAccountId);
     const finalizedAccountFile = finalizeAccountFile(accountFile, remoteAccountId, platform);
     const accountPartition = movePartitionMapping(partitionStore, draftPartitionAccountId, String(remoteAccountId));
@@ -334,7 +282,7 @@ export async function loginAndCreateRemoteAccount(
       attributes: { cookieFilePath: finalizedAccountFile, browserPartition: accountPartition },
     });
 
-    logger.info("创建发布账号成功，远程账号ID:", remoteAccountId);
+    logger.info(isExistingAccount ? "重新登录发布账号成功，远程账号ID:" : "创建发布账号成功，远程账号ID:", remoteAccountId);
 
     return createAccountPageModel({
       id: remoteAccountId,
@@ -490,10 +438,6 @@ export async function persistAccountBackendState(
 
     const platformAccountId = requirePlatformAccountId(platform, pingResult.platformAccountId);
     const latestNickname = pingResult.nickname?.trim();
-    if (!state.legacyBackfilled) {
-      await backfillLegacyPlatformAccountIds(platform, accountResource);
-      state.legacyBackfilled = true;
-    }
     const { remoteAccountId } = await createPublishAccount({
       ...(latestNickname ? { nickname: latestNickname } : {}),
       platform,
@@ -578,7 +522,6 @@ export async function openExistingAccountBackend(
     active: { accountFile, accountId: input.accountId, nickname: input.nickname },
     initialAccountId: input.accountId,
     initialNickname: input.nickname,
-    legacyBackfilled: false,
   };
   const result = await runWithAccountBackendWindow(
     {
