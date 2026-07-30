@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
-import { Tooltip as AntTooltip } from "ant-design-vue";
+import { Input as AntInput, Select as AntSelect, Tooltip as AntTooltip } from "ant-design-vue";
 import { Download, Info, LayoutList, RefreshCw, Search, Trash2 } from "lucide-vue-next";
 import PlatformLogo from "./PlatformLogo.vue";
 import CapsuleButton from "./ui/CapsuleButton.vue";
-import SelectField from "./ui/SelectField.vue";
 import TextInput from "./ui/TextInput.vue";
 import CircleCheckbox from "./ui/CircleCheckbox.vue";
 import ActionMenu from "./ui/ActionMenu.vue";
@@ -43,8 +42,8 @@ const pushRecordsError = (title: string, message: string): void => {
 };
 
 const titleFilter = ref("");
-const platformFilter = ref("");
-const categoryFilter = ref("");
+const platformFilter = ref<string>();
+const categoryFilter = ref<string>();
 const scheduledStart = ref("");
 const scheduledEnd = ref("");
 const activeRecordFilterCount = computed(
@@ -52,6 +51,9 @@ const activeRecordFilterCount = computed(
     .filter(Boolean).length,
 );
 const platformOptions = ref<{ id: string; key: string; label: string }[]>([]);
+const platformFilterOptions = computed(() =>
+  platformOptions.value.map(({ key, label }) => ({ value: key, label })),
+);
 
 const categoryOptions = [
   { value: "talking_head_video", label: "真人口播视频" },
@@ -162,15 +164,17 @@ const items = computed(() => {
     result = result.filter((item: PublishTask) => item.title?.toLowerCase().includes(title));
   }
 
-  if (platformFilter.value) {
+  const selectedPlatform = platformFilter.value;
+  if (selectedPlatform) {
     result = result.filter((item: PublishTask) => {
       const key = String(item.platform || "").trim().toLowerCase();
-      return key === platformFilter.value;
+      return key === selectedPlatform;
     });
   }
 
-  if (categoryFilter.value) {
-    result = result.filter((item: PublishTask) => item.video_type === categoryFilter.value);
+  const selectedCategory = categoryFilter.value;
+  if (selectedCategory) {
+    result = result.filter((item: PublishTask) => item.video_type === selectedCategory);
   }
 
   if (scheduledStart.value || scheduledEnd.value) {
@@ -225,8 +229,8 @@ const loadRecords = async () => {
 
 const resetFilters = () => {
   titleFilter.value = "";
-  platformFilter.value = "";
-  categoryFilter.value = "";
+  platformFilter.value = undefined;
+  categoryFilter.value = undefined;
   scheduledStart.value = "";
   scheduledEnd.value = "";
 };
@@ -359,21 +363,27 @@ onUnmounted(() => {
           <div class="grid grid-cols-6 gap-4 max-[900px]:grid-cols-1">
             <label class="col-span-2 flex flex-col gap-2 max-[900px]:col-span-1">
               <span class="text-xs font-semibold text-ink-muted">标题</span>
-              <TextInput v-model="titleFilter" type="text" placeholder="搜索标题" />
+              <AntInput v-model:value="titleFilter" allow-clear placeholder="搜索标题" />
             </label>
             <label class="col-span-2 flex flex-col gap-2 max-[900px]:col-span-1">
               <span class="text-xs font-semibold text-ink-muted">平台</span>
-              <SelectField v-model="platformFilter" :class="{ 'text-ink-faint': !platformFilter }">
-                <option value="" disabled hidden>选择平台</option>
-                <option v-for="p in platformOptions" :key="p.key" :value="p.key">{{ p.label }}</option>
-              </SelectField>
+              <AntSelect
+                v-model:value="platformFilter"
+                allow-clear
+                class="w-full"
+                placeholder="选择平台"
+                :options="platformFilterOptions"
+              />
             </label>
             <label class="col-span-2 flex flex-col gap-2 max-[900px]:col-span-1">
               <span class="text-xs font-semibold text-ink-muted">视频类别</span>
-              <SelectField v-model="categoryFilter" :class="{ 'text-ink-faint': !categoryFilter }">
-                <option value="" disabled hidden>选择类别</option>
-                <option v-for="c in categoryOptions" :key="c.value" :value="c.value">{{ c.label }}</option>
-              </SelectField>
+              <AntSelect
+                v-model:value="categoryFilter"
+                allow-clear
+                class="w-full"
+                placeholder="选择类别"
+                :options="categoryOptions"
+              />
             </label>
             <fieldset class="col-span-6 grid grid-cols-2 gap-3 border-0 p-0 max-[900px]:col-span-1 max-[900px]:grid-cols-1">
               <legend class="mb-2 text-xs font-semibold text-ink-muted">预约发布时间</legend>

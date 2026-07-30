@@ -2,10 +2,9 @@
 defineOptions({ name: "WorkView" });
 
 import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from "vue";
-import { message } from "ant-design-vue";
+import { Input as AntInput, Select as AntSelect, message } from "ant-design-vue";
 import { CirclePlay, RefreshCw, Search } from "lucide-vue-next";
 import CapsuleButton from "../ui/CapsuleButton.vue";
-import SelectField from "../ui/SelectField.vue";
 import TextInput from "../ui/TextInput.vue";
 import CircleCheckbox from "../ui/CircleCheckbox.vue";
 import FilterPopover from "../ui/FilterPopover.vue";
@@ -297,14 +296,17 @@ useDialogLayer(() => previewVisible.value);
           <div class="grid grid-cols-6 gap-4 max-[900px]:grid-cols-1">
             <label class="col-span-3 flex flex-col gap-2 max-[900px]:col-span-1">
               <span class="text-xs font-semibold text-ink-muted">标题</span>
-              <TextInput v-model="filterTitle" type="text" placeholder="搜索标题" />
+              <AntInput v-model:value="filterTitle" allow-clear placeholder="搜索标题" />
             </label>
             <label class="col-span-3 flex flex-col gap-2 max-[900px]:col-span-1">
               <span class="text-xs font-semibold text-ink-muted">视频类别</span>
-              <SelectField v-model="filterType" :class="{ 'text-ink-faint': !filterType }">
-                <option value="" disabled hidden>选择类别</option>
-                <option v-for="opt in videoTypeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-              </SelectField>
+              <AntSelect
+                v-model:value="filterType"
+                allow-clear
+                class="w-full"
+                placeholder="选择类别"
+                :options="videoTypeOptions"
+              />
             </label>
             <fieldset class="col-span-6 grid grid-cols-2 gap-3 border-0 p-0 max-[900px]:col-span-1 max-[900px]:grid-cols-1">
               <legend class="mb-2 text-xs font-semibold text-ink-muted">生成时间</legend>

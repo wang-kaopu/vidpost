@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { Input as AntInput, Select as AntSelect, Tooltip as AntTooltip } from "ant-design-vue";
 import { Monitor, Plus, RefreshCw, Search, SquarePen, TestTubeDiagonal, Trash2 } from "lucide-vue-next";
 import { PLATFORMS, type Platform } from "@shared/electron-api";
 import PlatformLogo from "./PlatformLogo.vue";
 import PlatformPickerDialog from "./PlatformPickerDialog.vue";
 import CapsuleButton from "./ui/CapsuleButton.vue";
-import SelectField from "./ui/SelectField.vue";
 import TextInput from "./ui/TextInput.vue";
 import ActionMenu from "./ui/ActionMenu.vue";
 import DataList from "./ui/DataList.vue";
 import FilterPopover from "./ui/FilterPopover.vue";
+import IconButton from "./ui/IconButton.vue";
 import PanelShell from "./ui/PanelShell.vue";
 import StateMessage from "./ui/StateMessage.vue";
 import ToneBadge from "./ui/ToneBadge.vue";
@@ -33,11 +34,11 @@ const loading = ref(false);
 const errorMessage = ref("");
 const allAccounts = ref<PublishAccountItem[]>([]);
 
-const filterPlatform = ref("");
+const filterPlatform = ref<string>();
 const filterNickname = ref("");
 const filterPhone = ref("");
-const filterTag = ref("");
-const filterStatus = ref("");
+const filterTag = ref<string>();
+const filterStatus = ref<string>();
 
 const activeFilterCount = computed(
   () => [filterPlatform.value, filterNickname.value.trim(), filterPhone.value.trim(), filterTag.value, filterStatus.value]
@@ -91,6 +92,13 @@ const pushAccountBatchSummary = (succeeded: number, failed: number, pending: num
 };
 
 const statusLabelMap: Record<string, string> = { online: "在线", success: "成功", offline: "离线" };
+const platformFilterOptions = computed(() =>
+  platformOptions.value.map(({ key, label }) => ({ value: key, label })),
+);
+const tagFilterOptions = computed(() => tagOptions.value.map((tag) => ({ value: tag, label: tag })));
+const statusFilterOptions = computed(() =>
+  statusOptions.value.map((status) => ({ value: status, label: statusLabelMap[status] || status })),
+);
 
 const statusToneMap: Record<string, "success" | "danger"> = {
   online: "success",
@@ -100,8 +108,9 @@ const statusToneMap: Record<string, "success" | "danger"> = {
 
 const filteredAccounts = computed(() => {
   let result = [...allAccounts.value];
-  if (filterPlatform.value) {
-    result = result.filter((a) => a.platformKey === filterPlatform.value);
+  const selectedPlatform = filterPlatform.value;
+  if (selectedPlatform) {
+    result = result.filter((a) => a.platformKey === selectedPlatform);
   }
   if (filterNickname.value.trim()) {
     const text = filterNickname.value.trim().toLowerCase();
@@ -111,11 +120,13 @@ const filteredAccounts = computed(() => {
     const text = filterPhone.value.trim();
     result = result.filter((a) => a.phoneNumber.includes(text));
   }
-  if (filterTag.value) {
-    result = result.filter((a) => a.tags.includes(filterTag.value));
+  const selectedTag = filterTag.value;
+  if (selectedTag) {
+    result = result.filter((a) => a.tags.includes(selectedTag));
   }
-  if (filterStatus.value) {
-    result = result.filter((a) => a.status === filterStatus.value);
+  const selectedStatus = filterStatus.value;
+  if (selectedStatus) {
+    result = result.filter((a) => a.status === selectedStatus);
   }
   return result;
 });
@@ -182,11 +193,11 @@ const handleSearch = () => {
 };
 
 const handleReset = () => {
-  filterPlatform.value = "";
+  filterPlatform.value = undefined;
   filterNickname.value = "";
   filterPhone.value = "";
-  filterTag.value = "";
-  filterStatus.value = "";
+  filterTag.value = undefined;
+  filterStatus.value = undefined;
   page.value = 1;
 };
 
@@ -542,32 +553,41 @@ useDialogLayer(() => accountDialogVisible.value);
           <div class="grid grid-cols-6 gap-4 max-[900px]:grid-cols-1">
             <label class="col-span-2 flex flex-col gap-2 max-[900px]:col-span-1">
               <span class="text-xs font-semibold text-ink-muted">平台</span>
-              <SelectField v-model="filterPlatform" :class="{ 'text-ink-faint': !filterPlatform }">
-                <option value="" disabled hidden>选择平台</option>
-                <option v-for="p in platformOptions" :key="p.key" :value="p.key">{{ p.label }}</option>
-              </SelectField>
+              <AntSelect
+                v-model:value="filterPlatform"
+                allow-clear
+                class="w-full"
+                placeholder="选择平台"
+                :options="platformFilterOptions"
+              />
             </label>
             <label class="col-span-2 flex flex-col gap-2 max-[900px]:col-span-1">
               <span class="text-xs font-semibold text-ink-muted">账号昵称</span>
-              <TextInput v-model="filterNickname" type="text" placeholder="搜索账号昵称" />
+              <AntInput v-model:value="filterNickname" allow-clear placeholder="搜索账号昵称" />
             </label>
             <label class="col-span-2 flex flex-col gap-2 max-[900px]:col-span-1">
               <span class="text-xs font-semibold text-ink-muted">手机号</span>
-              <TextInput v-model="filterPhone" type="text" placeholder="搜索手机号" />
+              <AntInput v-model:value="filterPhone" allow-clear placeholder="搜索手机号" />
             </label>
             <label class="col-span-3 flex flex-col gap-2 max-[900px]:col-span-1">
               <span class="text-xs font-semibold text-ink-muted">标签</span>
-              <SelectField v-model="filterTag" :class="{ 'text-ink-faint': !filterTag }">
-                <option value="" disabled hidden>选择标签</option>
-                <option v-for="tag in tagOptions" :key="tag" :value="tag">{{ tag }}</option>
-              </SelectField>
+              <AntSelect
+                v-model:value="filterTag"
+                allow-clear
+                class="w-full"
+                placeholder="选择标签"
+                :options="tagFilterOptions"
+              />
             </label>
             <label class="col-span-3 flex flex-col gap-2 max-[900px]:col-span-1">
               <span class="text-xs font-semibold text-ink-muted">状态</span>
-              <SelectField v-model="filterStatus" :class="{ 'text-ink-faint': !filterStatus }">
-                <option value="" disabled hidden>选择状态</option>
-                <option v-for="s in statusOptions" :key="s" :value="s">{{ statusLabelMap[s] || s }}</option>
-              </SelectField>
+              <AntSelect
+                v-model:value="filterStatus"
+                allow-clear
+                class="w-full"
+                placeholder="选择状态"
+                :options="statusFilterOptions"
+              />
             </label>
           </div>
 
@@ -590,14 +610,13 @@ useDialogLayer(() => accountDialogVisible.value);
         </CapsuleButton>
     </template>
 
-    <DataList :columns="8" min-width="1080px" table-class="accounts-table">
+    <DataList :columns="7" min-width="1080px" table-class="accounts-table">
       <template #columns>
         <colgroup>
           <col class="accounts-col-platform" />
           <col class="accounts-col-nickname" />
           <col class="accounts-col-id" />
           <col class="accounts-col-remark" />
-          <col class="accounts-col-phone" />
           <col class="accounts-col-tags" />
           <col class="accounts-col-status" />
           <col class="accounts-col-actions" />
@@ -609,20 +628,19 @@ useDialogLayer(() => accountDialogVisible.value);
           <th>账号昵称</th>
           <th>账号ID</th>
           <th>备注名</th>
-          <th>手机号</th>
           <th>标签</th>
           <th>状态</th>
           <th>操作</th>
         </tr>
       </template>
         <tr v-if="loading && !pagedAccounts.length">
-          <StateMessage as="td" variant="table" colspan="8">正在加载账号列表...</StateMessage>
+          <StateMessage as="td" variant="table" colspan="7">正在加载账号列表...</StateMessage>
         </tr>
         <tr v-else-if="errorMessage && !allAccounts.length">
-          <StateMessage as="td" variant="table" tone="danger" colspan="8">{{ errorMessage }}</StateMessage>
+          <StateMessage as="td" variant="table" tone="danger" colspan="7">{{ errorMessage }}</StateMessage>
         </tr>
         <tr v-else-if="!pagedAccounts.length">
-          <StateMessage as="td" variant="table" colspan="8">暂无账号数据</StateMessage>
+          <StateMessage as="td" variant="table" colspan="7">暂无账号数据</StateMessage>
         </tr>
         <tr v-for="item in pagedAccounts" :key="item.id">
           <td>
@@ -631,15 +649,14 @@ useDialogLayer(() => accountDialogVisible.value);
             </div>
           </td>
           <td>{{ item.nickname }}</td>
-          <td>{{ item.id }}</td>
           <td>
-            <span :class="{ 'text-slate-400': item.remarkName === '--' }">
-              {{ item.remarkName === "--" ? "未设置" : item.remarkName }}
+            <span class="block truncate" :title="item.platformAccountId || '--'">
+              {{ item.platformAccountId || "--" }}
             </span>
           </td>
           <td>
-            <span :class="{ 'text-slate-400': item.phoneNumber === '--' }">
-              {{ item.phoneNumber === "--" ? "未设置" : item.phoneNumber }}
+            <span :class="{ 'text-slate-400': item.remarkName === '--' }">
+              {{ item.remarkName === "--" ? "未设置" : item.remarkName }}
             </span>
           </td>
           <td>
@@ -664,52 +681,80 @@ useDialogLayer(() => accountDialogVisible.value);
             </ToneBadge>
           </td>
           <td>
-            <ActionMenu v-slot="{ close }" :panel-id="`account-actions-${item.id}`" :label="`${item.nickname}的账号操作`">
-              <button
+            <div class="flex items-center justify-center gap-1">
+              <AntTooltip title="检测" placement="top" :mouse-enter-delay="0.1">
+                <IconButton
+                  size="sm"
+                  appearance="ghost"
+                  :aria-label="`检测账号 ${item.nickname}`"
+                  :disabled="Boolean(renameDialogLoading || deletingAccountId || pingingAccountId || pingingAll)"
+                  @click="handlePingAccount(item)"
+                >
+                  <TestTubeDiagonal
+                    :class="{ 'animate-pulse': getPingButtonLabel(item.id) !== '检测' }"
+                    :size="18"
+                    :stroke-width="1.9"
+                    aria-hidden="true"
+                  />
+                </IconButton>
+              </AntTooltip>
+              <AntTooltip
                 v-if="accountBackendPlatforms.has(item.platformKey)"
-                type="button"
-                role="menuitem"
-                class="text-primary-strong disabled:text-ink-faint"
-                :disabled="
-                  Boolean(
-                    renameDialogLoading || deletingAccountId || pingingAccountId || pingingAll || backendWindowVisible,
-                  )
-                "
-                @click="close(); handleOpenAccountBackend(item)"
+                title="重新登录"
+                placement="top"
+                :mouse-enter-delay="0.1"
               >
-                <Monitor :size="18" :stroke-width="1.9" aria-hidden="true" />
-                {{ backendOpeningAccountId === item.id ? "打开中..." : "账号后台" }}
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                class="text-primary-strong disabled:text-ink-faint"
-                :disabled="Boolean(renameDialogLoading || deletingAccountId || pingingAccountId || pingingAll)"
-                @click="close(); openRenameDialog(item)"
-              >
-                <SquarePen :size="18" :stroke-width="1.9" aria-hidden="true" />
-                修改备注
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                class="text-primary-strong disabled:text-ink-faint"
-                :disabled="Boolean(renameDialogLoading || deletingAccountId || pingingAccountId || pingingAll)"
-                @click="close(); handlePingAccount(item)"
-              >
-                <TestTubeDiagonal :size="18" :stroke-width="1.9" aria-hidden="true" />
-                {{ getPingButtonLabel(item.id) }}
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                class="text-[#d13e42] disabled:text-ink-faint"
-                :disabled="Boolean(renameDialogLoading || deletingAccountId || pingingAccountId || pingingAll)"
-                @click="close(); handleDeleteAccount(item)"
-              >
-                <Trash2 :size="18" :stroke-width="1.9" aria-hidden="true" /> 删除
-              </button>
-            </ActionMenu>
+                <IconButton
+                  size="sm"
+                  appearance="ghost"
+                  :aria-label="`重新登录账号 ${item.nickname}`"
+                  :disabled="
+                    Boolean(
+                      renameDialogLoading || deletingAccountId || pingingAccountId || pingingAll || backendWindowVisible,
+                    )
+                  "
+                  @click="handleOpenAccountBackend(item)"
+                >
+                  <Monitor :size="18" :stroke-width="1.9" aria-hidden="true" />
+                </IconButton>
+              </AntTooltip>
+              <ActionMenu v-slot="{ close }" :panel-id="`account-actions-${item.id}`" :label="`${item.nickname}的账号操作`">
+                <button
+                  v-if="accountBackendPlatforms.has(item.platformKey)"
+                  type="button"
+                  role="menuitem"
+                  class="text-primary-strong disabled:text-ink-faint"
+                  :disabled="
+                    Boolean(
+                      renameDialogLoading || deletingAccountId || pingingAccountId || pingingAll || backendWindowVisible,
+                    )
+                  "
+                  @click="close(); handleOpenAccountBackend(item)"
+                >
+                  <Monitor :size="18" :stroke-width="1.9" aria-hidden="true" />
+                  {{ backendOpeningAccountId === item.id ? "打开中..." : "账号后台" }}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  class="text-primary-strong disabled:text-ink-faint"
+                  :disabled="Boolean(renameDialogLoading || deletingAccountId || pingingAccountId || pingingAll)"
+                  @click="close(); openRenameDialog(item)"
+                >
+                  <SquarePen :size="18" :stroke-width="1.9" aria-hidden="true" />
+                  修改备注
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  class="text-[#d13e42] disabled:text-ink-faint"
+                  :disabled="Boolean(renameDialogLoading || deletingAccountId || pingingAccountId || pingingAll)"
+                  @click="close(); handleDeleteAccount(item)"
+                >
+                  <Trash2 :size="18" :stroke-width="1.9" aria-hidden="true" /> 删除
+                </button>
+              </ActionMenu>
+            </div>
           </td>
         </tr>
     </DataList>
@@ -855,14 +900,13 @@ useDialogLayer(() => accountDialogVisible.value);
 </template>
 
 <style scoped>
-.accounts-table .accounts-col-platform { width: 68px; }
-.accounts-table .accounts-col-nickname { width: 160px; }
-.accounts-table .accounts-col-status { width: 100px; }
-.accounts-table .accounts-col-id { width: 88px; }
-.accounts-table .accounts-col-remark { width: 120px; }
-.accounts-table .accounts-col-phone { width: 140px; }
-.accounts-table .accounts-col-tags { width: 240px; }
-.accounts-table .accounts-col-actions { width: 72px; }
+.accounts-table .accounts-col-platform { width: 76px; }
+.accounts-table .accounts-col-nickname { width: 190px; }
+.accounts-table .accounts-col-id { width: 190px; }
+.accounts-table .accounts-col-remark { width: 130px; }
+.accounts-table .accounts-col-tags { width: 200px; }
+.accounts-table .accounts-col-status { width: 120px; }
+.accounts-table .accounts-col-actions { width: 174px; }
 .accounts-table :deep(th:last-child),
 .accounts-table :deep(td:last-child) { text-align: center; }
 
