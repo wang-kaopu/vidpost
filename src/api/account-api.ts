@@ -14,12 +14,9 @@ export async function createPublishAccount(input: Record<string, unknown>) {
   if (typeof remoteAccountId !== 'number' || !Number.isInteger(remoteAccountId)) {
     throw new Error('create publish account did not return a valid account_id')
   }
-  const affectedRows = data?.affected_rows
-  if (typeof affectedRows !== 'number' || !Number.isInteger(affectedRows) || ![0, 1, 2].includes(affectedRows)) {
-    throw new Error('create publish account did not return a valid affected_rows')
-  }
+  const isInserted = data?.is_inserted
   return {
-    affectedRows,
+    isInserted,
     remoteAccountId,
     raw: payload,
   }

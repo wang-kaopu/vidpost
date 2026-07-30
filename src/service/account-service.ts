@@ -268,13 +268,12 @@ export async function loginAndCreateRemoteAccount(
     const nickname = pingResult.nickname?.trim() || undefined;
     logger.info(`登录完成，${platform} 账号在线，获取到的昵称为: ${nickname}`);
 
-    const { affectedRows, remoteAccountId } = await createPublishAccount({
+    const { isInserted, remoteAccountId } = await createPublishAccount({
       ...(nickname ? { nickname } : {}),
       platform,
       platform_account_id: platformAccountId,
       status: "online",
     });
-    const isExistingAccount = affectedRows !== 1;
     const effectiveNickname = nickname || String(remoteAccountId);
     const finalizedAccountFile = finalizeAccountFile(accountFile, remoteAccountId, platform);
     const accountPartition = movePartitionMapping(partitionStore, draftPartitionAccountId, String(remoteAccountId));
@@ -282,7 +281,7 @@ export async function loginAndCreateRemoteAccount(
       attributes: { cookieFilePath: finalizedAccountFile, browserPartition: accountPartition },
     });
 
-    logger.info(isExistingAccount ? "重新登录发布账号成功，远程账号ID:" : "创建发布账号成功，远程账号ID:", remoteAccountId);
+    logger.info(!isInserted ? "重新登录发布账号成功，远程账号ID:" : "创建发布账号成功，远程账号ID:", remoteAccountId);
 
     return createAccountPageModel({
       id: remoteAccountId,
