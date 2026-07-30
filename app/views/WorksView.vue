@@ -1,28 +1,23 @@
 <script setup lang="ts">
-defineOptions({ name: "WorkView" });
+defineOptions({ name: "WorksView" });
 
 import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from "vue";
+import { useRouter } from "vue-router";
 import { Input as AntInput, Select as AntSelect, message } from "ant-design-vue";
 import { CirclePlay, RefreshCw, Search } from "lucide-vue-next";
-import CapsuleButton from "../ui/CapsuleButton.vue";
-import TextInput from "../ui/TextInput.vue";
-import CircleCheckbox from "../ui/CircleCheckbox.vue";
-import FilterPopover from "../ui/FilterPopover.vue";
-import PanelShell from "../ui/PanelShell.vue";
-import IconButton from "../ui/IconButton.vue";
-import ToneBadge from "../ui/ToneBadge.vue";
-import BottomFloatingBar from "../ui/BottomFloatingBar.vue";
+import BottomFloatingBar from "@/components/ui/BottomFloatingBar.vue";
+import CapsuleButton from "@/components/ui/CapsuleButton.vue";
+import CircleCheckbox from "@/components/ui/CircleCheckbox.vue";
+import FilterPopover from "@/components/ui/FilterPopover.vue";
+import IconButton from "@/components/ui/IconButton.vue";
+import PanelShell from "@/components/ui/PanelShell.vue";
+import TextInput from "@/components/ui/TextInput.vue";
+import ToneBadge from "@/components/ui/ToneBadge.vue";
 import { fetchWorkPublishPayload, fetchWorksPage } from "@/api/works";
-import { appConfig } from "@/config";
-import { mockWorks } from "@/mock";
-import type { MenuKey, WorkItem } from "@/types";
+import type { WorkItem } from "@/types";
 import { useNotificationStore } from "@/store/notification";
 import { usePublishQueueStore } from "@/store/publish-queue";
 import { useDialogLayer } from "@/composables/useDialogLayer";
-
-const emit = defineEmits<{
-  navigate: [value: MenuKey];
-}>();
 
 const works = ref<WorkItem[]>([]);
 const loading = ref(false);
@@ -50,7 +45,7 @@ const videoTypeOptions = [
 
 let observer: IntersectionObserver | null = null;
 
-const worksList = computed(() => (appConfig.isMockMode ? mockWorks : works.value));
+const worksList = computed(() => works.value);
 const isEnd = computed(() => reachedEnd.value);
 
 // 批量选择
@@ -69,6 +64,7 @@ const toggleSelect = (workId: string) => {
 const hasSelected = computed(() => selectedWorkIds.value.size > 0);
 const notificationCenter = useNotificationStore();
 const publishQueue = usePublishQueueStore();
+const router = useRouter();
 
 const pushWorksError = (title: string, messageText: string): void => {
   notificationCenter.push({
@@ -88,7 +84,7 @@ const selectedWorks = computed(() =>
 const addSelectedWorksToPublish = (): void => {
   publishQueue.add(selectedWorks.value);
   selectedWorkIds.value = new Set();
-  emit("navigate", "publish");
+  void router.push({ name: "publish" });
 };
 
 const columnCount = ref(5);
@@ -165,9 +161,6 @@ const playVideo = async (item: WorkItem) => {
 };
 
 async function loadWorksPage(mode: "initial" | "more"): Promise<void> {
-  if (appConfig.isMockMode) {
-    return;
-  }
   if (mode === "more" && (loading.value || loadingMore.value || reachedEnd.value)) {
     return;
   }
@@ -208,7 +201,7 @@ async function setupObserver(): Promise<void> {
   cleanupObserver();
   await nextTick();
 
-  if (appConfig.isMockMode || !sentinelRef.value || typeof IntersectionObserver === "undefined") {
+  if (!sentinelRef.value || typeof IntersectionObserver === "undefined") {
     return;
   }
 
@@ -383,13 +376,13 @@ useDialogLayer(() => previewVisible.value);
     </div>
 
     <!-- 初次加载错误 -->
-    <div v-else-if="loadError && worksList.length === 0 && !appConfig.isMockMode" class="load-status">
+    <div v-else-if="loadError && worksList.length === 0" class="load-status">
       <span>{{ loadError }}</span>
       <CapsuleButton variant="secondary" type="button" @click="reloadWorks">重新加载</CapsuleButton>
     </div>
 
     <!-- 分页加载状态 -->
-    <div v-else-if="!appConfig.isMockMode && worksList.length > 0" ref="sentinelRef" class="load-status">
+    <div v-else-if="worksList.length > 0" ref="sentinelRef" class="load-status">
       <span v-if="loadingMore">加载中...</span>
       <span v-else-if="loadError">{{ loadError }}</span>
       <span v-else-if="isEnd" class="no-more">没有更多了</span>
@@ -432,4 +425,4 @@ useDialogLayer(() => previewVisible.value);
   </teleport>
 </template>
 
-<style scoped src="./Work.css"></style>
+<style scoped src="./WorksView.css"></style>

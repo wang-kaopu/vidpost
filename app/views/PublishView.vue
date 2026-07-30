@@ -3,6 +3,7 @@
 defineOptions({ name: "PublishView" });
 
 import { computed, onBeforeUnmount, ref } from "vue";
+import { useRouter } from "vue-router";
 import { CircleCheck, CircleX, Copy, ListTodo, LoaderCircle, Plus, ShieldCheck, Trash2, Video } from "lucide-vue-next";
 import type { BasePublishInput, PublishInput } from "@shared/electron-api";
 import {
@@ -11,7 +12,6 @@ import {
   type PublishAccountItem,
 } from "@/api/publish";
 import { fetchWorkPublishPayload } from "@/api/works";
-import type { MenuKey } from "@/types";
 import {
   findFirstPublishQueueValidationError,
   usePublishQueueStore,
@@ -22,21 +22,18 @@ import { usePublishProgressStore } from "@/store/publish-progress";
 import { logger } from "@/src/utils/logger";
 import { runAccountPingBatch } from "@/utils/account-ping-batch";
 import { IMMEDIATE_PUBLISH_VALUE, validateScheduledAt } from "@/utils/publish-schedule";
-import CapsuleButton from "./ui/CapsuleButton.vue";
-import BottomFloatingBar from "./ui/BottomFloatingBar.vue";
-import PanelShell from "./ui/PanelShell.vue";
-import ToneBadge from "./ui/ToneBadge.vue";
-import PlatformLogo from "./PlatformLogo.vue";
-import PublishAccountPickerDrawer from "./PublishAccountPickerDrawer.vue";
-import PublishSettingsDrawer from "./PublishSettingsDrawer.vue";
-
-const emit = defineEmits<{
-  navigate: [value: MenuKey];
-}>();
+import PlatformLogo from "@/components/PlatformLogo.vue";
+import PublishAccountPickerDrawer from "@/components/PublishAccountPickerDrawer.vue";
+import PublishSettingsDrawer from "@/components/PublishSettingsDrawer.vue";
+import BottomFloatingBar from "@/components/ui/BottomFloatingBar.vue";
+import CapsuleButton from "@/components/ui/CapsuleButton.vue";
+import PanelShell from "@/components/ui/PanelShell.vue";
+import ToneBadge from "@/components/ui/ToneBadge.vue";
 
 const publishQueue = usePublishQueueStore();
 const notificationCenter = useNotificationStore();
 const publishProgressCenter = usePublishProgressStore();
+const router = useRouter();
 const activeAccountQueueId = ref("");
 const activeSettingsQueueId = ref("");
 const submittingPublish = ref(false);
@@ -539,7 +536,7 @@ onBeforeUnmount(() => {
       </span>
       <h3 class="mt-5 mb-2 text-xl text-[#213047]">还没有待发布作品</h3>
       <p class="mt-0 mb-[22px] text-sm text-[#7a8798]">前往作品页勾选已完成的作品，然后点击“加入发布”。</p>
-      <CapsuleButton variant="primary" size="md" type="button" @click="emit('navigate', 'works')">
+      <CapsuleButton variant="primary" size="md" type="button" @click="router.push({ name: 'works' })">
         前往作品
       </CapsuleButton>
     </div>

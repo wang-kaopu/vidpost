@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import PlatformLogo from "./PlatformLogo.vue";
-import DialogShell from "./ui/DialogShell.vue";
-import StateMessage from "./ui/StateMessage.vue";
+import PlatformLogo from "@/components/PlatformLogo.vue";
+import DialogShell from "@/components/ui/DialogShell.vue";
+import StateMessage from "@/components/ui/StateMessage.vue";
 import type { PlatformItem } from "@/types";
 import { useDialogLayer } from "@/composables/useDialogLayer";
 

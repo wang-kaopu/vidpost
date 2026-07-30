@@ -3,9 +3,11 @@ import { createPinia } from "pinia";
 import App from "./App.vue";
 import "./styles.css";
 import { logger } from "./src/utils/logger";
+import { router } from "./router";
 
 const vueApp = createApp(App);
 vueApp.use(createPinia());
+vueApp.use(router);
 
 vueApp.config.errorHandler = (error, _instance, info) => {
   logger.error("renderer.vue.error 未捕获的组件异常", { error, info });

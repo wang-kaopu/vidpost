@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import type { NotificationCenterItem, NotificationTone } from "@/store/notification";
-import CapsuleButton from "../ui/CapsuleButton.vue";
-import IconButton from "../ui/IconButton.vue";
+import CapsuleButton from "@/components/ui/CapsuleButton.vue";
+import IconButton from "@/components/ui/IconButton.vue";
 
 const props = withDefaults(defineProps<{
   items: NotificationCenterItem[];

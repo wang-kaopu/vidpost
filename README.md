@@ -13,7 +13,7 @@ nvm use
 npm install
 ```
 
-前端环境变量维护在 `app/.env`，包括 API 地址、应用名称和 Mock 模式。`RENDERER_DEV_SERVER_URL` 由开发启动器按实际端口动态注入，无需手动配置。
+前端环境变量维护在 `app/.env`，包括 API 地址和应用名称。`RENDERER_DEV_SERVER_URL` 由开发启动器按实际端口动态注入，无需手动配置。
 
 ## 前端样式与 UI 组件
 
@@ -38,7 +38,15 @@ npm install -D tailwindcss @tailwindcss/vite --workspace app
 
 `DataList` 统一将表格中的 SVG 图标和平台 Logo 按原尺寸的 80% 居中显示，并保留原布局占位，业务页面不再单独调整表格图标尺寸。
 
-具有独立 CSS 文件的业务组件按组件名建立目录，并在目录内只维护同名 Vue 与 CSS，例如 `components/Work/Work.vue` 和 `components/Work/Work.css`。没有独立 CSS 的简单组件继续直接放在 `components/` 或 `components/ui/` 下。
+页面入口统一平铺在 `app/views/`，包括登录、账号、作品、发布和记录五个视图。路由表位于 `app/router/index.ts`，使用 Vue Router 4 的 hash history，保证 Vite 开发服务器与 Electron `file:` 协议共享同一套路由。需要登录的工作区视图通过路由元信息统一拦截。
+
+```bash
+npm install vue-router@4 --workspace app
+```
+
+路由入口使用 `createRouter()` 和 `createWebHashHistory()`，应用壳通过 `RouterView` 渲染当前视图，侧边栏通过 `RouterLink` 导航。
+
+业务组件统一平铺在 `app/components/`，只有无业务语义的基础组件使用 `app/components/ui/` 二级目录，不再按页面或组件名称建立其他二级目录。具有独立 CSS 的视图或业务组件将同名 Vue 与 CSS 文件放在同一目录，例如 `views/WorksView.vue` 与 `views/WorksView.css`、`components/NotificationCenter.vue` 与 `components/NotificationCenter.css`。
 
 界面图标统一使用 Lucide 官方 Vue 包，不维护自定义 SVG 图标组件，也不在 Vue 模板中手写图标路径。依赖安装和基础用法如下：
 
@@ -117,7 +125,7 @@ Forge 的 ASAR 配置会整体解包 Playwright、Sharp 和 `@img` 运行时目�
 
 `npm run dev` 会选择空闲端口启动当前项目的 Vite，并通过 `RENDERER_DEV_SERVER_URL` 将准确地址交给 Electron。Electron 不再探测固定端口，因此不会连接其他项目或工作区的开发服务器。`npm start` 和打包后的应用只加载 `app/dist/index.html`。
 
-`app/App.vue` 是正式渲染入口；`app/src/App.vue` 和 `app/src/scripts/sse-register.ts` 是后端联调 Demo，不能作为废弃目录删除。
+`app/App.vue` 是正式渲染入口，`app/router/index.ts` 负责加载 `app/views/` 下的正式页面；`app/src/App.vue` 和 `app/src/scripts/sse-register.ts` 是后端联调 Demo，不能作为废弃目录删除。
 
 ## 日志规范
 

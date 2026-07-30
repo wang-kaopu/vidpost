@@ -9,10 +9,6 @@ const props = defineProps<{
   viewKey: MenuKey;
 }>();
 
-const emit = defineEmits<{
-  navigate: [value: MenuKey];
-}>();
-
 const previousViewKey = ref<MenuKey>(props.viewKey);
 
 const transitionName = computed(() => {
@@ -33,7 +29,7 @@ watch(
   <div class="min-h-full">
     <Transition :name="transitionName" mode="out-in">
       <div :key="viewKey" class="min-h-full">
-        <component :is="view" @navigate="emit('navigate', $event)" />
+        <component :is="view" />
       </div>
     </Transition>
   </div>

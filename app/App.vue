@@ -1,21 +1,16 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import LoginView from "./components/LoginView.vue";
+import { RouterView, useRoute, useRouter } from "vue-router";
 import SidebarNav from "./components/SidebarNav.vue";
-import AccountTable from "./components/AccountTable.vue";
-import RecordsTable from "./components/RecordsTable.vue";
 import AppContentTransition from "./components/AppContentTransition.vue";
-// import WorksPlaceholder from "./components/WorksPlaceholder.vue";
 import { fetchUserProfile, loginByPhone, logout as apiLogout, refreshToken } from "./api/auth";
 import { clearSessionTokens, getAccessToken, getRefreshToken, setAccessToken, setRefreshToken } from "./config";
 import type { LoginForm, MenuKey, User } from "./types";
-import Work from "./components/Work/Work.vue";
-import NotificationCenter from "./components/NotificationCenter/NotificationCenter.vue";
+import NotificationCenter from "./components/NotificationCenter.vue";
 import { useNotificationStore } from "./store/notification";
-import PublishProgressPanel from "./components/PublishProgressPanel/PublishProgressPanel.vue";
+import PublishProgressPanel from "./components/PublishProgressPanel.vue";
 import { usePublishProgressStore } from "./store/publish-progress";
 import type { LaunchIntent } from "@shared/electron-api";
-import PublishView from "./components/Publish.vue";
 import { usePublishQueueStore } from "./store/publish-queue";
 
 type AppNotificationEventDetail = {
@@ -25,10 +20,17 @@ type AppNotificationEventDetail = {
   tone?: "info" | "success" | "warning" | "error";
 };
 
-const activeMenu = ref<MenuKey>("accounts");
+const route = useRoute();
+const router = useRouter();
+const activeMenu = computed<MenuKey>(() => {
+  if (route.name === "accounts" || route.name === "works" || route.name === "publish" || route.name === "records") {
+    return route.name;
+  }
+  return "accounts";
+});
+const authReady = ref(false);
 const loggedIn = ref(false);
 const user = ref<User | null>(null);
-const loginError = ref("");
 const pendingLaunchMenu = ref<MenuKey | null>(null);
 let tokenRefreshTimer: number | null = null;
 let removeLaunchIntentListener: (() => void) | null = null;
@@ -49,43 +51,28 @@ const pushSystemError = (title: string, message: string): void => {
   });
 };
 
-const currentView = computed(() => {
-  if (activeMenu.value === "accounts") {
-    return AccountTable;
-  }
-  if (activeMenu.value === "records") {
-    return RecordsTable;
-  }
-  if (activeMenu.value === "works") {
-    return Work;
-  }
-  if (activeMenu.value === "publish") {
-    return PublishView;
-  }
-  return Work;
-});
-
-const mapLaunchIntentToMenu = (intent: LaunchIntent): MenuKey => intent.page;
-
+/** 将 Electron 启动意图转换为登录后的路由导航。 */
 const applyLaunchIntent = (intent: LaunchIntent | null) => {
   if (!intent) {
     return;
   }
-  const nextMenu = mapLaunchIntentToMenu(intent);
   if (!loggedIn.value) {
-    pendingLaunchMenu.value = nextMenu;
+    pendingLaunchMenu.value = intent.page;
     return;
   }
-  activeMenu.value = nextMenu;
+  void router.push({ name: intent.page });
   pendingLaunchMenu.value = null;
 };
 
-const consumePendingLaunchMenu = () => {
+/** 登录成功后消费尚未处理的 Electron 启动意图。 */
+const consumePendingLaunchMenu = async (): Promise<boolean> => {
   if (!pendingLaunchMenu.value) {
-    return;
+    return false;
   }
-  activeMenu.value = pendingLaunchMenu.value;
+  const targetMenu = pendingLaunchMenu.value;
   pendingLaunchMenu.value = null;
+  await router.replace({ name: targetMenu });
+  return true;
 };
 
 const loadUserProfile = async () => {
@@ -99,7 +86,6 @@ const loadUserProfile = async () => {
 };
 
 const login = async (payload: LoginForm) => {
-  loginError.value = "";
   try {
     const result = await loginByPhone(payload.phone.trim(), payload.code.trim());
     setAccessToken(result.access_token);
@@ -110,9 +96,14 @@ const login = async (payload: LoginForm) => {
     loggedIn.value = true;
     startVerificationPolling();
     startTokenRefresh();
-    consumePendingLaunchMenu();
+    const consumedLaunchIntent = await consumePendingLaunchMenu();
+    if (!consumedLaunchIntent) {
+      await router.replace({ name: "accounts" });
+    }
   } catch {
-    loginError.value = "";
+    clearSessionTokens();
+    loggedIn.value = false;
+    user.value = null;
     pushSystemError("登录失败", "登录没有成功，请检查手机号和验证码后重试");
   }
 };
@@ -129,6 +120,7 @@ const logout = async () => {
   publishQueue.clear();
   stopVerificationPolling();
   stopTokenRefresh();
+  await router.replace({ name: "login" });
 };
 
 const pollVerificationRequests = async () => {
@@ -218,18 +210,23 @@ onMounted(async () => {
   applyLaunchIntent(initialLaunchIntent ?? null);
 
   const token = getAccessToken();
-  if (token) {
-    try {
-      await loadUserProfile();
-      loggedIn.value = true;
-      startVerificationPolling();
-      startTokenRefresh();
-      consumePendingLaunchMenu();
-    } catch {
-      clearSessionTokens();
-      loggedIn.value = false;
-      pushSystemError("自动登录失效", "请重新登录后继续操作");
-    }
+  if (!token) {
+    authReady.value = true;
+    return;
+  }
+  try {
+    await loadUserProfile();
+    loggedIn.value = true;
+    startVerificationPolling();
+    startTokenRefresh();
+    await consumePendingLaunchMenu();
+  } catch {
+    clearSessionTokens();
+    loggedIn.value = false;
+    pushSystemError("自动登录失效", "请重新登录后继续操作");
+    await router.replace({ name: "login" });
+  } finally {
+    authReady.value = true;
   }
 });
 
@@ -247,14 +244,16 @@ onBeforeUnmount(() => {
 
 <template>
   <main class="min-h-screen">
-    <LoginView v-if="!loggedIn" @submit="login" />
+    <RouterView v-if="authReady" v-slot="{ Component }">
+      <component :is="Component" v-if="route.name === 'login'" @submit="login" />
 
-    <div v-else class="workspace grid h-screen grid-cols-[268px_minmax(0,1fr)] overflow-hidden max-[1180px]:grid-cols-[100px_minmax(0,1fr)]">
-      <SidebarNav :active="activeMenu" :user="user" @select="activeMenu = $event" @logout="logout" />
-      <section class="h-screen overflow-y-auto px-[34px] py-7 max-[900px]:px-5">
-        <AppContentTransition :view="currentView" :view-key="activeMenu" @navigate="activeMenu = $event" />
-      </section>
-    </div>
+      <div v-else-if="loggedIn" class="workspace grid h-screen grid-cols-[268px_minmax(0,1fr)] overflow-hidden max-[1180px]:grid-cols-[100px_minmax(0,1fr)]">
+        <SidebarNav :user="user" @logout="logout" />
+        <section class="h-screen overflow-y-auto px-[34px] py-7 max-[900px]:px-5">
+          <AppContentTransition :view="Component" :view-key="activeMenu" />
+        </section>
+      </div>
+    </RouterView>
 
     <NotificationCenter
       :items="notificationCenter.items"

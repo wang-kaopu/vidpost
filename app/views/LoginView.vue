@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from "vue";
 import { Phone, ShieldCheck } from "lucide-vue-next";
-import CapsuleButton from "./ui/CapsuleButton.vue";
-import CircleCheckbox from "./ui/CircleCheckbox.vue";
-import TextInput from "./ui/TextInput.vue";
+import CapsuleButton from "@/components/ui/CapsuleButton.vue";
+import CircleCheckbox from "@/components/ui/CircleCheckbox.vue";
+import TextInput from "@/components/ui/TextInput.vue";
 import { sendCode } from "@/api/auth";
 import type { LoginForm } from "@/types";
 

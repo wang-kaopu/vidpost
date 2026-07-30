@@ -3,17 +3,17 @@ import { computed, onMounted, ref } from "vue";
 import { Input as AntInput, Select as AntSelect, Tooltip as AntTooltip } from "ant-design-vue";
 import { Monitor, Plus, RefreshCw, Search, SquarePen, TestTubeDiagonal, Trash2 } from "lucide-vue-next";
 import { PLATFORMS, type Platform } from "@shared/electron-api";
-import PlatformLogo from "./PlatformLogo.vue";
-import PlatformPickerDialog from "./PlatformPickerDialog.vue";
-import CapsuleButton from "./ui/CapsuleButton.vue";
-import TextInput from "./ui/TextInput.vue";
-import ActionMenu from "./ui/ActionMenu.vue";
-import DataList from "./ui/DataList.vue";
-import FilterPopover from "./ui/FilterPopover.vue";
-import IconButton from "./ui/IconButton.vue";
-import PanelShell from "./ui/PanelShell.vue";
-import StateMessage from "./ui/StateMessage.vue";
-import ToneBadge from "./ui/ToneBadge.vue";
+import AccountPlatformPickerDialog from "@/components/AccountPlatformPickerDialog.vue";
+import PlatformLogo from "@/components/PlatformLogo.vue";
+import ActionMenu from "@/components/ui/ActionMenu.vue";
+import CapsuleButton from "@/components/ui/CapsuleButton.vue";
+import DataList from "@/components/ui/DataList.vue";
+import FilterPopover from "@/components/ui/FilterPopover.vue";
+import IconButton from "@/components/ui/IconButton.vue";
+import PanelShell from "@/components/ui/PanelShell.vue";
+import StateMessage from "@/components/ui/StateMessage.vue";
+import TextInput from "@/components/ui/TextInput.vue";
+import ToneBadge from "@/components/ui/ToneBadge.vue";
 import {
   getPublishPlatforms,
   getPublishAccounts,
@@ -28,7 +28,7 @@ import { useNotificationStore } from "@/store/notification";
 import { usePublishProgressStore } from "@/store/publish-progress";
 import { logger } from "@/src/utils/logger";
 import { runAccountPingBatch } from "@/utils/account-ping-batch";
-import { useDialogLayer } from "../composables/useDialogLayer";
+import { useDialogLayer } from "@/composables/useDialogLayer";
 
 const loading = ref(false);
 const errorMessage = ref("");
@@ -827,7 +827,7 @@ useDialogLayer(() => accountDialogVisible.value);
       </transition>
     </teleport>
 
-    <PlatformPickerDialog
+    <AccountPlatformPickerDialog
       :visible="platformDialogVisible"
       title="选择发布平台"
       description="请选择要创建账号的发布平台"
