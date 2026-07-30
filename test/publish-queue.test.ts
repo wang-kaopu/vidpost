@@ -44,7 +44,7 @@ const createFailedTask = (
   },
 });
 
-test("publish queue appends every selection as an independent item", () => {
+test("发布队列将每次选择追加为独立条目", () => {
   const queue = createPublishQueue();
   const first = createWork("1", "标题 1");
   const second = createWork("2", "标题 2");
@@ -55,7 +55,7 @@ test("publish queue appends every selection as an independent item", () => {
   assert.equal(new Set(queue.items.value.map((item) => item.queueId)).size, 3);
 });
 
-test("publish queue removes one queue item and can be cleared on logout", () => {
+test("发布队列支持删除单个条目并在退出登录时清空", () => {
   const queue = createPublishQueue();
   const work = createWork("1", "标题 1");
   queue.add([work, work]);
@@ -69,7 +69,7 @@ test("publish queue removes one queue item and can be cleared on logout", () => 
   assert.deepEqual(queue.items.value, []);
 });
 
-test("publish queue removes only the confirmed snapshot and preserves later additions", () => {
+test("发布队列仅删除已确认快照并保留后续新增条目", () => {
   const queue = createPublishQueue();
   queue.add([createWork("1", "标题 1"), createWork("2", "标题 2")]);
   const confirmedItems = [...queue.items.value];
@@ -82,7 +82,7 @@ test("publish queue removes only the confirmed snapshot and preserves later addi
   assert.deepEqual(queue.items.value.map((item) => item.id), ["1", "2", "3"]);
 });
 
-test("publish queue serializes submission preparation in confirmation order", async () => {
+test("发布队列按确认顺序串行准备提交", async () => {
   const queue = createPublishQueue();
   const events: string[] = [];
   let finishFirst: (() => void) | undefined;
@@ -106,7 +106,7 @@ test("publish queue serializes submission preparation in confirmation order", as
   assert.deepEqual(events, ["first:start", "first:end", "second:start"]);
 });
 
-test("publish queue keeps platform-specific settings with the selected work", () => {
+test("发布队列为所选作品保留平台专属设置", () => {
   const queue = createPublishQueue();
   queue.add([createWork("1", "标题 1")]);
   const queueId = queue.items.value[0]?.queueId;
@@ -141,7 +141,7 @@ test("publish queue keeps platform-specific settings with the selected work", ()
   });
 });
 
-test("publish queue duplicates video and settings without copying the account", () => {
+test("发布队列复制视频和设置但不复制账号", () => {
   const queue = createPublishQueue();
   queue.add([createWork("1", "标题 1")]);
   const sourceQueueId = queue.items.value[0]?.queueId;
@@ -179,7 +179,7 @@ test("publish queue duplicates video and settings without copying the account", 
   });
 });
 
-test("publish queue validation returns only the first error before account ping", () => {
+test("发布队列校验在账号探活前仅返回首个错误", () => {
   const queue = createPublishQueue();
   queue.add([createWork("1", "第一个作品"), createWork("2", "第二个作品")]);
 
@@ -189,7 +189,7 @@ test("publish queue validation returns only the first error before account ping"
   );
 });
 
-test("publish queue validation checks platform settings and schedule before account ping", () => {
+test("发布队列校验在账号探活前检查平台设置和发布时间", () => {
   const queue = createPublishQueue();
   queue.add([createWork("1", "标题 1")]);
   const queueId = queue.items.value[0]?.queueId;
@@ -224,7 +224,7 @@ test("publish queue validation checks platform settings and schedule before acco
   );
 });
 
-test("publish queue stores account-check results and resets them after settings change", () => {
+test("发布队列保存账号检查结果并在设置变化后重置", () => {
   const queue = createPublishQueue();
   const work = createWork("1", "标题 1");
   queue.add([work, work]);
@@ -253,7 +253,7 @@ test("publish queue stores account-check results and resets them after settings 
   });
 });
 
-test("publish queue replays all saved settings from a failed record", () => {
+test("发布队列从失败记录恢复全部已保存设置", () => {
   const queue = createPublishQueue();
 
   queue.addRetry(createFailedTask("douyin", { visibility: "friends" }));
@@ -288,7 +288,7 @@ test("publish queue replays all saved settings from a failed record", () => {
   });
 });
 
-test("publish queue restores every platform-specific option from failed records", () => {
+test("发布队列从失败记录恢复各平台专属选项", () => {
   const cases = [
     {
       platform: "baijiahao" as const,
@@ -321,7 +321,7 @@ test("publish queue restores every platform-specific option from failed records"
   }
 });
 
-test("publish queue keeps repeated retries as independent items", () => {
+test("发布队列将重复重试保留为独立条目", () => {
   const queue = createPublishQueue();
   const task = createFailedTask("douyin", { visibility: "self" });
 

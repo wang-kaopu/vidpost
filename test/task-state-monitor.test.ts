@@ -72,7 +72,7 @@ afterEach(() => {
   resetTaskStateServiceForTest();
 });
 
-test("query errors keep status unchanged, save sync_error, and retry after 30 seconds", async () => {
+test("查询错误保持状态不变、保存同步错误并在三十秒后重试", async () => {
   const fake = createFakeTimers();
   const updates: Array<Record<string, unknown>> = [];
   const events: Array<Record<string, unknown>> = [];
@@ -103,7 +103,7 @@ test("query errors keep status unchanged, save sync_error, and retry after 30 se
   assert.equal(fake.timers[0]?.delay, TASK_STATE_POLL_INTERVAL_MS);
 });
 
-test("tasks missing an account id save a clear query error before calling the platform", async () => {
+test("任务缺少账号 ID 时在调用平台前保存明确的查询错误", async () => {
   const fake = createFakeTimers();
   const updates: TaskUpdate[] = [];
   let queryCalls = 0;
@@ -130,7 +130,7 @@ test("tasks missing an account id save a clear query error before calling the pl
   assert.equal(fake.timers[0]?.delay, TASK_STATE_POLL_INTERVAL_MS);
 });
 
-test("terminal backend failures retry the cached terminal without querying the platform again", async () => {
+test("终态写回失败时重试缓存终态且不重复查询平台", async () => {
   const fake = createFakeTimers();
   let now = 0;
   let queryCalls = 0;
@@ -166,7 +166,7 @@ test("terminal backend failures retry the cached terminal without querying the p
   assert.equal(getTaskStateMonitorCount(), 0);
 });
 
-test("reviewing tasks become failed when the two-hour deadline is reached", async () => {
+test("审核中任务达到两小时截止时间后变为失败", async () => {
   const fake = createFakeTimers();
   let now = 0;
   const updates: Array<Record<string, unknown>> = [];
@@ -192,7 +192,7 @@ test("reviewing tasks become failed when the two-hour deadline is reached", asyn
   assert.equal((updates[1].attributes as TestTaskAttributes).failure_detail?.reason, "审核超时，请前往官方后台查看发布状态");
 });
 
-test("scheduled tasks use scheduledAt plus two hours as their deadline", () => {
+test("定时任务使用发布时间加两小时作为截止时间", () => {
   const scheduledAt = "2026-07-14T10:00:00+08:00";
   assert.equal(
     resolveTaskStateDeadline(createTask(4, { scheduledAt }), 0),
@@ -204,7 +204,7 @@ test("scheduled tasks use scheduledAt plus two hours as their deadline", () => {
   );
 });
 
-test("startup recovery monitors tasks with ids and fails unrecoverable history", async () => {
+test("启动恢复监控带作品 ID 的任务并标记不可恢复历史为失败", async () => {
   const fake = createFakeTimers();
   const updates: Array<{ id: number; input: TaskUpdate }> = [];
   const reviewingWithId = createTask(5);
@@ -237,7 +237,7 @@ test("startup recovery monitors tasks with ids and fails unrecoverable history",
   assert.equal(updates.find((item) => item.id === 8)?.input.attributes.review_state.reason, "发布过程被中断，请重试");
 });
 
-test("monitor registration is idempotent per task and independent across tasks", () => {
+test("任务监控注册对单个任务幂等且任务之间相互独立", () => {
   const fake = createFakeTimers();
   configureTaskStateServiceRuntime({
     clearTimeout: fake.clearTimeoutFake,
@@ -251,7 +251,7 @@ test("monitor registration is idempotent per task and independent across tasks",
   assert.equal(fake.timers.length, 2);
 });
 
-test("startup recovery backfills active Sohu record.id evidence and monitors reviewing and running tasks", async () => {
+test("启动恢复补填搜狐活动任务的 record.id 证据并监控运行中任务", async () => {
   const fake = createFakeTimers();
   const updates: Array<{ id: number; input: TaskUpdate }> = [];
   const reviewingFromPublishResponse = createTask(11, {
@@ -308,7 +308,7 @@ test("startup recovery backfills active Sohu record.id evidence and monitors rev
   );
 });
 
-test("startup recovery does not treat Sohu clientNewsId as a compatible platform_work_id", async () => {
+test("启动恢复不将搜狐 clientNewsId 视为兼容的平台作品 ID", async () => {
   const fake = createFakeTimers();
   const updates: Array<{ id: number; input: TaskUpdate }> = [];
   const task = createTask(14, {
@@ -340,7 +340,7 @@ test("startup recovery does not treat Sohu clientNewsId as a compatible platform
   assert.equal(updates[0]?.input.attributes.review_state.reason, "发布记录缺少平台作品 ID，无法检测审核状态");
 });
 
-test("expired active Sohu history is backfilled but fails by deadline without a platform query", async () => {
+test("过期搜狐活动历史补填证据后按截止时间失败且不查询平台", async () => {
   const fake = createFakeTimers();
   const updates: TaskUpdate[] = [];
   let queryCalls = 0;

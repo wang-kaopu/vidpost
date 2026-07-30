@@ -7,7 +7,7 @@ import {
   PUBLISH_TITLE_MAX_LENGTH,
 } from "@shared/publish-text.ts";
 
-test("normalizePublishText truncates every platform with the unified Unicode text limits", () => {
+test("发布文案按统一 Unicode 长度限制截断各平台文本", () => {
   const platformLimits = [
     ["baijiahao", 50],
     ["bilibili", 80],

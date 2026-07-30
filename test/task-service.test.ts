@@ -16,18 +16,18 @@ const BASE_PUBLISH_INPUT = {
   workId: 'work-1',
 }
 
-test('normalizeScheduledAt should treat only "0" as immediate publish sentinel', () => {
+test('发布时间仅将 "0" 视为立即发布标记', () => {
   assert.equal(normalizeScheduledAt(undefined), '0')
   assert.equal(normalizeScheduledAt(''), '0')
   assert.equal(normalizeScheduledAt('   '), '0')
   assert.equal(normalizeScheduledAt('0'), '0')
 })
 
-test('normalizeScheduledAt should preserve a non-empty scheduled publish time', () => {
+test('发布时间保留非空定时发布时间', () => {
   assert.equal(normalizeScheduledAt('2026-05-01 12:30'), '2026-05-01 12:30')
 })
 
-test('resolvePublishOptions persists platform-specific publish options', () => {
+test('发布选项持久化各平台专属参数', () => {
   assert.deepEqual(resolvePublishOptions({ ...BASE_PUBLISH_INPUT, platform: 'bilibili', humanTypeId: 1027 }), {
     human_type_id: 1027,
   })

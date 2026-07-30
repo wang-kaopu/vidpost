@@ -12,7 +12,7 @@ import {
 
 const NOW_MS = Date.UTC(2026, 6, 13, 4, 0);
 
-test("scheduled publish bounds use Shanghai time and a fixed ten minute upload buffer", () => {
+test("定时发布边界使用上海时间并预留固定十分钟上传时间", () => {
   assert.deepEqual(getScheduledPublishBounds("baijiahao", NOW_MS), {
     defaultValue: "2026-07-13T13:10",
     min: "2026-07-13T13:10",
@@ -26,7 +26,7 @@ test("scheduled publish bounds use Shanghai time and a fixed ten minute upload b
   assert.equal(getScheduledPublishBounds("douyin", NOW_MS).max, "2026-07-27T12:00");
 });
 
-test("scheduled publish validation enforces platform windows without queue-position growth", () => {
+test("定时发布校验执行平台时间窗口且不随队列位置递增", () => {
   assert.equal(validateScheduledAt("bilibili", "2026-07-13 14:10", NOW_MS), null);
   assert.match(validateScheduledAt("bilibili", "2026-07-13 14:09", NOW_MS) ?? "", /10 分钟/u);
   assert.equal(validateScheduledAt("baijiahao", "2026-07-20 12:00", NOW_MS), null);
@@ -34,13 +34,13 @@ test("scheduled publish validation enforces platform windows without queue-posit
   assert.match(validateScheduledAt("sohu", "2026-07-13 14:10", NOW_MS) ?? "", /仅支持立即发布/u);
 });
 
-test("queue-head validation uses the platform minimum without adding a second upload buffer", () => {
+test("队首校验使用平台最短时间且不重复增加上传缓冲", () => {
   assert.equal(validateScheduledAtBeforeExecution("bilibili", "2026-07-13 14:00", NOW_MS), null);
   assert.match(validateScheduledAtBeforeExecution("bilibili", "2026-07-13 13:59", NOW_MS) ?? "", /2 小时/u);
   assert.equal(validateScheduledAtBeforeExecution("baijiahao", "0", NOW_MS), null);
 });
 
-test("scheduled publish values use a strict minute-level Shanghai contract", () => {
+test("定时发布时间遵循严格的上海时区分钟级格式", () => {
   assert.equal(normalizeScheduledAtInput("2026-07-20T18:00"), "2026-07-20 18:00");
   assert.equal(parseShanghaiScheduledAt("2026-07-20 18:00"), Date.UTC(2026, 6, 20, 10, 0));
   assert.equal(parseShanghaiScheduledAt("2026-02-30 18:00"), null);
