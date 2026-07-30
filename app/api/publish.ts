@@ -181,6 +181,7 @@ export async function getAccountTags(): Promise<string[]> {
 export async function getPublishAccounts(options?: {
   lastId?: number;
   limit?: number;
+  platform?: string;
   tags?: string;
   status?: string;
   nickname?: string;
@@ -191,6 +192,7 @@ export async function getPublishAccounts(options?: {
       params: normalizeQueryParams({
         last_id: options?.lastId ?? 0,
         limit: options?.limit ?? 200,
+        platform: options?.platform,
         tags: options?.tags,
         status: options?.status,
         nickname: options?.nickname,

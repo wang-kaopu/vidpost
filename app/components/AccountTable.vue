@@ -32,13 +32,20 @@ import { useDialogLayer } from "../composables/useDialogLayer";
 
 const loading = ref(false);
 const errorMessage = ref("");
-const allAccounts = ref<PublishAccountItem[]>([]);
+const accounts = ref<PublishAccountItem[]>([]);
 
 const filterPlatform = ref<string>();
 const filterNickname = ref("");
 const filterPhone = ref("");
 const filterTag = ref<string>();
 const filterStatus = ref<string>();
+const appliedFilters = ref({
+  nickname: "",
+  phoneNumber: "",
+  platform: undefined as string | undefined,
+  status: undefined as string | undefined,
+  tags: undefined as string | undefined,
+});
 
 const activeFilterCount = computed(
   () => [filterPlatform.value, filterNickname.value.trim(), filterPhone.value.trim(), filterTag.value, filterStatus.value]
@@ -50,7 +57,10 @@ const tagOptions = ref<string[]>([]);
 const statusOptions = ref<string[]>(["online", "offline"]);
 
 const page = ref(1);
-const pageSize = ref(10);
+const pageCursors = ref<number[]>([0]);
+const isLastPage = ref(true);
+const PAGE_SIZE = 10;
+let accountRequestId = 0;
 
 const platformDialogVisible = ref(false);
 const platformLoading = ref(false);
@@ -106,38 +116,6 @@ const statusToneMap: Record<string, "success" | "danger"> = {
   offline: "danger",
 };
 
-const filteredAccounts = computed(() => {
-  let result = [...allAccounts.value];
-  const selectedPlatform = filterPlatform.value;
-  if (selectedPlatform) {
-    result = result.filter((a) => a.platformKey === selectedPlatform);
-  }
-  if (filterNickname.value.trim()) {
-    const text = filterNickname.value.trim().toLowerCase();
-    result = result.filter((a) => a.nickname.toLowerCase().includes(text));
-  }
-  if (filterPhone.value.trim()) {
-    const text = filterPhone.value.trim();
-    result = result.filter((a) => a.phoneNumber.includes(text));
-  }
-  const selectedTag = filterTag.value;
-  if (selectedTag) {
-    result = result.filter((a) => a.tags.includes(selectedTag));
-  }
-  const selectedStatus = filterStatus.value;
-  if (selectedStatus) {
-    result = result.filter((a) => a.status === selectedStatus);
-  }
-  return result;
-});
-
-const pagedAccounts = computed(() => {
-  const start = (page.value - 1) * pageSize.value;
-  return filteredAccounts.value.slice(start, start + pageSize.value);
-});
-
-const totalPages = computed(() => Math.max(1, Math.ceil(filteredAccounts.value.length / pageSize.value)));
-
 const loadPlatforms = async () => {
   try {
     const res = await getPublishPlatforms();
@@ -172,24 +150,69 @@ const loadTags = async () => {
   }
 };
 
-const loadAccounts = async ({ preservePage = false }: { preservePage?: boolean } = {}) => {
+/**
+ * 使用远端游标加载一页账号。
+ *
+ * @param options - 目标页及是否从第一页重新开始
+ */
+const loadAccounts = async (
+  { targetPage = page.value, resetPagination = false }: { targetPage?: number; resetPagination?: boolean } = {},
+) => {
+  const requestId = ++accountRequestId;
   loading.value = true;
   errorMessage.value = "";
-  const currentPage = page.value;
+  const nextPage = resetPagination ? 1 : targetPage;
+  if (resetPagination) {
+    page.value = 1;
+    pageCursors.value = [0];
+  }
+  const lastId = pageCursors.value[nextPage - 1];
+  if (lastId === undefined) {
+    loading.value = false;
+    return;
+  }
+
   try {
-    const res = await getPublishAccounts({ limit: 999 });
-    allAccounts.value = (res.list || []).map(normalizePublishAccount);
-    page.value = preservePage ? Math.min(currentPage, totalPages.value) : 1;
+    const res = await getPublishAccounts({
+      lastId,
+      limit: PAGE_SIZE,
+      ...appliedFilters.value,
+    });
+    if (requestId !== accountRequestId) return;
+
+    const nextAccounts = (res.list || []).map(normalizePublishAccount);
+    const responseLastId = Number(res.last_id);
+    const hasNextCursor =
+      res.is_end !== true
+      && nextAccounts.length > 0
+      && Number.isInteger(responseLastId)
+      && responseLastId > 0
+      && responseLastId !== lastId;
+
+    accounts.value = nextAccounts;
+    page.value = nextPage;
+    isLastPage.value = !hasNextCursor;
+    pageCursors.value = hasNextCursor
+      ? [...pageCursors.value.slice(0, nextPage), responseLastId]
+      : pageCursors.value.slice(0, nextPage);
   } catch {
+    if (requestId !== accountRequestId) return;
     errorMessage.value = "";
     pushAccountError("账号列表加载失败", "账号列表暂时无法加载，请稍后重试");
   } finally {
-    loading.value = false;
+    if (requestId === accountRequestId) loading.value = false;
   }
 };
 
 const handleSearch = () => {
-  page.value = 1;
+  appliedFilters.value = {
+    nickname: filterNickname.value.trim(),
+    phoneNumber: filterPhone.value.trim(),
+    platform: filterPlatform.value,
+    status: filterStatus.value,
+    tags: filterTag.value,
+  };
+  void loadAccounts({ resetPagination: true });
 };
 
 const handleReset = () => {
@@ -198,11 +221,19 @@ const handleReset = () => {
   filterPhone.value = "";
   filterTag.value = undefined;
   filterStatus.value = undefined;
-  page.value = 1;
+  appliedFilters.value = {
+    nickname: "",
+    phoneNumber: "",
+    platform: undefined,
+    status: undefined,
+    tags: undefined,
+  };
+  void loadAccounts({ resetPagination: true });
 };
 
 const handlePageChange = (newPage: number) => {
-  page.value = newPage;
+  if (loading.value || newPage < 1 || (newPage > page.value && isLastPage.value)) return;
+  void loadAccounts({ targetPage: newPage });
 };
 
 const renameDialogVisible = ref(false);
@@ -286,6 +317,7 @@ const confirmTagDialog = async () => {
   try {
     await addAccountTag(item.id, tag);
     item.tags.push(tag);
+    tagOptions.value = [...new Set([...tagOptions.value, tag])].sort((left, right) => left.localeCompare(right, "zh-CN"));
     closeTagDialog();
   } catch (error) {
     tagDialogError.value = error instanceof Error ? error.message : "添加标签失败";
@@ -311,7 +343,7 @@ const pingAccount = async (item: Pick<PublishAccountItem, "id" | "platformKey">)
     const ping = window.electronAPI?.ping;
     if (!ping) throw new Error("账号检测 IPC 未初始化");
     await ping({ accountId: item.id, platform: item.platformKey as Platform });
-    await loadAccounts({ preservePage: true });
+    await loadAccounts();
   } catch (error) {
     logger.error("renderer.account.ping-error 账号检测失败", {
       accountId: item.id,
@@ -395,13 +427,13 @@ const handleOpenAccountBackend = async (item: PublishAccountItem): Promise<void>
   } finally {
     backendWindowVisible.value = false;
     backendOpeningAccountId.value = "";
-    await loadAccounts({ preservePage: true });
+    await loadAccounts();
   }
 };
 
 const handlePingAllAccounts = async () => {
   if (pingingAll.value || renameDialogLoading.value || deletingAccountId.value || pingingAccountId.value) return;
-  const queue = pagedAccounts.value.map((item) => ({ id: item.id, platformKey: item.platformKey }));
+  const queue = accounts.value.map((item) => ({ id: item.id, platformKey: item.platformKey }));
   if (!queue.length) return;
   pingingAll.value = true;
   pendingPingAccountIds.value = queue.map((item) => item.id);
@@ -435,7 +467,7 @@ const handlePingAllAccounts = async () => {
         },
       },
     );
-    await loadAccounts({ preservePage: true });
+    await loadAccounts();
     pushAccountBatchSummary(summary.succeeded, summary.failed, summary.pending);
   } finally {
     pingingAll.value = false;
@@ -458,7 +490,8 @@ const handleDeleteAccount = async (item: PublishAccountItem) => {
   errorMessage.value = "";
   try {
     await removeAccount(item.id);
-    allAccounts.value = allAccounts.value.filter((a: PublishAccountItem) => a.id !== item.id);
+    await loadAccounts();
+    if (accounts.value.length === 0 && page.value > 1) await loadAccounts({ targetPage: page.value - 1 });
   } catch {
     errorMessage.value = "";
     pushAccountError("账号删除失败", "账号没有删除成功，请稍后重试");
@@ -504,7 +537,7 @@ const createPlatformAccount = async (platform: PlatformOption) => {
     const login = window.electronAPI?.login;
     if (!login) throw new Error("当前环境未注入 Electron 平台登录能力");
     const result = await login(platform.key as Platform);
-    await loadAccounts();
+    await loadAccounts({ resetPagination: true });
     platformDialogVisible.value = false;
     if (result.updatedExistingAccount) {
       notificationCenter.push({
@@ -531,7 +564,7 @@ const createPlatformAccount = async (platform: PlatformOption) => {
 onMounted(() => {
   void loadPlatforms();
   void loadTags();
-  void loadAccounts();
+  void loadAccounts({ resetPagination: true });
 });
 
 useDialogLayer(() => accountDialogVisible.value);
@@ -633,16 +666,16 @@ useDialogLayer(() => accountDialogVisible.value);
           <th>操作</th>
         </tr>
       </template>
-        <tr v-if="loading && !pagedAccounts.length">
+        <tr v-if="loading && !accounts.length">
           <StateMessage as="td" variant="table" colspan="7">正在加载账号列表...</StateMessage>
         </tr>
-        <tr v-else-if="errorMessage && !allAccounts.length">
+        <tr v-else-if="errorMessage && !accounts.length">
           <StateMessage as="td" variant="table" tone="danger" colspan="7">{{ errorMessage }}</StateMessage>
         </tr>
-        <tr v-else-if="!pagedAccounts.length">
+        <tr v-else-if="!accounts.length">
           <StateMessage as="td" variant="table" colspan="7">暂无账号数据</StateMessage>
         </tr>
-        <tr v-for="item in pagedAccounts" :key="item.id">
+        <tr v-for="item in accounts" :key="item.id">
           <td>
             <div class="flex min-w-0 items-center justify-center">
               <PlatformLogo :platform="item.platform" />
@@ -761,33 +794,22 @@ useDialogLayer(() => accountDialogVisible.value);
 
     <footer class="flex items-center justify-between gap-[18px] px-8 pt-[18px] pb-[26px] text-[#697789] max-[900px]:flex-col max-[900px]:items-start">
       <div class="pager-info">
-        显示 {{ Math.min((page - 1) * pageSize + 1, filteredAccounts.length) }} 到
-        {{ Math.min(page * pageSize, filteredAccounts.length) }}，共 {{ filteredAccounts.length }} 条
+        第 {{ page }} 页，本页 {{ accounts.length }} 条
       </div>
       <div class="pager-numbers">
         <button
           type="button"
           class="pager-button pager-nav-button"
-          :disabled="page <= 1 || pingingAll"
+          :disabled="page <= 1 || loading || pingingAll"
           @click="handlePageChange(page - 1)"
         >
           上一页
         </button>
-        <button
-          v-for="p in totalPages"
-          :key="p"
-          type="button"
-          class="pager-button pager-number-button"
-          :disabled="pingingAll"
-          :class="{ active: p === page }"
-          @click="handlePageChange(p)"
-        >
-          {{ p }}
-        </button>
+        <span class="pager-current">第 {{ page }} 页</span>
         <button
           type="button"
           class="pager-button pager-nav-button"
-          :disabled="page >= totalPages || pingingAll"
+          :disabled="isLastPage || loading || pingingAll"
           @click="handlePageChange(page + 1)"
         >
           下一页
@@ -919,12 +941,10 @@ useDialogLayer(() => accountDialogVisible.value);
 
 .pager-info { color: #697789; font-size: 14px; }
 .pager-numbers { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.pager-current { min-width: 68px; color: #48617f; text-align: center; font-size: 14px; font-weight: 600; }
 .pager-button { display: inline-flex; align-items: center; justify-content: center; min-height: 38px; padding: 0 14px; border: 1px solid rgba(184, 204, 227, 0.9); border-radius: 12px; background: rgba(255, 255, 255, 0.92); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75), 0 10px 20px rgba(118, 146, 178, 0.12); color: #48617f; font-size: 14px; font-weight: 600; transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease, color 160ms ease, border-color 160ms ease; }
 .pager-button:hover:not(:disabled) { transform: translateY(-1px); border-color: rgba(132, 171, 214, 0.96); background: rgba(244, 249, 255, 0.98); color: #2d5f98; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82), 0 14px 26px rgba(99, 140, 190, 0.18); }
-.pager-number-button { min-width: 38px; padding: 0 12px; }
 .pager-nav-button { min-width: 76px; }
-.pager-button.active { border-color: transparent; background: linear-gradient(135deg, #4d9cff, #2d79dd); color: #fff; box-shadow: 0 12px 24px rgba(77, 156, 255, 0.24); }
-.pager-button.active:hover:not(:disabled) { color: #fff; }
 .pager-button:disabled { cursor: not-allowed; opacity: 0.5; transform: none; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 8px 18px rgba(118, 146, 178, 0.08); }
 
 .platform-dialog-mask { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 24px; background: rgba(24, 35, 52, 0.22); backdrop-filter: blur(10px) saturate(116%); }
