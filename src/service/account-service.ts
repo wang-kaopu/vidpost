@@ -278,21 +278,25 @@ export async function loginAndCreateRemoteAccount(
     const finalizedAccountFile = finalizeAccountFile(accountFile, remoteAccountId, platform);
     const accountPartition = movePartitionMapping(partitionStore, draftPartitionAccountId, String(remoteAccountId));
     await updatePublishAccount(remoteAccountId, {
+      ...(isInserted ? { tags: [] } : {}),
       attributes: { cookieFilePath: finalizedAccountFile, browserPartition: accountPartition },
     });
 
     logger.info(!isInserted ? "重新登录发布账号成功，远程账号ID:" : "创建发布账号成功，远程账号ID:", remoteAccountId);
 
-    return createAccountPageModel({
-      id: remoteAccountId,
-      nickname: effectiveNickname,
-      platform,
-      status: "online",
-      phoneNumber: null,
-      tags: [],
-      createdAt: null,
-      updatedAt: null,
-    });
+    return {
+      ...createAccountPageModel({
+        id: remoteAccountId,
+        nickname: effectiveNickname,
+        platform,
+        status: "online",
+        phoneNumber: null,
+        tags: [],
+        createdAt: null,
+        updatedAt: null,
+      }),
+      updatedExistingAccount: !isInserted,
+    };
   } catch (error) {
     deletePartitionMapping(partitionStore, draftPartitionAccountId);
     const message = error instanceof Error ? error.message : String(error);
@@ -437,7 +441,7 @@ export async function persistAccountBackendState(
 
     const platformAccountId = requirePlatformAccountId(platform, pingResult.platformAccountId);
     const latestNickname = pingResult.nickname?.trim();
-    const { remoteAccountId } = await createPublishAccount({
+    const { isInserted, remoteAccountId } = await createPublishAccount({
       ...(latestNickname ? { nickname: latestNickname } : {}),
       platform,
       platform_account_id: platformAccountId,
@@ -453,6 +457,7 @@ export async function persistAccountBackendState(
       const browserPartition = resolvePartitionForAccount(partitionStore, targetAccountId);
       await updatePublishAccount(targetAccountId, {
         ...(latestNickname && latestNickname !== state.active.nickname ? { nickname: latestNickname } : {}),
+        ...(isInserted ? { tags: [] } : {}),
         platform_account_id: platformAccountId,
         status: "online",
         attributes: { cookieFilePath: state.active.accountFile, browserPartition },
@@ -472,6 +477,7 @@ export async function persistAccountBackendState(
       await fs.promises.rm(source.accountFile, { force: true });
       await updatePublishAccount(targetAccountId, {
         ...(latestNickname ? { nickname: latestNickname } : {}),
+        ...(isInserted ? { tags: [] } : {}),
         platform_account_id: platformAccountId,
         status: "online",
         attributes: { cookieFilePath: targetFile, browserPartition: targetPartition },

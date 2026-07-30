@@ -359,10 +359,10 @@ const handleOpenAccountBackend = async (item: PublishAccountItem): Promise<void>
       pushAccountError("账号状态保存失败", "请重新打开账号后台重试");
     } else if (result.outcome === "switched") {
       notificationCenter.push({
-        title: "账号切换成功",
-        message: `已切换为「${result.nickname || result.accountId}」，原账号「${result.previousNickname || item.nickname}」已离线`,
+        title: "已更新其他账号",
+        message: `后台登录的是「${result.nickname || result.accountId}」，已更新该账号；原账号「${result.previousNickname || item.nickname}」已离线`,
         source: "账号管理",
-        tone: "success",
+        tone: "warning",
         unread: true,
       });
     } else if (result.outcome === "logged-out") {
@@ -492,9 +492,18 @@ const createPlatformAccount = async (platform: PlatformOption) => {
     if (!accountBackendPlatforms.has(platform.key)) throw new Error("当前平台不支持 Electron 登录");
     const login = window.electronAPI?.login;
     if (!login) throw new Error("当前环境未注入 Electron 平台登录能力");
-    await login(platform.key as Platform);
+    const result = await login(platform.key as Platform);
     await loadAccounts();
     platformDialogVisible.value = false;
+    if (result.updatedExistingAccount) {
+      notificationCenter.push({
+        title: "已更新已有账号",
+        message: `登录账号「${result.nickname || result.accountId}」已存在，当前登录状态已更新到该账号`,
+        source: "账号管理",
+        tone: "warning",
+        unread: true,
+      });
+    }
   } catch (error) {
     logger.error("renderer.account.create-error 新增账号失败", {
       error,

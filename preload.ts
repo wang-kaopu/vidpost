@@ -14,9 +14,7 @@ const electronApi: ElectronAPI = {
     error: (message) => ipcRenderer.send(IPC_CHANNELS.rendererLog, { level: "error", message }),
     info: (message) => ipcRenderer.send(IPC_CHANNELS.rendererLog, { level: "info", message }),
   },
-  login: async (platform) => {
-    await ipcRenderer.invoke(IPC_CHANNELS.login, platform);
-  },
+  login: (platform) => ipcRenderer.invoke(IPC_CHANNELS.login, platform),
   publish: async (payload) => {
     await ipcRenderer.invoke(IPC_CHANNELS.publish, payload);
   },

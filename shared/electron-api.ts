@@ -65,6 +65,13 @@ export interface PingInput {
   platform: Platform;
 }
 
+/** 平台登录窗口关闭后的账号绑定结果。 */
+export interface LoginAccountResult {
+  accountId: string;
+  nickname: string;
+  updatedExistingAccount: boolean;
+}
+
 /** 打开账号平台后台的参数。 */
 export interface OpenAccountBackendInput extends PingInput {
   nickname: string;
@@ -162,7 +169,7 @@ export interface ElectronAPI {
   getLaunchIntent(): Promise<LaunchIntent | null>;
   getSohuChannels(payload: AccountOptionsInput): Promise<SohuChannel[]>;
   logger: ElectronLoggerAPI;
-  login(platform: Platform): Promise<void>;
+  login(platform: Platform): Promise<LoginAccountResult>;
   onLaunchIntent(handler: (payload: LaunchIntent) => void): () => void;
   onPublishTaskProgress(handler: (payload: PublishTaskProgressEvent) => void): () => void;
   onPublishTaskStateChanged(handler: (payload: PublishTaskStateChangedEvent) => void): () => void;

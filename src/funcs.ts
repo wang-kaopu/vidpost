@@ -5,6 +5,7 @@ import {
   type AccountOptionsInput,
   type BasePublishInput,
   type BilibiliHumanType,
+  type LoginAccountResult,
   type OpenAccountBackendInput,
   type OpenAccountBackendResult,
   type PingInput,
@@ -55,15 +56,20 @@ function requirePayload(value: unknown, action: string): Record<string, unknown>
   return value as Record<string, unknown>;
 }
 
-/** 登录指定平台并创建远程发布账号。 */
-export async function login(event: IpcMainInvokeEvent, platformValue: unknown) {
+/** 登录指定平台并创建或更新远程发布账号。 */
+export async function login(event: IpcMainInvokeEvent, platformValue: unknown): Promise<LoginAccountResult> {
   const platform = parsePlatform(platformValue);
   const parentWindow = BrowserWindow.fromWebContents(event.sender);
   const accountFile = resolveDraftAccountFilePath(platform);
   const account = createAccount(platform);
   const result = await loginAndCreateRemoteAccount(platform, accountFile, parentWindow, account);
-  broadcast(result);
-  return result;
+  const { updatedExistingAccount, ...accountModel } = result;
+  broadcast(accountModel);
+  return {
+    accountId: String(accountModel.id),
+    nickname: String(accountModel.nickname || accountModel.id),
+    updatedExistingAccount,
+  };
 }
 
 /** 检测指定账号的在线状态并同步远程账号。 */
