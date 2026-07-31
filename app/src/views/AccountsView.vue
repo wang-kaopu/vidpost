@@ -26,7 +26,7 @@ import { removeAccount, updateAccount } from "@/api/accounts";
 import type { PublishAccountItem, PlatformOption, BackendPlatform } from "@/api/publish";
 import { useNotificationStore } from "@/store/notification";
 import { usePublishProgressStore } from "@/store/publish-progress";
-import { logger } from "@/src/utils/logger";
+import { logger } from "@/utils/logger";
 import { runAccountPingBatch } from "@/utils/account-ping-batch";
 import { useDialogLayer } from "@/composables/useDialogLayer";
 

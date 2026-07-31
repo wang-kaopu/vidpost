@@ -5,7 +5,7 @@ const ALLOWED_GLOBAL_CLASSES = new Set(['rm-dialog-open', 'workspace'])
 /**
  * 查找全局样式中超出白名单的 class 选择器。
  *
- * @param css - app/styles.css 的完整内容
+ * @param css - app/src/styles.css 的完整内容
  * @returns 去重并排序后的违规 class 名称
  */
 export function findDisallowedGlobalClassSelectors(css: string): string[] {
@@ -20,7 +20,7 @@ export function findDisallowedGlobalClassSelectors(css: string): string[] {
 /**
  * 校验渲染进程唯一全局样式入口的边界约束。
  *
- * @param css - app/styles.css 的完整内容
+ * @param css - app/src/styles.css 的完整内容
  * @returns 可直接展示给开发者的违规说明
  */
 export function validateRendererGlobalCss(css: string): string[] {
@@ -29,16 +29,16 @@ export function validateRendererGlobalCss(css: string): string[] {
   const disallowedClasses = findDisallowedGlobalClassSelectors(css)
 
   if (!css.includes('@import "tailwindcss";')) {
-    violations.push('app/styles.css 必须保留 Tailwind CSS 入口')
+    violations.push('app/src/styles.css 必须保留 Tailwind CSS 入口')
   }
   if (!css.includes('@theme')) {
-    violations.push('app/styles.css 必须保留全局设计令牌的 @theme 块')
+    violations.push('app/src/styles.css 必须保留全局设计令牌的 @theme 块')
   }
   if (lineCount > MAX_GLOBAL_CSS_LINES) {
-    violations.push(`app/styles.css 共 ${lineCount} 行，超过 ${MAX_GLOBAL_CSS_LINES} 行上限`)
+    violations.push(`app/src/styles.css 共 ${lineCount} 行，超过 ${MAX_GLOBAL_CSS_LINES} 行上限`)
   }
   if (disallowedClasses.length > 0) {
-    violations.push(`app/styles.css 存在非白名单 class 选择器：${disallowedClasses.join(', ')}`)
+    violations.push(`app/src/styles.css 存在非白名单 class 选择器：${disallowedClasses.join(', ')}`)
   }
 
   return violations

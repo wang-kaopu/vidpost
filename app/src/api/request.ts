@@ -1,6 +1,6 @@
 import axios, { AxiosError, AxiosHeaders, type AxiosInstance, type AxiosRequestConfig, type AxiosResponse } from "axios";
 import { frontendEnv, getAccessToken } from "@/config";
-import { logger } from "@/src/utils/logger";
+import { logger } from "@/utils/logger";
 import type { ApiEnvelope } from "./types";
 
 type QueryScalar = string | number | boolean | null | undefined;

@@ -12,7 +12,7 @@ export default defineConfig({
   plugins: [vue(), tailwindcss()],
   resolve: {
     alias: {
-      "@": path.resolve(appRoot),
+      "@": path.resolve(appRoot, "src"),
       "@shared": path.resolve(appRoot, "../shared"),
     },
   },

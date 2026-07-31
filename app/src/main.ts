@@ -2,7 +2,7 @@ import { createApp } from "vue";
 import { createPinia } from "pinia";
 import App from "./App.vue";
 import "./styles.css";
-import { logger } from "./src/utils/logger";
+import { logger } from "./utils/logger";
 import { router } from "./router";
 
 const vueApp = createApp(App);

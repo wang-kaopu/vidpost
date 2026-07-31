@@ -32,9 +32,9 @@ async function readVueSources(directory: string): Promise<VueStyleSource[]> {
  * 执行渲染进程 CSS 边界检查并通过退出码报告结果。
  */
 async function main(): Promise<void> {
-  const appDirectory = path.join(process.cwd(), 'app')
-  const globalCss = await fs.readFile(path.join(appDirectory, 'styles.css'), 'utf8')
-  const vueSources = await readVueSources(appDirectory)
+  const appSourceDirectory = path.join(process.cwd(), 'app', 'src')
+  const globalCss = await fs.readFile(path.join(appSourceDirectory, 'styles.css'), 'utf8')
+  const vueSources = await readVueSources(appSourceDirectory)
   const globalStyleFiles = findVueFilesWithGlobalStyleBlocks(vueSources)
   const violations = validateRendererGlobalCss(globalCss)
 

@@ -8,7 +8,7 @@ import {
   supportsScheduledPublish,
   validateScheduledAt,
   validateScheduledAtBeforeExecution,
-} from "@/app/utils/publish-schedule.ts";
+} from "@/app/src/utils/publish-schedule.ts";
 
 const NOW_MS = Date.UTC(2026, 6, 13, 4, 0);
 

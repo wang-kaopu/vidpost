@@ -2,7 +2,7 @@
 
 Electron + Vue 的多平台视频发布客户端。Electron 主进程、服务层、脚本和测试统一使用 TypeScript 与 ESM；Vue 渲染进程由 Vite 构建。
 
-后端 TypeScript 的 `@/` 指向仓库根目录，项目内模块统一使用 `@/src/...`、`@/scripts/...` 等绝对引用，不使用 `./` 或 `../` 模块路径。唯一例外是 `forge.config.ts`：Electron Forge 的 Jiti 配置加载器不解析 tsconfig paths，因此继续相对引用打包规则。前端是独立工程，`app` 内的 `@/` 仍指向 `app` 根目录。
+后端 TypeScript 的 `@/` 指向仓库根目录，项目内模块统一使用 `@/src/...`、`@/scripts/...` 等绝对引用，不使用 `./` 或 `../` 模块路径。唯一例外是 `forge.config.ts`：Electron Forge 的 Jiti 配置加载器不解析 tsconfig paths，因此继续相对引用打包规则。前端是独立工程，`app` 内的 `@/` 指向 `app/src`。
 
 ## 环境与安装
 
@@ -23,9 +23,9 @@ npm install
 npm install -D tailwindcss @tailwindcss/vite --workspace app
 ```
 
-`app/styles.css` 是唯一全局样式入口，只保留 Tailwind 入口、`@theme` 设计令牌、基础 reset、原生表单继承和工作区弹窗状态。页面布局优先使用 Tailwind 工具类；复杂动画和业务状态放在所属组件的 `<style scoped>` 中，较长样式可以通过 `<style scoped src="...">` 与组件同目录维护。不要新增页面级全局按钮、字段、徽标或业务选择器。
+`app/src/styles.css` 是唯一全局样式入口，只保留 Tailwind 入口、`@theme` 设计令牌、基础 reset、原生表单继承和工作区弹窗状态。页面布局优先使用 Tailwind 工具类；复杂动画和业务状态直接放在所属组件的 `<style scoped>` 中，不拆分为独立 CSS 文件。不要新增页面级全局按钮、字段、徽标或业务选择器。
 
-无业务语义的小组件统一维护在 `app/components/ui/`。当前包含按钮、图标按钮、文本输入框、文本域、选择字段、圆形复选框、数据表、页面面板、弹窗外壳、筛选浮层、操作菜单和状态消息。业务组件直接组合这些组件，并通过明确的 `variant`、`tone`、`size` 等属性选择外观。例如：
+无业务语义的小组件统一维护在 `app/src/components/ui/`。当前包含按钮、图标按钮、文本输入框、文本域、选择字段、圆形复选框、数据表、页面面板、弹窗外壳、筛选浮层、操作菜单和状态消息。业务组件直接组合这些组件，并通过明确的 `variant`、`tone`、`size` 等属性选择外观。例如：
 
 ```vue
 <CapsuleButton variant="primary" size="sm">绑定账号</CapsuleButton>
@@ -34,11 +34,11 @@ npm install -D tailwindcss @tailwindcss/vite --workspace app
 <ToneBadge tone="success" dot>在线</ToneBadge>
 ```
 
-新增通用交互优先扩展 `components/ui` 中已有组件；只有业务结构和行为无法归入现有基础组件时才新建组件。UI 小组件不得直接请求接口、读取 Electron API 或依赖具体业务类型。
+新增通用交互优先扩展 `app/src/components/ui` 中已有组件；只有业务结构和行为无法归入现有基础组件时才新建组件。UI 小组件不得直接请求接口、读取 Electron API 或依赖具体业务类型。
 
 `DataList` 统一将表格中的 SVG 图标和平台 Logo 按原尺寸的 80% 居中显示，并保留原布局占位，业务页面不再单独调整表格图标尺寸。
 
-页面入口统一平铺在 `app/views/`，包括登录、账号、作品、发布和记录五个视图。路由表位于 `app/router/index.ts`，使用 Vue Router 4 的 hash history，保证 Vite 开发服务器与 Electron `file:` 协议共享同一套路由。需要登录的工作区视图通过路由元信息统一拦截。
+页面入口统一平铺在 `app/src/views/`，包括登录、账号、作品、发布和记录五个视图。路由表位于 `app/src/router/index.ts`，使用 Vue Router 4 的 hash history，保证 Vite 开发服务器与 Electron `file:` 协议共享同一套路由。需要登录的工作区视图通过路由元信息统一拦截。
 
 ```bash
 npm install vue-router@4 --workspace app
@@ -46,7 +46,7 @@ npm install vue-router@4 --workspace app
 
 路由入口使用 `createRouter()` 和 `createWebHashHistory()`，应用壳通过 `RouterView` 渲染当前视图，侧边栏通过 `RouterLink` 导航。
 
-业务组件统一平铺在 `app/components/`，只有无业务语义的基础组件使用 `app/components/ui/` 二级目录，不再按页面或组件名称建立其他二级目录。具有独立 CSS 的视图或业务组件将同名 Vue 与 CSS 文件放在同一目录，例如 `views/WorksView.vue` 与 `views/WorksView.css`、`components/NotificationCenter.vue` 与 `components/NotificationCenter.css`。
+业务组件统一平铺在 `app/src/components/`，只有无业务语义的基础组件使用 `app/src/components/ui/` 二级目录，不再按页面或组件名称建立其他二级目录。视图和业务组件样式直接维护在对应 Vue 文件的 `<style scoped>` 中。
 
 界面图标统一使用 Lucide 官方 Vue 包，不维护自定义 SVG 图标组件，也不在 Vue 模板中手写图标路径。依赖安装和基础用法如下：
 
@@ -125,7 +125,7 @@ Forge 的 ASAR 配置会整体解包 Playwright、Sharp 和 `@img` 运行时目�
 
 `npm run dev` 会选择空闲端口启动当前项目的 Vite，并通过 `RENDERER_DEV_SERVER_URL` 将准确地址交给 Electron。Electron 不再探测固定端口，因此不会连接其他项目或工作区的开发服务器。`npm start` 和打包后的应用只加载 `app/dist/index.html`。
 
-`app/App.vue` 是正式渲染入口，`app/router/index.ts` 负责加载 `app/views/` 下的正式页面；`app/src/App.vue` 和 `app/src/scripts/sse-register.ts` 是后端联调 Demo，不能作为废弃目录删除。
+`app/src/App.vue` 是正式渲染入口，`app/src/router/index.ts` 负责加载 `app/src/views/` 下的正式页面；正式 renderer 的入口、应用壳、配置、路由、类型、样式、API、组件、组合式函数、Store 和工具模块统一放在 `app/src/` 下。`app/src/scripts/sse-register.ts` 保留用于后端联调。
 
 ## 日志规范
 
@@ -216,6 +216,8 @@ Bilibili、百家号、抖音和搜狐的 `xx-video.ts` 是稳定门面，只实
 记录页不单独占用“账号 ID”和“预约发布时间”列；每条记录通过操作列的纵向三点轻菜单查看记录 ID、账号 ID、预约时间并执行删除操作。
 
 记录页在状态右侧单独显示任务创建时间，并按当前系统本地时区格式化为年月日和时分。
+
+记录页使用服务端游标分页，底部每页数量按钮支持选择 50、75、100、200 或 300 条；切换数量后回到第一页重新查询，并保留已选择的发布记录。
 
 上传实现复用 `axios-retry`、`crc-32`、`file-type`、`mp4box`、`p-limit` 和 `sharp`，搜狐迁移没有新增依赖。抖音隐藏网络窗口脚本由 `npm run build:electron` 生成到 `.build/douyin-publish-renderer.js`。
 

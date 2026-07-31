@@ -25,7 +25,7 @@ import {
 import type { PublishTask, BackendPlatform, PublishTaskExportConfig } from "@/api/publish";
 import { useNotificationStore } from "@/store/notification";
 import { usePublishQueueStore } from "@/store/publish-queue";
-import { logger } from "@/src/utils/logger";
+import { logger } from "@/utils/logger";
 
 const loading = ref(false);
 const exporting = ref(false);

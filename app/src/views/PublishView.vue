@@ -19,7 +19,7 @@ import {
 } from "@/store/publish-queue";
 import { useNotificationStore } from "@/store/notification";
 import { usePublishProgressStore } from "@/store/publish-progress";
-import { logger } from "@/src/utils/logger";
+import { logger } from "@/utils/logger";
 import { runAccountPingBatch } from "@/utils/account-ping-batch";
 import { IMMEDIATE_PUBLISH_VALUE, validateScheduledAt } from "@/utils/publish-schedule";
 import PlatformLogo from "@/components/PlatformLogo.vue";

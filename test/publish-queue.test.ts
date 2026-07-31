@@ -5,9 +5,9 @@ import { createPinia, setActivePinia } from "pinia";
 import {
   findFirstPublishQueueValidationError,
   usePublishQueueStore,
-} from "@/app/store/publish-queue.ts";
-import type { PublishTask } from "@/app/api/publish.ts";
-import type { WorkItem } from "@/app/types.ts";
+} from "@/app/src/store/publish-queue.ts";
+import type { PublishTask } from "@/app/src/api/publish.ts";
+import type { WorkItem } from "@/app/src/types.ts";
 
 /** 构造供待发布队列测试使用的已完成作品。 */
 const createWork = (id: string, title: string): WorkItem => ({
