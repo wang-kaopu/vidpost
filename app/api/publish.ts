@@ -273,7 +273,7 @@ export interface PublishTaskExportConfig {
 /**
  * 将指定发布任务导出为文件。
  *
- * @param input - 任务 ID、导出格式和导出列
+ * @param input - 任务 ID、文档标题、导出格式和导出列
  * @returns 导出文件
  */
 export async function exportPublishTasks(input: PublishTaskExportConfig & {
@@ -285,6 +285,7 @@ export async function exportPublishTasks(input: PublishTaskExportConfig & {
       url: "/publish/tasks/export",
       data: {
         task_ids: input.taskIds.map(String),
+        document_title: input.documentTitle,
         export_type: input.exportType,
         columns: input.columns,
       },

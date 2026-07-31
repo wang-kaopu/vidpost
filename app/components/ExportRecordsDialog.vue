@@ -69,10 +69,9 @@ function toggleOptionalColumn(column: PublishTaskExportColumn): void {
 
 /** 提交当前导出配置。 */
 function confirmExport(): void {
-  const normalizedTitle = documentTitle.value.trim();
-  if (!normalizedTitle || props.exporting || props.selectedCount === 0) return;
+  if (!documentTitle.value || props.exporting || props.selectedCount === 0) return;
   emit("confirm", {
-    documentTitle: normalizedTitle,
+    documentTitle: documentTitle.value,
     exportType: exportType.value,
     columns: exportFields
       .filter(({ key, fixed }) => fixed || selectedOptionalColumns.value.has(key))
@@ -171,7 +170,7 @@ useDialogLayer(() => props.visible);
         <CapsuleButton
           variant="primary"
           type="button"
-          :disabled="!documentTitle.trim() || exporting || selectedCount === 0"
+          :disabled="!documentTitle || exporting || selectedCount === 0"
           @click="confirmExport"
         >
           <Check :size="15" aria-hidden="true" />

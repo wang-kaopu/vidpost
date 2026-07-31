@@ -86,7 +86,9 @@ const activeRecordFilterCount = computed(
 const page = ref(1);
 const pageCursors = ref<number[]>([0]);
 const isLastPage = ref(true);
-const PAGE_SIZE = 10;
+const pageSize = ref(50);
+const pageSizeOptions = [50, 75, 100, 200, 300]
+  .map((value) => ({ value, label: `${value} 条/页` }));
 let recordRequestId = 0;
 const platformOptions = ref<{ id: string; key: string; label: string }[]>([]);
 const platformFilterOptions = computed(() =>
@@ -290,7 +292,7 @@ const loadRecords = async (
   try {
     const res = await getPublishTasks({
       lastId,
-      limit: PAGE_SIZE,
+      limit: pageSize.value,
       ...appliedFilters.value,
     });
     if (requestId !== recordRequestId) return;
@@ -364,6 +366,16 @@ const handlePageChange = (newPage: number) => {
   if (loading.value || newPage < 1 || (newPage > page.value && isLastPage.value)) return;
   cancelRemarkEdit();
   void loadRecords({ targetPage: newPage });
+};
+
+/** 切换每页记录数并保留跨页选择，从第一页重新查询。 */
+const handlePageSizeChange = () => {
+  if (loading.value) return;
+  cancelRemarkEdit();
+  page.value = 1;
+  pageCursors.value = [0];
+  isLastPage.value = true;
+  void loadRecords({ targetPage: 1 });
 };
 
 const onDateFocus = (e: Event) => {
@@ -781,8 +793,17 @@ onUnmounted(() => {
     </DataList>
 
     <footer class="flex items-center justify-between gap-[18px] px-8 pt-[18px] pb-[26px] text-[#697789] max-[900px]:flex-col max-[900px]:items-start">
-      <div class="pager-info">
-        第 {{ page }} 页，本页 {{ items.length }} 条
+      <div class="pager-info flex items-center gap-2">
+        <span>第 {{ page }} 页</span>
+        <AntSelect
+          v-model:value="pageSize"
+          class="w-[124px]"
+          :disabled="loading"
+          :options="pageSizeOptions"
+          placement="topLeft"
+          @change="handlePageSizeChange"
+        />
+        <span>本页 {{ items.length }} 条</span>
       </div>
       <div class="pager-numbers">
         <button
