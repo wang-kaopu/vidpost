@@ -141,12 +141,22 @@ export async function getPublishPlatforms(options?: { lastId?: number; limit?: n
   );
 }
 
-// 获取发布任务列表
+/**
+ * 按筛选条件和远端游标获取发布任务列表。
+ *
+ * @param options - 筛选条件、页大小和上一页返回的游标
+ * @returns 当前页发布任务及下一页游标
+ */
 export async function getPublishTasks(options?: {
   lastId?: number;
   limit?: number;
   status?: string;
   accountId?: string;
+  platform?: string;
+  title?: string;
+  type?: string;
+  startDate?: string;
+  endDate?: string;
 }): Promise<ListResponse<PublishTask>> {
   return requestEnvelope(
     apiClient.get<ApiEnvelope<ListResponse<PublishTask>>>("/publish/tasks", {
@@ -155,6 +165,11 @@ export async function getPublishTasks(options?: {
         limit: options?.limit,
         status: options?.status,
         account_id: options?.accountId,
+        platform: options?.platform,
+        title: options?.title,
+        type: options?.type,
+        start_date: options?.startDate,
+        end_date: options?.endDate,
       }),
     }),
     "发布任务列表请求失败",
@@ -221,37 +236,53 @@ export async function deleteAccountTag(accountId: string | number, tag: string):
   );
 }
 
+/**
+ * 从 Content-Disposition 中提取并解码下载文件名。
+ *
+ * @param header - 服务端返回的 Content-Disposition
+ * @returns 解码后的文件名；响应未携带文件名时返回 null
+ */
 function getDispositionFilename(header: string | null): string | null {
   if (!header) return null;
-  const match = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/.exec(header);
-  return match ? match[1].replace(/['"]/g, "").trim() : null;
+  const encodedMatch = /filename\*=UTF-8''([^;\n]+)/i.exec(header);
+  const rawFilename = encodedMatch?.[1] || /filename="?([^";\n]+)"?/i.exec(header)?.[1];
+  if (!rawFilename) return null;
+  try {
+    return decodeURIComponent(rawFilename.trim());
+  } catch {
+    return rawFilename.trim();
+  }
 }
 
-// 导出发布任务列表
-export async function exportPublishTasks(options?: {
-  status?: string | string[];
-  accountId?: string | string[];
-  platform?: string | string[];
-  title?: string;
-  type?: string | string[];
-  startDate?: string;
-  endDate?: string;
-  ids?: (string | number)[];
+export type PublishTaskExportColumn =
+  | "platform"
+  | "nickname"
+  | "title"
+  | "status"
+  | "created_at"
+  | "scheduled_at"
+  | "link";
+
+/**
+ * 将指定发布任务导出为文件。
+ *
+ * @param input - 任务 ID、导出格式和导出列
+ * @returns 导出文件及服务端建议的文件名
+ */
+export async function exportPublishTasks(input: {
+  taskIds: (string | number)[];
+  exportType: "html" | "pdf";
+  columns: PublishTaskExportColumn[];
 }): Promise<{ blob: Blob; filename?: string }> {
   const response = await requestBlob(
     {
-      method: "GET",
+      method: "POST",
       url: "/publish/tasks/export",
-      params: normalizeQueryParams({
-        status: options?.status,
-        account_id: options?.accountId,
-        platform: options?.platform,
-        title: options?.title,
-        type: options?.type,
-        start_date: options?.startDate,
-        end_date: options?.endDate,
-        ids: options?.ids,
-      }),
+      data: {
+        task_ids: input.taskIds.map(String),
+        export_type: input.exportType,
+        columns: input.columns,
+      },
     },
     "导出发布任务请求失败",
   );

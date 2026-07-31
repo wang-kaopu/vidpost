@@ -49,10 +49,22 @@ const platformFilter = ref<string>();
 const categoryFilter = ref<string>();
 const scheduledStart = ref("");
 const scheduledEnd = ref("");
+const appliedFilters = ref({
+  title: "",
+  platform: undefined as string | undefined,
+  type: undefined as string | undefined,
+  startDate: "",
+  endDate: "",
+});
 const activeRecordFilterCount = computed(
   () => [titleFilter.value.trim(), platformFilter.value, categoryFilter.value, scheduledStart.value, scheduledEnd.value]
     .filter(Boolean).length,
 );
+const page = ref(1);
+const pageCursors = ref<number[]>([0]);
+const isLastPage = ref(true);
+const PAGE_SIZE = 10;
+let recordRequestId = 0;
 const platformOptions = ref<{ id: string; key: string; label: string }[]>([]);
 const platformFilterOptions = computed(() =>
   platformOptions.value.map(({ key, label }) => ({ value: key, label })),
@@ -144,50 +156,7 @@ const loadPlatforms = async () => {
   }
 };
 
-const isInDateRange = (scheduledAt: string | null | undefined, start: string, end: string) => {
-  if (!scheduledAt) return true;
-  const date = new Date(scheduledAt);
-  if (Number.isNaN(date.getTime())) return true;
-  if (start) {
-    const startDate = new Date(start + "T00:00:00");
-    if (date < startDate) return false;
-  }
-  if (end) {
-    const endDate = new Date(end + "T23:59:59");
-    if (date > endDate) return false;
-  }
-  return true;
-};
-
-const items = computed(() => {
-  let result = records.value;
-
-  const title = titleFilter.value.trim().toLowerCase();
-  if (title) {
-    result = result.filter((item: PublishTask) => item.title?.toLowerCase().includes(title));
-  }
-
-  const selectedPlatform = platformFilter.value;
-  if (selectedPlatform) {
-    result = result.filter((item: PublishTask) => {
-      const key = String(item.platform || "").trim().toLowerCase();
-      return key === selectedPlatform;
-    });
-  }
-
-  const selectedCategory = categoryFilter.value;
-  if (selectedCategory) {
-    result = result.filter((item: PublishTask) => item.video_type === selectedCategory);
-  }
-
-  if (scheduledStart.value || scheduledEnd.value) {
-    result = result.filter((item: PublishTask) =>
-      isInDateRange(item.scheduled_at, scheduledStart.value, scheduledEnd.value),
-    );
-  }
-
-  return result;
-});
+const items = computed(() => records.value);
 
 const allSelected = computed(() => items.value.length > 0 && items.value.every((item) => selectedIds.value.has(item.id)));
 
@@ -213,29 +182,99 @@ const toggleSelect = (item: PublishTask) => {
   }
 };
 
-const loadRecords = async () => {
+/**
+ * 使用远端游标加载一页发布记录。
+ *
+ * @param options - 目标页及是否从第一页重新开始
+ */
+const loadRecords = async (
+  { targetPage = page.value, resetPagination = false }: { targetPage?: number; resetPagination?: boolean } = {},
+) => {
+  const requestId = ++recordRequestId;
   loading.value = true;
   errorMessage.value = "";
+  const nextPage = resetPagination ? 1 : targetPage;
+  if (resetPagination) {
+    page.value = 1;
+    pageCursors.value = [0];
+    selectedIds.value.clear();
+  }
+  const lastId = pageCursors.value[nextPage - 1];
+  if (lastId === undefined) {
+    loading.value = false;
+    return;
+  }
 
   try {
-    const res = await getPublishTasks({ limit: 999 });
-    records.value = res.list || [];
-    selectedIds.value.clear();
+    const res = await getPublishTasks({
+      lastId,
+      limit: PAGE_SIZE,
+      ...appliedFilters.value,
+    });
+    if (requestId !== recordRequestId) return;
+
+    const nextRecords = res.list || [];
+    const responseLastId = Number(res.last_id);
+    const hasNextCursor =
+      res.is_end !== true
+      && nextRecords.length > 0
+      && Number.isInteger(responseLastId)
+      && responseLastId > 0
+      && responseLastId !== lastId;
+
+    records.value = nextRecords;
+    page.value = nextPage;
+    isLastPage.value = !hasNextCursor;
+    pageCursors.value = hasNextCursor
+      ? [...pageCursors.value.slice(0, nextPage), responseLastId]
+      : pageCursors.value.slice(0, nextPage);
   } catch {
+    if (requestId !== recordRequestId) return;
     errorMessage.value = "";
     pushRecordsError("发布记录加载失败", "发布记录暂时无法加载，请稍后重试");
     records.value = [];
   } finally {
-    loading.value = false;
+    if (requestId === recordRequestId) loading.value = false;
   }
 };
 
+/** 应用筛选表单并从第一页查询发布记录。 */
+const handleSearch = () => {
+  appliedFilters.value = {
+    title: titleFilter.value.trim(),
+    platform: platformFilter.value,
+    type: categoryFilter.value,
+    startDate: scheduledStart.value,
+    endDate: scheduledEnd.value,
+  };
+  void loadRecords({ resetPagination: true });
+};
+
+/** 清空筛选条件并重新查询第一页发布记录。 */
 const resetFilters = () => {
   titleFilter.value = "";
   platformFilter.value = undefined;
   categoryFilter.value = undefined;
   scheduledStart.value = "";
   scheduledEnd.value = "";
+  appliedFilters.value = {
+    title: "",
+    platform: undefined,
+    type: undefined,
+    startDate: "",
+    endDate: "",
+  };
+  void loadRecords({ resetPagination: true });
+};
+
+/**
+ * 切换到已知游标对应的发布记录页。
+ *
+ * @param newPage - 从 1 开始的目标页码
+ */
+const handlePageChange = (newPage: number) => {
+  if (loading.value || newPage < 1 || (newPage > page.value && isLastPage.value)) return;
+  void loadRecords({ targetPage: newPage });
 };
 
 const onDateFocus = (e: Event) => {
@@ -316,25 +355,23 @@ const handleRetryPublish = (item: PublishTask): void => {
   }
 };
 
+/** 将当前选中的发布记录导出为 PDF 文件。 */
 const handleExport = async () => {
-  if (exporting.value) return;
+  if (exporting.value || selectedIds.value.size === 0) return;
   exporting.value = true;
   errorMessage.value = "";
   try {
-    const ids = selectedIds.value.size > 0 ? Array.from(selectedIds.value) : undefined;
+    const exportType = "pdf";
     const { blob, filename } = await exportPublishTasks({
-      title: titleFilter.value.trim() || undefined,
-      platform: platformFilter.value || undefined,
-      type: categoryFilter.value || undefined,
-      startDate: scheduledStart.value || undefined,
-      endDate: scheduledEnd.value || undefined,
-      ids,
+      taskIds: Array.from(selectedIds.value),
+      exportType,
+      columns: ["platform", "nickname", "title", "status", "created_at", "scheduled_at", "link"],
     });
 
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = filename || "发布记录.xlsx";
+    a.download = filename || `发布记录.${exportType}`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -437,14 +474,19 @@ onUnmounted(() => {
             <CapsuleButton variant="quiet" size="sm" type="button" @click="resetFilters">
               <RefreshCw :size="14" aria-hidden="true" /> 重置
             </CapsuleButton>
-            <CapsuleButton variant="primary" size="sm" type="button" @click="loadRecords(); close()">
+            <CapsuleButton variant="primary" size="sm" type="button" @click="handleSearch(); close()">
               <Search :size="14" aria-hidden="true" /> 搜索
             </CapsuleButton>
           </div>
         </FilterPopover>
-        <CapsuleButton variant="primary" type="button" :disabled="exporting || !items.length" @click="handleExport">
+        <CapsuleButton
+          variant="primary"
+          type="button"
+          :disabled="exporting || selectedIds.size === 0"
+          @click="handleExport"
+        >
           <Download :size="17" aria-hidden="true" />
-          <span>{{ exporting ? "导出中..." : "导出发布记录" }}</span>
+          <span>{{ exporting ? "导出中..." : selectedIds.size > 0 ? `导出选中记录（${selectedIds.size}）` : "导出发布记录" }}</span>
         </CapsuleButton>
     </template>
 
@@ -596,7 +638,28 @@ onUnmounted(() => {
     </DataList>
 
     <footer class="flex items-center justify-between gap-[18px] px-8 pt-[18px] pb-[26px] text-[#697789] max-[900px]:flex-col max-[900px]:items-start">
-      <div class="pager">共 {{ items.length }} 条</div>
+      <div class="pager-info">
+        第 {{ page }} 页，本页 {{ items.length }} 条
+      </div>
+      <div class="pager-numbers">
+        <button
+          type="button"
+          class="pager-button pager-nav-button"
+          :disabled="page <= 1 || loading"
+          @click="handlePageChange(page - 1)"
+        >
+          上一页
+        </button>
+        <span class="pager-current">第 {{ page }} 页</span>
+        <button
+          type="button"
+          class="pager-button pager-nav-button"
+          :disabled="isLastPage || loading"
+          @click="handlePageChange(page + 1)"
+        >
+          下一页
+        </button>
+      </div>
     </footer>
 
     <BottomFloatingBar :visible="retryToastVisible" role="status" aria-live="polite">
@@ -627,4 +690,11 @@ onUnmounted(() => {
 .records-status-reason { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: #eef2f7; color: #64748b; cursor: default; }
 .records-status-reason:focus-visible { outline: 2px solid rgba(63,140,255,.55); outline-offset: 2px; }
 .records-table .records-title-cell { max-width: none; }
+.pager-info { color: #697789; font-size: 14px; }
+.pager-numbers { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.pager-current { min-width: 68px; color: #48617f; text-align: center; font-size: 14px; font-weight: 600; }
+.pager-button { display: inline-flex; align-items: center; justify-content: center; min-height: 38px; padding: 0 14px; border: 1px solid rgba(184,204,227,.9); border-radius: 12px; background: rgba(255,255,255,.92); box-shadow: inset 0 1px 0 rgba(255,255,255,.75), 0 10px 20px rgba(118,146,178,.12); color: #48617f; font-size: 14px; font-weight: 600; transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease, color 160ms ease, border-color 160ms ease; }
+.pager-button:hover:not(:disabled) { transform: translateY(-1px); border-color: rgba(132,171,214,.96); background: rgba(244,249,255,.98); color: #2d5f98; box-shadow: inset 0 1px 0 rgba(255,255,255,.82), 0 14px 26px rgba(99,140,190,.18); }
+.pager-nav-button { min-width: 76px; }
+.pager-button:disabled { cursor: not-allowed; opacity: .5; transform: none; box-shadow: inset 0 1px 0 rgba(255,255,255,.6), 0 8px 18px rgba(118,146,178,.08); }
 </style>
