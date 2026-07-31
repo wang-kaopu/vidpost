@@ -3,12 +3,13 @@ import { once } from 'node:events'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
+import electronModule from 'electron'
 import { createServer } from 'vite'
 
-import { buildElectronLaunchConfig } from '@/scripts/start-electron.ts'
 import { logger } from '@/src/utils/logger.ts'
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url))
+const electronBinary = electronModule as unknown as string
 
 /**
  * 启动 Vite，并将当前实例的开发服务器地址显式传给 Electron。
@@ -31,14 +32,18 @@ export async function startDevelopment(): Promise<void> {
     }
     viteServer.printUrls()
 
-    const electronConfig = buildElectronLaunchConfig({
-      projectRoot,
-      env: {
-        ...process.env,
-        RENDERER_DEV_SERVER_URL: devServerUrl,
-      },
+    const electronEnv: NodeJS.ProcessEnv = {
+      ...process.env,
+      RENDERER_DEV_SERVER_URL: devServerUrl,
+    }
+    // Electron 应用不能继承仅以 Node 模式运行的环境变量。
+    delete electronEnv.ELECTRON_RUN_AS_NODE
+    const electronChild = spawn(electronBinary, [projectRoot, ...process.argv.slice(2)], {
+      cwd: projectRoot,
+      env: electronEnv,
+      stdio: 'inherit',
+      windowsHide: false,
     })
-    const electronChild = spawn(electronConfig.command, electronConfig.args, electronConfig.spawnOptions)
     const forwardSigint = () => electronChild.kill('SIGINT')
     const forwardSigterm = () => electronChild.kill('SIGTERM')
     process.once('SIGINT', forwardSigint)

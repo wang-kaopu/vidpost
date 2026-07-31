@@ -6,8 +6,7 @@
   "scripts": {
     "dev": "vite --host localhost --port 5173 --strictPort",
     "build": "vite build",
-    "typecheck": "vue-tsc --noEmit",
-    "preview": "vite preview --host 127.0.0.1 --port 4173 --strictPort"
+    "typecheck": "vue-tsc --noEmit"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.2",

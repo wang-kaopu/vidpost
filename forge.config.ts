@@ -5,7 +5,7 @@ import { FuseV1Options, FuseVersion } from '@electron/fuses';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import type { ForgeConfig } from '@electron-forge/shared-types';
 
-import { isPackagedPathIgnored } from './scripts/forge-packaging.ts';
+import { isPackagedPathAllowed } from './scripts/forge-packaging.ts';
 
 const configDirectory = path.dirname(fileURLToPath(import.meta.url));
 
@@ -14,7 +14,7 @@ const config: ForgeConfig = {
     asar: {
       unpack: '**/node_modules/{playwright,playwright-core,sharp,@img}/**',
     },
-    ignore: (targetPath) => isPackagedPathIgnored(targetPath, configDirectory),
+    ignore: (targetPath) => !isPackagedPathAllowed(targetPath, configDirectory),
     junk: true,
     overwrite: true,
     prune: true,

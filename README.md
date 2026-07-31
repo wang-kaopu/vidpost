@@ -107,6 +107,8 @@ npm run forge:make
 
 `forge:package` 只生成 `out/矩阵特工队-win32-x64` 下的可运行目录；`forge:make` 额外生成可分发安装包。打包前必须退出从 `out` 启动的旧应用，否则 Windows 会锁住 `app.asar` 并使清理或覆盖报 `EBUSY`。Forge 每次会覆盖旧的 package 目录，`.build` 和 `app/dist` 也会在构建前清空。
 
+Forge 使用运行时路径白名单，只复制根 `package.json`、`.build` 中的三个可执行入口、`app/dist`、两份浏览器身份文件，以及从根应用生产依赖计算出的 `node_modules` 传递闭包。前端 workspace 依赖已经由 Vite 写入 `app/dist`，不会重复打入 ASAR；source map、源码、脚本、测试和开发配置默认全部排除。新增运行时入口或资产时必须同步更新 `scripts/forge-packaging.ts` 白名单。
+
 Sharp 的 Windows 原生模块依赖同目录的 libvips DLL。打包前应确认 `node_modules/@img/sharp-win32-x64/lib` 同时包含 `.node` 和 `.dll` 文件；打包后应确认它们都被复制到：
 
 ```text
