@@ -796,7 +796,7 @@ useDialogLayer(() => accountDialogVisible.value);
 
     <footer class="flex items-center justify-between gap-[18px] px-8 pt-[18px] pb-[26px] text-[#697789] max-[900px]:flex-col max-[900px]:items-start">
       <div class="pager-info">
-        第 {{ page }} 页，本页 {{ accounts.length }} 条
+        本页 {{ accounts.length }} 条
       </div>
       <div class="pager-numbers">
         <button

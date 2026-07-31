@@ -794,7 +794,6 @@ onUnmounted(() => {
 
     <footer class="flex items-center justify-between gap-[18px] px-8 pt-[18px] pb-[26px] text-[#697789] max-[900px]:flex-col max-[900px]:items-start">
       <div class="pager-info flex items-center gap-2">
-        <span>第 {{ page }} 页</span>
         <AntSelect
           v-model:value="pageSize"
           class="w-[124px]"
