@@ -80,15 +80,25 @@ const handleAction = (item: NotificationCenterItem): void => {
 </script>
 
 <template>
-  <aside class="notification-center" :class="{ 'is-collapsed': isCollapsed }" aria-live="polite">
-    <transition name="notification-center-shell" mode="out-in">
-      <section v-if="!isCollapsed" key="expanded" class="notification-center-shell">
-        <header class="notification-center-header">
+  <aside class="pointer-events-none fixed right-7 bottom-7 z-[120] flex flex-col items-end max-[900px]:right-4 max-[900px]:bottom-4" aria-live="polite">
+    <transition
+      mode="out-in"
+      enter-active-class="transition-[opacity,transform] duration-[180ms] ease-[ease]"
+      enter-from-class="translate-y-2.5 opacity-0"
+      leave-active-class="transition-[opacity,transform] duration-[180ms] ease-[ease]"
+      leave-to-class="translate-y-2.5 opacity-0"
+    >
+      <section
+        v-if="!isCollapsed"
+        key="expanded"
+        class="pointer-events-auto flex max-h-[min(720px,calc(100vh-56px))] w-[min(388px,calc(100vw-40px))] flex-col gap-4 overflow-hidden rounded-[28px] bg-white/[.8] p-[18px] shadow-[inset_0_1px_0_rgba(255,255,255,.78),0_24px_56px_rgba(142,163,190,.28)] backdrop-blur-[24px] backdrop-saturate-[140%] max-[900px]:w-[min(388px,calc(100vw-32px))] max-[900px]:rounded-3xl max-[900px]:p-4"
+      >
+        <header class="flex items-start justify-between gap-4 max-[900px]:flex-col max-[900px]:items-stretch">
           <div>
-            <p class="notification-center-kicker">{{ title }}</p>
-            <strong>{{ unreadCount > 0 ? `${unreadCount} 条待处理` : "全部已读" }}</strong>
+            <p class="mt-0 mb-1.5 text-xs tracking-[.16em] text-[#6f7f93] uppercase">{{ title }}</p>
+            <strong class="block text-[22px] tracking-[-.03em] text-[#1f2530]">{{ unreadCount > 0 ? `${unreadCount} 条待处理` : "全部已读" }}</strong>
           </div>
-          <div class="notification-center-header-actions">
+          <div class="inline-flex items-center gap-2 max-[900px]:justify-end">
             <CapsuleButton type="button" variant="secondary" size="sm" @click="toggleCollapsed">
               收起
             </CapsuleButton>
@@ -104,37 +114,50 @@ const handleAction = (item: NotificationCenterItem): void => {
           </div>
         </header>
 
-        <div v-if="visibleItems.length > 0" class="notification-center-list">
+        <div
+          v-if="visibleItems.length > 0"
+          class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1 [scrollbar-color:rgba(151,170,193,.42)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[rgba(151,170,193,.42)]"
+        >
           <article
             v-for="item in visibleItems"
             :key="item.id"
-            class="notification-toast"
-            :class="[`is-${item.tone || 'info'}`, { 'is-unread': item.unread }]"
+            class="relative grid grid-cols-[4px_minmax(0,1fr)_auto] gap-3.5 rounded-[22px] bg-[linear-gradient(180deg,rgba(255,255,255,.98),rgba(245,249,255,.94))] py-4 pr-4 shadow-[inset_0_0_0_1px_rgba(219,229,240,.92),0_14px_30px_rgba(149,169,193,.14)]"
+            :class="{ '-translate-y-px': item.unread }"
           >
-            <div class="notification-toast-accent"></div>
-            <div class="notification-toast-main">
-              <div class="notification-toast-meta">
-                <span class="notification-toast-source">{{ item.source || resolveToneLabel(item.tone) }}</span>
-                <span v-if="item.timestamp" class="notification-toast-time">{{ item.timestamp }}</span>
+            <div
+              class="my-0.5 ml-3.5 rounded-full"
+              :class="{
+                'bg-[#41b37b]': item.tone === 'success',
+                'bg-[#f0a93b]': item.tone === 'warning',
+                'bg-[#df6d66]': item.tone === 'error',
+                'bg-[#67a6ff]': !item.tone || item.tone === 'info',
+              }"
+            ></div>
+            <div class="min-w-0">
+              <div class="mb-2 flex items-center justify-between gap-3 text-xs text-[#7d8c9f]">
+                <span class="font-bold tracking-[.04em]">{{ item.source || resolveToneLabel(item.tone) }}</span>
+                <span v-if="item.timestamp" class="shrink-0 [font-variant-numeric:tabular-nums]">{{ item.timestamp }}</span>
               </div>
-              <h3>{{ item.title }}</h3>
-              <p>{{ item.message }}</p>
-              <div class="notification-toast-footer">
+              <h3 class="m-0 text-base leading-[1.3] text-[#1f2530]">{{ item.title }}</h3>
+              <p class="mt-2 mb-0 text-sm leading-[1.55] text-[#5f7084]">{{ item.message }}</p>
+              <div class="mt-3 flex items-center gap-3">
                 <button
                   v-if="item.actionLabel"
                   type="button"
-                  class="notification-toast-action"
+                  class="inline-flex min-h-[30px] items-center rounded-full bg-[rgba(234,243,255,.98)] px-3 text-xs font-bold text-[#2d79dd] shadow-[inset_0_0_0_1px_rgba(195,217,246,.98)]"
                   @click="handleAction(item)"
                 >
                   {{ item.actionLabel }}
                 </button>
-                <span v-else class="notification-toast-state">{{ resolveToneLabel(item.tone) }}</span>
+                <span v-else class="inline-flex min-h-[30px] items-center rounded-full bg-[rgba(241,246,252,.92)] px-3 text-xs font-bold text-[#75879a]">
+                  {{ resolveToneLabel(item.tone) }}
+                </span>
               </div>
             </div>
             <IconButton
               size="sm"
               appearance="ghost"
-              class="notification-toast-dismiss"
+              class="mt-3 mr-3 self-start text-xl leading-none"
               aria-label="关闭通知"
               @click="$emit('dismiss', item.id)"
             >
@@ -143,9 +166,9 @@ const handleAction = (item: NotificationCenterItem): void => {
           </article>
         </div>
 
-        <div v-else class="notification-center-empty">
-          <strong>通知中心</strong>
-          <p>{{ emptyText }}</p>
+        <div v-else class="px-1.5 pt-[22px] pb-2">
+          <strong class="block text-[22px] tracking-[-.03em] text-[#1f2530]">通知中心</strong>
+          <p class="mt-2 mb-0 text-sm leading-[1.55] text-[#5f7084]">{{ emptyText }}</p>
         </div>
       </section>
 
@@ -153,61 +176,21 @@ const handleAction = (item: NotificationCenterItem): void => {
         v-else-if="items.length > 0"
         key="collapsed"
         type="button"
-        class="notification-center-fab"
+        class="pointer-events-auto relative grid size-[58px] place-items-center rounded-[20px] bg-white/[.88] shadow-[inset_0_1px_0_rgba(255,255,255,.78),0_18px_36px_rgba(142,163,190,.26)] backdrop-blur-[22px] backdrop-saturate-[140%]"
         :title="collapsedSummary"
         :aria-label="collapsedSummary"
         @click="toggleCollapsed"
       >
-        <span class="notification-center-fab-core">
-          <span class="notification-center-fab-dot"></span>
+        <span class="grid size-7 place-items-center rounded-full bg-[linear-gradient(180deg,rgba(240,246,255,.96),rgba(227,237,251,.94))] shadow-[inset_0_0_0_1px_rgba(200,216,238,.9)]">
+          <span class="size-2.5 rounded-full bg-[linear-gradient(135deg,#4d9cff,#2f7ce8)] shadow-[0_0_0_6px_rgba(77,156,255,.14)]"></span>
         </span>
-        <span v-if="unreadCount > 0" class="notification-center-fab-badge">
+        <span
+          v-if="unreadCount > 0"
+          class="absolute -top-1 -right-1 inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-[linear-gradient(135deg,#2d79dd,#66a8ff)] px-[7px] text-[11px] font-bold text-white shadow-[inset_0_1px_0_rgba(255,255,255,.24),0_10px_18px_rgba(77,156,255,.26)]"
+        >
           {{ unreadCount > 9 ? "9+" : unreadCount }}
         </span>
       </button>
     </transition>
   </aside>
 </template>
-
-<style scoped>
-.notification-center { position: fixed; right: 28px; bottom: 28px; z-index: 120; display: flex; flex-direction: column; align-items: flex-end; pointer-events: none; }
-.notification-center-shell, .notification-center-fab { pointer-events: auto; }
-.notification-center-shell { display: flex; width: min(388px, calc(100vw - 40px)); max-height: min(720px, calc(100vh - 56px)); flex-direction: column; gap: 16px; overflow: hidden; padding: 18px; border-radius: 28px; background: rgba(255,255,255,.8); box-shadow: inset 0 1px 0 rgba(255,255,255,.78), 0 24px 56px rgba(142,163,190,.28); backdrop-filter: blur(24px) saturate(140%); }
-.notification-center-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
-.notification-center-header strong, .notification-center-empty strong { display: block; color: #1f2530; font-size: 22px; letter-spacing: -.03em; }
-.notification-center-kicker { margin: 0 0 6px; color: #6f7f93; font-size: 12px; letter-spacing: .16em; text-transform: uppercase; }
-.notification-center-header-actions { display: inline-flex; align-items: center; gap: 8px; }
-.notification-center-list { display: flex; min-height: 0; flex: 1 1 auto; flex-direction: column; gap: 12px; overflow-y: auto; padding-right: 4px; scrollbar-color: rgba(151,170,193,.42) transparent; scrollbar-width: thin; }
-.notification-center-list::-webkit-scrollbar { width: 8px; }
-.notification-center-list::-webkit-scrollbar-thumb { border-radius: 999px; background: rgba(151,170,193,.42); }
-.notification-toast { position: relative; display: grid; grid-template-columns: 4px minmax(0, 1fr) auto; gap: 14px; padding: 16px 16px 16px 0; border-radius: 22px; background: linear-gradient(180deg, rgba(255,255,255,.98), rgba(245,249,255,.94)); box-shadow: inset 0 0 0 1px rgba(219,229,240,.92), 0 14px 30px rgba(149,169,193,.14); }
-.notification-toast-accent { margin: 2px 0 2px 14px; border-radius: 999px; background: #67a6ff; }
-.notification-toast.is-success .notification-toast-accent { background: #41b37b; }
-.notification-toast.is-warning .notification-toast-accent { background: #f0a93b; }
-.notification-toast.is-error .notification-toast-accent { background: #df6d66; }
-.notification-toast-main { min-width: 0; }
-.notification-toast-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; color: #7d8c9f; font-size: 12px; }
-.notification-toast-source { font-weight: 700; letter-spacing: .04em; }
-.notification-toast-time { flex-shrink: 0; font-variant-numeric: tabular-nums; }
-.notification-toast h3 { margin: 0; color: #1f2530; font-size: 16px; line-height: 1.3; }
-.notification-toast p, .notification-center-empty p { margin: 8px 0 0; color: #5f7084; font-size: 14px; line-height: 1.55; }
-.notification-toast-footer { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
-.notification-toast-action, .notification-toast-state { display: inline-flex; min-height: 30px; align-items: center; padding: 0 12px; border-radius: 999px; font-size: 12px; font-weight: 700; }
-.notification-toast-action { background: rgba(234,243,255,.98); box-shadow: inset 0 0 0 1px rgba(195,217,246,.98); color: #2d79dd; }
-.notification-toast-state { background: rgba(241,246,252,.92); color: #75879a; }
-.notification-toast-dismiss { align-self: flex-start; margin: 12px 12px 0 0; font-size: 20px; line-height: 1; }
-.notification-toast.is-unread { transform: translateY(-1px); }
-.notification-center-empty { padding: 22px 6px 8px; }
-.notification-center-fab { position: relative; display: grid; width: 58px; height: 58px; place-items: center; border-radius: 20px; background: rgba(255,255,255,.88); box-shadow: inset 0 1px 0 rgba(255,255,255,.78), 0 18px 36px rgba(142,163,190,.26); backdrop-filter: blur(22px) saturate(140%); }
-.notification-center-fab-core { display: grid; width: 28px; height: 28px; place-items: center; border-radius: 999px; background: linear-gradient(180deg, rgba(240,246,255,.96), rgba(227,237,251,.94)); box-shadow: inset 0 0 0 1px rgba(200,216,238,.9); }
-.notification-center-fab-dot { width: 10px; height: 10px; border-radius: 999px; background: linear-gradient(135deg, #4d9cff, #2f7ce8); box-shadow: 0 0 0 6px rgba(77,156,255,.14); }
-.notification-center-fab-badge { position: absolute; top: -4px; right: -4px; display: inline-flex; min-width: 24px; height: 24px; align-items: center; justify-content: center; padding: 0 7px; border-radius: 999px; background: linear-gradient(135deg, #2d79dd, #66a8ff); box-shadow: inset 0 1px 0 rgba(255,255,255,.24), 0 10px 18px rgba(77,156,255,.26); color: #fff; font-size: 11px; font-weight: 700; }
-.notification-center-shell-enter-active, .notification-center-shell-leave-active { transition: opacity 180ms ease, transform 180ms ease; }
-.notification-center-shell-enter-from, .notification-center-shell-leave-to { transform: translateY(10px); opacity: 0; }
-@media (max-width: 900px) {
-  .notification-center { right: 16px; bottom: 16px; }
-  .notification-center-shell { width: min(100vw - 32px, 388px); padding: 16px; border-radius: 24px; }
-  .notification-center-header { flex-direction: column; align-items: stretch; }
-  .notification-center-header-actions { justify-content: flex-end; }
-}
-</style>

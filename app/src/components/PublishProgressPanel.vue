@@ -33,32 +33,35 @@ const phasePresentation: Record<PublishProgressPhase, PhasePresentation> = {
 
 <template>
   <aside
-    class="publish-progress-panel"
-    :class="{ 'is-collapsed': collapsed }"
+    class="fixed top-6 left-1/2 z-[130] flex max-h-[min(640px,calc(100vh-48px))] w-[min(680px,calc(100vw-48px))] -translate-x-1/2 flex-col overflow-hidden rounded-2xl border border-[rgba(198,213,231,.92)] bg-white/[.96] shadow-[0_24px_64px_rgba(38,56,78,.26),0_4px_14px_rgba(71,96,126,.12)] backdrop-blur-[20px] backdrop-saturate-[135%] max-[720px]:top-4 max-[720px]:max-h-[calc(100vh-32px)] max-[720px]:w-[calc(100vw-32px)]"
     aria-live="polite"
     aria-label="发布进度"
   >
-    <header class="publish-progress-header">
-      <div class="publish-progress-heading-copy">
-        <strong>发布进度</strong>
-        <span>共 {{ items.length }} 个任务</span>
+    <header class="flex items-center justify-between gap-5 border-b border-[rgba(216,226,238,.9)] px-[18px] py-4 max-[720px]:p-3.5">
+      <div class="flex min-w-0 items-baseline gap-2.5">
+        <strong class="text-[17px] tracking-[-.02em] text-[#1f2b3a]">发布进度</strong>
+        <span class="text-xs text-[#77889d]">共 {{ items.length }} 个任务</span>
       </div>
-      <div class="publish-progress-header-actions">
+      <div class="inline-flex shrink-0 items-center gap-1">
         <IconButton
           size="sm"
           appearance="ghost"
-          class="publish-progress-collapse"
           :aria-label="collapsed ? '展开发布进度' : '折叠发布进度'"
           :title="collapsed ? '展开发布进度' : '折叠发布进度'"
           :aria-expanded="!collapsed"
           @click="$emit('toggle-collapsed')"
         >
-          <component :is="collapsed ? ChevronDown : ChevronUp" :size="18" aria-hidden="true" />
+          <component
+            :is="collapsed ? ChevronDown : ChevronUp"
+            :size="18"
+            class="block size-[18px] fill-none stroke-current [stroke-linecap:round] [stroke-linejoin:round] [stroke-width:2]"
+            aria-hidden="true"
+          />
         </IconButton>
         <IconButton
           size="sm"
           appearance="ghost"
-          class="publish-progress-close"
+          class="text-[23px] leading-none"
           aria-label="关闭发布进度"
           title="关闭发布进度"
           @click="$emit('close')"
@@ -68,31 +71,42 @@ const phasePresentation: Record<PublishProgressPhase, PhasePresentation> = {
       </div>
     </header>
 
-    <div class="publish-progress-content" :class="{ 'is-collapsed': collapsed }" :aria-hidden="collapsed">
-      <div class="publish-progress-content-inner">
-        <div class="publish-progress-list">
+    <div
+      class="grid min-h-0 opacity-100 [transition:grid-template-rows_180ms_ease,opacity_140ms_ease]"
+      :class="collapsed ? 'grid-rows-[0fr] opacity-0' : 'grid-rows-[minmax(0,1fr)]'"
+      :aria-hidden="collapsed"
+    >
+      <div class="min-h-0 overflow-hidden">
+        <div class="max-h-[min(568px,calc(100vh-112px))] overflow-y-auto px-2.5 pt-1.5 pb-2.5 [scrollbar-color:rgba(139,159,184,.48)_transparent] [scrollbar-width:thin] max-[720px]:px-1.5 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[rgba(139,159,184,.48)]">
           <article
             v-for="item in items"
             :key="item.id"
-            class="publish-progress-item"
-            :class="`is-${phasePresentation[item.phase].tone}`"
+            class="border-b border-[rgba(222,230,240,.82)] px-2.5 pt-3.5 pb-[13px] last:border-b-0"
           >
-            <div class="publish-progress-item-heading">
-              <PlatformLogo :platform="item.platformLabel" />
-              <div class="publish-progress-item-copy">
-                <div class="publish-progress-platform-line">
-                  <strong>{{ item.platformLabel }}</strong>
-                  <span :title="item.accountName">{{ item.accountName }}</span>
+            <div class="flex min-w-0 items-center gap-3">
+              <PlatformLogo class="size-8! rounded-[9px]! [&>img]:size-[21px]!" :platform="item.platformLabel" />
+              <div class="min-w-0 flex-1">
+                <div class="flex min-w-0 items-center gap-[9px]">
+                  <strong class="shrink-0 text-sm text-[#243449]">{{ item.platformLabel }}</strong>
+                  <span class="min-w-0 truncate text-xs text-[#8190a3]" :title="item.accountName">{{ item.accountName }}</span>
                 </div>
-                <p :title="item.title">{{ item.title }}</p>
+                <p class="mt-[3px] mb-0 truncate text-[13px] leading-[1.4] text-[#516378]" :title="item.title">{{ item.title }}</p>
               </div>
             </div>
 
-            <div class="publish-progress-status-line">
+            <div
+              class="mt-[11px] mr-0 mb-1.5 ml-11 flex items-center justify-between text-xs font-semibold"
+              :class="{
+                'text-[#718399]': phasePresentation[item.phase].tone === 'neutral',
+                'text-[#347dcc]': phasePresentation[item.phase].tone === 'active',
+                'text-[#27845b]': phasePresentation[item.phase].tone === 'success',
+                'text-[#c45c56]': phasePresentation[item.phase].tone === 'error',
+              }"
+            >
               <span>{{ phasePresentation[item.phase].label }}</span>
             </div>
             <div
-              class="publish-progress-track"
+              class="ml-11 h-1.5 overflow-hidden rounded-full bg-[#e8eef5]"
               role="progressbar"
               aria-valuemin="0"
               aria-valuemax="100"
@@ -100,12 +114,17 @@ const phasePresentation: Record<PublishProgressPhase, PhasePresentation> = {
               :aria-label="`${item.platformLabel} ${item.title}：${phasePresentation[item.phase].label}`"
             >
               <span
-                class="publish-progress-bar"
-                :class="{ 'is-moving': phasePresentation[item.phase].tone === 'active' }"
+                class="publish-progress-bar relative block h-full rounded-[inherit] [transition:width_260ms_ease,background-color_180ms_ease]"
+                :class="{
+                  'is-moving bg-[linear-gradient(90deg,#3d83d4,#64a6ed)]': phasePresentation[item.phase].tone === 'active',
+                  'bg-[linear-gradient(90deg,#32a06e,#60c28f)]': phasePresentation[item.phase].tone === 'success',
+                  'bg-[linear-gradient(90deg,#cf625c,#e28b83)]': phasePresentation[item.phase].tone === 'error',
+                  'bg-[#9caec2]': phasePresentation[item.phase].tone === 'neutral',
+                }"
                 :style="{ width: `${phasePresentation[item.phase].progress}%` }"
               ></span>
             </div>
-            <p v-if="item.phase === 'failed' && item.errorMessage" class="publish-progress-error">
+            <p v-if="item.phase === 'failed' && item.errorMessage" class="mt-2 mr-0 mb-0 ml-11 text-xs leading-[1.45] text-[#b85550] [overflow-wrap:anywhere]">
               {{ item.errorMessage }}
             </p>
           </article>
@@ -116,48 +135,9 @@ const phasePresentation: Record<PublishProgressPhase, PhasePresentation> = {
 </template>
 
 <style scoped>
-.publish-progress-panel { position: fixed; top: 24px; left: 50%; z-index: 130; display: flex; width: min(680px, calc(100vw - 48px)); max-height: min(640px, calc(100vh - 48px)); transform: translateX(-50%); flex-direction: column; overflow: hidden; border: 1px solid rgba(198,213,231,.92); border-radius: 16px; background: rgba(255,255,255,.96); box-shadow: 0 24px 64px rgba(38,56,78,.26), 0 4px 14px rgba(71,96,126,.12); backdrop-filter: blur(20px) saturate(135%); }
-.publish-progress-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 16px 18px; border-bottom: 1px solid rgba(216,226,238,.9); }
-.publish-progress-heading-copy { display: flex; min-width: 0; align-items: baseline; gap: 10px; }
-.publish-progress-header strong { color: #1f2b3a; font-size: 17px; letter-spacing: -.02em; }
-.publish-progress-header span { color: #77889d; font-size: 12px; }
-.publish-progress-header-actions { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 4px; }
-.publish-progress-close { font-size: 23px; line-height: 1; }
-.publish-progress-collapse svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentcolor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.publish-progress-content { display: grid; min-height: 0; grid-template-rows: minmax(0, 1fr); opacity: 1; transition: grid-template-rows 180ms ease, opacity 140ms ease; }
-.publish-progress-content.is-collapsed { grid-template-rows: 0fr; opacity: 0; }
-.publish-progress-content-inner { min-height: 0; overflow: hidden; }
-.publish-progress-list { max-height: min(568px, calc(100vh - 112px)); overflow-y: auto; padding: 6px 10px 10px; scrollbar-color: rgba(139,159,184,.48) transparent; scrollbar-width: thin; }
-.publish-progress-list::-webkit-scrollbar { width: 8px; }
-.publish-progress-list::-webkit-scrollbar-thumb { border-radius: 999px; background: rgba(139,159,184,.48); }
-.publish-progress-item { padding: 14px 10px 13px; border-bottom: 1px solid rgba(222,230,240,.82); }
-.publish-progress-item:last-child { border-bottom: 0; }
-.publish-progress-item-heading { display: flex; min-width: 0; align-items: center; gap: 12px; }
-.publish-progress-item-heading :deep(.platform-logo) { width: 32px; height: 32px; flex: 0 0 auto; border-radius: 9px; }
-.publish-progress-item-heading :deep(.platform-logo img) { width: 21px; height: 21px; }
-.publish-progress-item-copy { min-width: 0; flex: 1 1 auto; }
-.publish-progress-platform-line { display: flex; min-width: 0; align-items: center; gap: 9px; }
-.publish-progress-platform-line strong { flex: 0 0 auto; color: #243449; font-size: 14px; }
-.publish-progress-platform-line span { min-width: 0; overflow: hidden; color: #8190a3; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.publish-progress-item-copy > p { margin: 3px 0 0; overflow: hidden; color: #516378; font-size: 13px; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
-.publish-progress-status-line { display: flex; align-items: center; justify-content: space-between; margin: 11px 0 6px 44px; color: #718399; font-size: 12px; font-weight: 600; }
-.publish-progress-item.is-active .publish-progress-status-line { color: #347dcc; }
-.publish-progress-item.is-success .publish-progress-status-line { color: #27845b; }
-.publish-progress-item.is-error .publish-progress-status-line { color: #c45c56; }
-.publish-progress-track { height: 6px; margin-left: 44px; overflow: hidden; border-radius: 999px; background: #e8eef5; }
-.publish-progress-bar { position: relative; display: block; height: 100%; border-radius: inherit; background: #9caec2; transition: width 260ms ease, background-color 180ms ease; }
-.publish-progress-item.is-active .publish-progress-bar { background: linear-gradient(90deg, #3d83d4, #64a6ed); }
-.publish-progress-item.is-success .publish-progress-bar { background: linear-gradient(90deg, #32a06e, #60c28f); }
-.publish-progress-item.is-error .publish-progress-bar { background: linear-gradient(90deg, #cf625c, #e28b83); }
 .publish-progress-bar.is-moving::after { position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(100deg, transparent 20%, rgba(255,255,255,.62) 50%, transparent 80%); content: ""; animation: publish-progress-shimmer 1.35s linear infinite; }
-.publish-progress-error { margin: 8px 0 0 44px; color: #b85550; font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
 .publish-progress-panel-enter-active, .publish-progress-panel-leave-active { transition: opacity 160ms ease, transform 180ms ease; }
 .publish-progress-panel-enter-from, .publish-progress-panel-leave-to { transform: translate(-50%, -10px); opacity: 0; }
 @keyframes publish-progress-shimmer { to { transform: translateX(100%); } }
-@media (max-width: 720px) {
-  .publish-progress-panel { top: 16px; width: calc(100vw - 32px); max-height: calc(100vh - 32px); }
-  .publish-progress-header { padding: 14px; }
-  .publish-progress-list { padding-inline: 6px; }
-}
 @media (prefers-reduced-motion: reduce) { .publish-progress-bar.is-moving::after { animation: none; } }
 </style>
