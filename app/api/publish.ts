@@ -31,6 +31,7 @@ export interface PublishTaskAttributes {
   account_name?: string | null;
   error_msg?: string | null;
   error_message?: string | null;
+  remark?: string | null;
   failure_detail?: {
     detail?: string | null;
     reason?: string | null;
@@ -154,6 +155,7 @@ export async function getPublishTasks(options?: {
   accountId?: string;
   platform?: string;
   title?: string;
+  remark?: string;
   type?: string;
   startDate?: string;
   endDate?: string;
@@ -167,6 +169,7 @@ export async function getPublishTasks(options?: {
         account_id: options?.accountId,
         platform: options?.platform,
         title: options?.title,
+        remark: options?.remark,
         type: options?.type,
         start_date: options?.startDate,
         end_date: options?.endDate,
@@ -181,6 +184,21 @@ export async function deletePublishTask(taskId: string | number): Promise<void> 
   await requestSuccess(
     apiClient.delete<ApiEnvelope<unknown>>(`/publish/tasks/${taskId}`),
     "删除发布任务请求失败",
+  );
+}
+
+/**
+ * 更新发布任务 attributes 中的备注字段。
+ *
+ * @param taskId - 发布任务 ID
+ * @param remark - 新备注，空字符串表示清空
+ */
+export async function updatePublishTaskRemark(taskId: string | number, remark: string): Promise<void> {
+  await requestSuccess(
+    apiClient.put<ApiEnvelope<unknown>>(`/publish/tasks/${taskId}`, {
+      attributes: { remark },
+    }),
+    "更新发布任务备注请求失败",
   );
 }
 
@@ -236,44 +254,31 @@ export async function deleteAccountTag(accountId: string | number, tag: string):
   );
 }
 
-/**
- * 从 Content-Disposition 中提取并解码下载文件名。
- *
- * @param header - 服务端返回的 Content-Disposition
- * @returns 解码后的文件名；响应未携带文件名时返回 null
- */
-function getDispositionFilename(header: string | null): string | null {
-  if (!header) return null;
-  const encodedMatch = /filename\*=UTF-8''([^;\n]+)/i.exec(header);
-  const rawFilename = encodedMatch?.[1] || /filename="?([^";\n]+)"?/i.exec(header)?.[1];
-  if (!rawFilename) return null;
-  try {
-    return decodeURIComponent(rawFilename.trim());
-  } catch {
-    return rawFilename.trim();
-  }
-}
-
 export type PublishTaskExportColumn =
   | "platform"
   | "nickname"
   | "title"
+  | "remark"
   | "status"
   | "created_at"
   | "scheduled_at"
   | "link";
 
+export interface PublishTaskExportConfig {
+  documentTitle: string;
+  exportType: "html" | "pdf";
+  columns: PublishTaskExportColumn[];
+}
+
 /**
  * 将指定发布任务导出为文件。
  *
  * @param input - 任务 ID、导出格式和导出列
- * @returns 导出文件及服务端建议的文件名
+ * @returns 导出文件
  */
-export async function exportPublishTasks(input: {
+export async function exportPublishTasks(input: PublishTaskExportConfig & {
   taskIds: (string | number)[];
-  exportType: "html" | "pdf";
-  columns: PublishTaskExportColumn[];
-}): Promise<{ blob: Blob; filename?: string }> {
+}): Promise<Blob> {
   const response = await requestBlob(
     {
       method: "POST",
@@ -286,6 +291,5 @@ export async function exportPublishTasks(input: {
     },
     "导出发布任务请求失败",
   );
-  const filename = getDispositionFilename(response.headers["content-disposition"] || null) || undefined;
-  return { blob: response.data, filename };
+  return response.data;
 }

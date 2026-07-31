@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { Input as AntInput, Select as AntSelect, Tooltip as AntTooltip } from "ant-design-vue";
 import { Download, Info, LayoutList, Link, RefreshCw, Search, Trash2 } from "lucide-vue-next";
+import ExportRecordsDialog from "@/components/ExportRecordsDialog.vue";
 import PlatformLogo from "@/components/PlatformLogo.vue";
 import ActionMenu from "@/components/ui/ActionMenu.vue";
 import BottomFloatingBar from "@/components/ui/BottomFloatingBar.vue";
@@ -14,17 +15,27 @@ import PanelShell from "@/components/ui/PanelShell.vue";
 import StateMessage from "@/components/ui/StateMessage.vue";
 import TextInput from "@/components/ui/TextInput.vue";
 import ToneBadge from "@/components/ui/ToneBadge.vue";
-import { getPublishPlatforms, getPublishTasks, deletePublishTask, exportPublishTasks } from "@/api/publish";
-import type { PublishTask, BackendPlatform } from "@/api/publish";
+import {
+  getPublishPlatforms,
+  getPublishTasks,
+  deletePublishTask,
+  exportPublishTasks,
+  updatePublishTaskRemark,
+} from "@/api/publish";
+import type { PublishTask, BackendPlatform, PublishTaskExportConfig } from "@/api/publish";
 import { useNotificationStore } from "@/store/notification";
 import { usePublishQueueStore } from "@/store/publish-queue";
 import { logger } from "@/src/utils/logger";
 
 const loading = ref(false);
 const exporting = ref(false);
+const exportDialogVisible = ref(false);
 const errorMessage = ref("");
 const records = ref<PublishTask[]>([]);
 const selectedIds = ref<Set<number>>(new Set());
+const editingRemarkId = ref<number | null>(null);
+const remarkDraft = ref("");
+const savingRemarkId = ref<number | null>(null);
 const notificationCenter = useNotificationStore();
 const publishQueue = usePublishQueueStore();
 const retryToastVisible = ref(false);
@@ -47,17 +58,29 @@ const pushRecordsError = (title: string, message: string): void => {
 const titleFilter = ref("");
 const platformFilter = ref<string>();
 const categoryFilter = ref<string>();
+const statusFilter = ref<string>();
+const remarkFilter = ref("");
 const scheduledStart = ref("");
 const scheduledEnd = ref("");
 const appliedFilters = ref({
   title: "",
   platform: undefined as string | undefined,
   type: undefined as string | undefined,
+  status: undefined as string | undefined,
+  remark: "",
   startDate: "",
   endDate: "",
 });
 const activeRecordFilterCount = computed(
-  () => [titleFilter.value.trim(), platformFilter.value, categoryFilter.value, scheduledStart.value, scheduledEnd.value]
+  () => [
+    titleFilter.value.trim(),
+    platformFilter.value,
+    categoryFilter.value,
+    statusFilter.value,
+    remarkFilter.value.trim(),
+    scheduledStart.value,
+    scheduledEnd.value,
+  ]
     .filter(Boolean).length,
 );
 const page = ref(1);
@@ -95,6 +118,8 @@ const recordStatusLabelMap: Record<string, string> = {
   non_public: "未公开",
   failed: "发布失败",
 };
+const recordStatusFilterOptions = Object.entries(recordStatusLabelMap)
+  .map(([value, label]) => ({ value, label }));
 
 const recordStatusToneMap: Record<string, "success" | "warning" | "danger"> = {
   running: "warning",
@@ -119,6 +144,63 @@ const getRecordStatusReason = (item: PublishTask): string => {
       || attributes?.error_message
       || "",
   ).trim();
+};
+
+/**
+ * 获取发布任务创建时保存的备注。
+ *
+ * @param item - 发布任务
+ * @returns 去除首尾空格后的备注
+ */
+const getRecordRemark = (item: PublishTask): string =>
+  String(item.attributes?.remark || "").trim();
+
+/**
+ * 开始编辑指定发布任务的备注。
+ *
+ * @param item - 发布任务
+ */
+const beginRemarkEdit = (item: PublishTask): void => {
+  if (savingRemarkId.value !== null) return;
+  editingRemarkId.value = item.id;
+  remarkDraft.value = getRecordRemark(item);
+};
+
+/** 取消当前备注编辑并丢弃未保存内容。 */
+const cancelRemarkEdit = (): void => {
+  if (savingRemarkId.value !== null) return;
+  editingRemarkId.value = null;
+  remarkDraft.value = "";
+};
+
+/**
+ * 保存指定发布任务的备注，并同步更新当前页数据。
+ *
+ * @param item - 发布任务
+ */
+const saveRecordRemark = async (item: PublishTask): Promise<void> => {
+  if (editingRemarkId.value !== item.id || savingRemarkId.value !== null) return;
+
+  const nextRemark = remarkDraft.value.trim();
+  if (nextRemark === getRecordRemark(item)) {
+    cancelRemarkEdit();
+    return;
+  }
+
+  savingRemarkId.value = item.id;
+  try {
+    await updatePublishTaskRemark(item.id, nextRemark);
+    item.attributes = {
+      ...(item.attributes || {}),
+      remark: nextRemark,
+    };
+    editingRemarkId.value = null;
+    remarkDraft.value = "";
+  } catch {
+    pushRecordsError("备注保存失败", "发布记录备注没有保存成功，请稍后重试");
+  } finally {
+    savingRemarkId.value = null;
+  }
 };
 
 /** 将记录创建时间格式化为本地年月日和时分。 */
@@ -244,6 +326,8 @@ const handleSearch = () => {
     title: titleFilter.value.trim(),
     platform: platformFilter.value,
     type: categoryFilter.value,
+    status: statusFilter.value,
+    remark: remarkFilter.value.trim(),
     startDate: scheduledStart.value,
     endDate: scheduledEnd.value,
   };
@@ -255,12 +339,16 @@ const resetFilters = () => {
   titleFilter.value = "";
   platformFilter.value = undefined;
   categoryFilter.value = undefined;
+  statusFilter.value = undefined;
+  remarkFilter.value = "";
   scheduledStart.value = "";
   scheduledEnd.value = "";
   appliedFilters.value = {
     title: "",
     platform: undefined,
     type: undefined,
+    status: undefined,
+    remark: "",
     startDate: "",
     endDate: "",
   };
@@ -274,6 +362,7 @@ const resetFilters = () => {
  */
 const handlePageChange = (newPage: number) => {
   if (loading.value || newPage < 1 || (newPage > page.value && isLastPage.value)) return;
+  cancelRemarkEdit();
   void loadRecords({ targetPage: newPage });
 };
 
@@ -355,27 +444,42 @@ const handleRetryPublish = (item: PublishTask): void => {
   }
 };
 
-/** 将当前选中的发布记录导出为 PDF 文件。 */
-const handleExport = async () => {
+/** 打开当前选中发布记录的导出配置弹窗。 */
+const openExportDialog = (): void => {
+  if (selectedIds.value.size === 0 || exporting.value) return;
+  exportDialogVisible.value = true;
+};
+
+/** 在未导出时关闭导出配置弹窗。 */
+const closeExportDialog = (): void => {
+  if (exporting.value) return;
+  exportDialogVisible.value = false;
+};
+
+/**
+ * 按弹窗配置导出当前选中的发布记录。
+ *
+ * @param config - 文档标题、导出格式和字段
+ */
+const handleExport = async (config: PublishTaskExportConfig): Promise<void> => {
   if (exporting.value || selectedIds.value.size === 0) return;
   exporting.value = true;
   errorMessage.value = "";
   try {
-    const exportType = "pdf";
-    const { blob, filename } = await exportPublishTasks({
+    const blob = await exportPublishTasks({
       taskIds: Array.from(selectedIds.value),
-      exportType,
-      columns: ["platform", "nickname", "title", "status", "created_at", "scheduled_at", "link"],
+      ...config,
     });
 
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = filename || `发布记录.${exportType}`;
+    a.download = `${config.documentTitle}.${config.exportType}`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+    exportDialogVisible.value = false;
   } catch {
     errorMessage.value = "";
     pushRecordsError("导出发布记录失败", "发布记录没有导出成功，请稍后重试");
@@ -451,6 +555,20 @@ onUnmounted(() => {
                 :options="categoryOptions"
               />
             </label>
+            <label class="col-span-3 flex flex-col gap-2 max-[900px]:col-span-1">
+              <span class="text-xs font-semibold text-ink-muted">发布状态</span>
+              <AntSelect
+                v-model:value="statusFilter"
+                allow-clear
+                class="w-full"
+                placeholder="选择发布状态"
+                :options="recordStatusFilterOptions"
+              />
+            </label>
+            <label class="col-span-3 flex flex-col gap-2 max-[900px]:col-span-1">
+              <span class="text-xs font-semibold text-ink-muted">备注</span>
+              <AntInput v-model:value="remarkFilter" allow-clear placeholder="搜索备注" />
+            </label>
             <fieldset class="col-span-6 grid grid-cols-2 gap-3 border-0 p-0 max-[900px]:col-span-1 max-[900px]:grid-cols-1">
               <legend class="mb-2 text-xs font-semibold text-ink-muted">预约发布时间</legend>
               <TextInput
@@ -483,20 +601,21 @@ onUnmounted(() => {
           variant="primary"
           type="button"
           :disabled="exporting || selectedIds.size === 0"
-          @click="handleExport"
+          @click="openExportDialog"
         >
           <Download :size="17" aria-hidden="true" />
           <span>{{ exporting ? "导出中..." : selectedIds.size > 0 ? `导出选中记录（${selectedIds.size}）` : "导出发布记录" }}</span>
         </CapsuleButton>
     </template>
 
-    <DataList :columns="7" min-width="920px" table-class="records-table">
+    <DataList :columns="8" min-width="1100px" table-class="records-table">
       <template #columns>
         <colgroup>
         <col class="records-col-check" />
         <col class="records-col-platform" />
         <col class="records-col-nickname" />
         <col class="records-col-title" />
+        <col class="records-col-remark" />
         <col class="records-col-status" />
         <col class="records-col-created" />
         <col class="records-col-actions" />
@@ -515,19 +634,20 @@ onUnmounted(() => {
           <th>平台</th>
           <th>账号昵称</th>
           <th>内容标题</th>
+          <th>备注</th>
           <th>状态</th>
           <th>创建时间</th>
           <th>操作</th>
         </tr>
       </template>
         <tr v-if="loading && !items.length">
-          <StateMessage as="td" variant="table" colspan="7">正在加载发布记录...</StateMessage>
+          <StateMessage as="td" variant="table" colspan="8">正在加载发布记录...</StateMessage>
         </tr>
         <tr v-else-if="errorMessage">
-          <StateMessage as="td" variant="table" tone="danger" colspan="7">{{ errorMessage }}</StateMessage>
+          <StateMessage as="td" variant="table" tone="danger" colspan="8">{{ errorMessage }}</StateMessage>
         </tr>
         <tr v-else-if="!items.length">
-          <StateMessage as="td" variant="table" colspan="7">暂无发布记录</StateMessage>
+          <StateMessage as="td" variant="table" colspan="8">暂无发布记录</StateMessage>
         </tr>
         <tr v-for="item in items" :key="item.id">
           <td>
@@ -549,6 +669,29 @@ onUnmounted(() => {
             {{ item.attributes?.account_name || "--" }}
           </td>
           <td class="records-title-cell" :title="item.title || '--'">{{ item.title || "--" }}</td>
+          <td class="records-remark-cell">
+            <AntInput
+              v-if="editingRemarkId === item.id"
+              v-model:value="remarkDraft"
+              autofocus
+              size="small"
+              placeholder="添加备注"
+              :disabled="savingRemarkId === item.id"
+              @blur="saveRecordRemark(item)"
+              @keydown.enter.prevent="saveRecordRemark(item)"
+              @keydown.esc.prevent="cancelRemarkEdit"
+            />
+            <button
+              v-else
+              type="button"
+              class="block min-h-8 w-full truncate rounded-lg px-2 text-left text-sm transition-colors hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              :class="getRecordRemark(item) ? 'text-ink' : 'text-ink-faint'"
+              :title="getRecordRemark(item)"
+              @click="beginRemarkEdit(item)"
+            >
+              {{ getRecordRemark(item) || "添加备注" }}
+            </button>
+          </td>
           <td class="records-status-cell">
             <span class="records-status-wrap">
               <ToneBadge :tone="recordStatusToneMap[item.status] || 'danger'" dot :pulse="item.status === 'running'">
@@ -665,6 +808,14 @@ onUnmounted(() => {
     <BottomFloatingBar :visible="retryToastVisible" role="status" aria-live="polite">
       <span class="whitespace-nowrap">已添加, 前往发布页查看</span>
     </BottomFloatingBar>
+
+    <ExportRecordsDialog
+      :visible="exportDialogVisible"
+      :selected-count="selectedIds.size"
+      :exporting="exporting"
+      @close="closeExportDialog"
+      @confirm="handleExport"
+    />
   </PanelShell>
 </template>
 
@@ -673,6 +824,7 @@ onUnmounted(() => {
 .records-table .records-col-platform { width: 68px; }
 .records-table .records-col-nickname { width: 140px; }
 .records-table .records-col-title { width: auto; }
+.records-table .records-col-remark { width: 180px; }
 .records-table .records-col-status { width: 240px; }
 .records-table .records-col-created { width: 168px; }
 .records-table .records-col-actions { width: 96px; }
@@ -682,6 +834,7 @@ onUnmounted(() => {
 .records-table :deep(td:last-child) { text-align: left; }
 .records-account-cell,
 .records-created-cell,
+.records-remark-cell,
 .records-status-cell,
 .records-title-cell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .records-created-cell { color: #64748b; font-size: 13px; text-align: center; font-variant-numeric: tabular-nums; }
