@@ -17,7 +17,7 @@ const props = defineProps<{
     >
       <div
         v-if="props.visible"
-        class="fixed bottom-7 left-1/2 z-[80] flex max-w-[calc(100vw-48px)] -translate-x-1/2 items-center gap-[18px] rounded-xl bg-white/[0.72] py-3.5 pr-4 pl-5 text-[15px] text-[#435267] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.7),0_22px_42px_rgba(142,163,190,0.28)] backdrop-blur-[24px] backdrop-saturate-[140%]"
+        class="fixed bottom-7 left-1/2 z-[80] flex max-w-[calc(100vw-48px)] -translate-x-1/2 items-center gap-[18px] rounded-xl bg-white/[0.72] py-3.5 pr-4 pl-5 text-base text-[#435267] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.7),0_22px_42px_rgba(142,163,190,0.28)] backdrop-blur-[24px] backdrop-saturate-[140%]"
         v-bind="$attrs"
       >
         <slot />

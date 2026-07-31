@@ -47,7 +47,6 @@ withDefaults(
   padding: 18px 12px;
   border-bottom: 1px solid #edf1f5;
   text-align: left;
-  font-size: 16px;
   vertical-align: middle;
 }
 

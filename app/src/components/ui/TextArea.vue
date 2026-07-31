@@ -25,7 +25,7 @@ function updateValue(event: Event): void {
 
 <template>
   <textarea
-    class="block min-h-24 w-full resize-y rounded-xl border bg-surface px-3.5 py-3 text-[13px] text-ink outline-none transition placeholder:text-ink-faint focus:border-primary focus:ring-3 focus:ring-primary/10 disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-ink-faint"
+    class="block min-h-24 w-full resize-y rounded-xl border bg-surface px-3.5 py-3 text-sm text-ink outline-none transition placeholder:text-ink-faint focus:border-primary focus:ring-3 focus:ring-primary/10 disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-ink-faint"
     :class="props.invalid ? 'border-danger focus:border-danger focus:ring-danger/10' : 'border-border'"
     :value="props.modelValue"
     v-bind="$attrs"

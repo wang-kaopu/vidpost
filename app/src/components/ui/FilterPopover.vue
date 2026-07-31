@@ -61,7 +61,7 @@ defineExpose({ close });
       <span>{{ props.label }}</span>
       <span
         v-if="props.activeCount > 0"
-        class="grid size-5 place-items-center rounded-full bg-white/20 text-[11px] leading-none"
+        class="grid size-5 place-items-center rounded-full bg-white/20 text-xs leading-none"
       >
         {{ props.activeCount }}
       </span>

@@ -2,7 +2,7 @@
 /** 为单个待发布作品选择已有平台账号的宽屏抽屉。 */
 defineOptions({ name: "PublishAccountPickerDrawer" });
 
-import { Check, RotateCw } from "lucide-vue-next";
+import { Check, RotateCw, X } from "lucide-vue-next";
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { PLATFORMS, type Platform } from "@shared/electron-api";
 import {
@@ -225,7 +225,7 @@ useDialogLayer(() => props.visible);
           <header class="flex h-[72px] shrink-0 items-center gap-8 border-b border-border px-8 max-[680px]:gap-4 max-[680px]:px-5">
             <div class="min-w-0">
               <h2 id="publish-account-title" class="m-0 text-xl tracking-[-0.02em] text-ink">添加账号</h2>
-              <p v-if="item" class="mt-1 mb-0 max-w-40 truncate text-[11px] text-ink-faint">{{ item.title }}</p>
+              <p v-if="item" class="mt-1 mb-0 max-w-40 truncate text-xs text-ink-faint">{{ item.title }}</p>
             </div>
             <nav class="flex h-full items-stretch gap-7" aria-label="账号筛选方式">
               <button
@@ -240,7 +240,7 @@ useDialogLayer(() => props.visible);
               </button>
             </nav>
             <IconButton class="ml-auto" appearance="ghost" aria-label="关闭添加账号" @click="emit('close')">
-              <span class="text-[28px] leading-none" aria-hidden="true">×</span>
+              <X :size="20" aria-hidden="true" />
             </IconButton>
           </header>
 
@@ -301,7 +301,7 @@ useDialogLayer(() => props.visible);
                     <PlatformLogo class="size-11! shrink-0 rounded-full! border border-border" :platform="account.platform" />
                     <span class="min-w-0 flex-1">
                       <strong class="block truncate text-sm text-ink">{{ account.nickname }}</strong>
-                      <span class="mt-1 block truncate text-[11px] text-ink-faint">
+                      <span class="mt-1 block truncate text-xs text-ink-faint">
                         {{ account.platform }} · {{ isAccountAvailable(account) ? "在线" : account.statusLabel }}
                       </span>
                     </span>

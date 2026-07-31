@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { X } from "lucide-vue-next";
 import type { NotificationCenterItem, NotificationTone } from "@/store/notification";
 import CapsuleButton from "@/components/ui/CapsuleButton.vue";
 import IconButton from "@/components/ui/IconButton.vue";
@@ -96,7 +97,7 @@ const handleAction = (item: NotificationCenterItem): void => {
         <header class="flex items-start justify-between gap-4 max-[900px]:flex-col max-[900px]:items-stretch">
           <div>
             <p class="mt-0 mb-1.5 text-xs tracking-[.16em] text-[#6f7f93] uppercase">{{ title }}</p>
-            <strong class="block text-[22px] tracking-[-.03em] text-[#1f2530]">{{ unreadCount > 0 ? `${unreadCount} 条待处理` : "全部已读" }}</strong>
+            <strong class="block text-2xl tracking-[-.03em] text-[#1f2530]">{{ unreadCount > 0 ? `${unreadCount} 条待处理` : "全部已读" }}</strong>
           </div>
           <div class="inline-flex items-center gap-2 max-[900px]:justify-end">
             <CapsuleButton type="button" variant="secondary" size="sm" @click="toggleCollapsed">
@@ -157,17 +158,17 @@ const handleAction = (item: NotificationCenterItem): void => {
             <IconButton
               size="sm"
               appearance="ghost"
-              class="mt-3 mr-3 self-start text-xl leading-none"
+              class="mt-3 mr-3 self-start"
               aria-label="关闭通知"
               @click="$emit('dismiss', item.id)"
             >
-              ×
+              <X :size="16" aria-hidden="true" />
             </IconButton>
           </article>
         </div>
 
         <div v-else class="px-1.5 pt-[22px] pb-2">
-          <strong class="block text-[22px] tracking-[-.03em] text-[#1f2530]">通知中心</strong>
+          <strong class="block text-2xl tracking-[-.03em] text-[#1f2530]">通知中心</strong>
           <p class="mt-2 mb-0 text-sm leading-[1.55] text-[#5f7084]">{{ emptyText }}</p>
         </div>
       </section>
@@ -186,7 +187,7 @@ const handleAction = (item: NotificationCenterItem): void => {
         </span>
         <span
           v-if="unreadCount > 0"
-          class="absolute -top-1 -right-1 inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-[linear-gradient(135deg,#2d79dd,#66a8ff)] px-[7px] text-[11px] font-bold text-white shadow-[inset_0_1px_0_rgba(255,255,255,.24),0_10px_18px_rgba(77,156,255,.26)]"
+          class="absolute -top-1 -right-1 inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-[linear-gradient(135deg,#2d79dd,#66a8ff)] px-[7px] text-xs font-bold text-white shadow-[inset_0_1px_0_rgba(255,255,255,.24),0_10px_18px_rgba(77,156,255,.26)]"
         >
           {{ unreadCount > 9 ? "9+" : unreadCount }}
         </span>

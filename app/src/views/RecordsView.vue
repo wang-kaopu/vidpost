@@ -7,7 +7,7 @@ import PlatformLogo from "@/components/PlatformLogo.vue";
 import ActionMenu from "@/components/ui/ActionMenu.vue";
 import BottomFloatingBar from "@/components/ui/BottomFloatingBar.vue";
 import CapsuleButton from "@/components/ui/CapsuleButton.vue";
-import CircleCheckbox from "@/components/ui/CircleCheckbox.vue";
+import SquareCheckbox from "@/components/ui/SquareCheckbox.vue";
 import DataList from "@/components/ui/DataList.vue";
 import FilterPopover from "@/components/ui/FilterPopover.vue";
 import IconButton from "@/components/ui/IconButton.vue";
@@ -636,7 +636,7 @@ onUnmounted(() => {
       <template #head>
         <tr>
           <th>
-            <CircleCheckbox
+            <SquareCheckbox
               size="sm"
               :checked="allSelected"
               :indeterminate="someSelected"
@@ -663,7 +663,7 @@ onUnmounted(() => {
         </tr>
         <tr v-for="item in items" :key="item.id">
           <td>
-            <CircleCheckbox
+            <SquareCheckbox
               size="sm"
               :checked="selectedIds.has(item.id)"
               @change="toggleSelect(item)"
@@ -725,7 +725,7 @@ onUnmounted(() => {
               </AntTooltip>
             </span>
           </td>
-          <td class="records-created-cell" :title="item.created_at || '--'">
+          <td class="records-created-cell text-sm" :title="item.created_at || '--'">
             {{ formatCreatedAt(item.created_at) }}
           </td>
           <td>
@@ -737,7 +737,7 @@ onUnmounted(() => {
               >
                 <div
                   role="presentation"
-                  class="flex flex-col gap-1 border-b border-border px-3 py-2.5 text-left text-[11px] leading-5 font-semibold text-ink-faint"
+                  class="flex flex-col gap-1 border-b border-border px-3 py-2.5 text-left text-xs leading-5 font-semibold text-ink-faint"
                 >
                   <span>记录 ID {{ item.id }}</span>
                   <span>账号 ID {{ item.account_id || "--" }}</span>
@@ -793,7 +793,7 @@ onUnmounted(() => {
     </DataList>
 
     <footer class="flex items-center justify-between gap-[18px] px-8 pt-[18px] pb-[26px] text-[#697789] max-[900px]:flex-col max-[900px]:items-start">
-      <div class="pager-info flex items-center gap-2">
+      <div class="pager-info flex items-center gap-2 text-sm">
         <AntSelect
           v-model:value="pageSize"
           class="w-[124px]"
@@ -807,16 +807,16 @@ onUnmounted(() => {
       <div class="pager-numbers">
         <button
           type="button"
-          class="pager-button pager-nav-button"
+          class="pager-button pager-nav-button text-sm"
           :disabled="page <= 1 || loading"
           @click="handlePageChange(page - 1)"
         >
           上一页
         </button>
-        <span class="pager-current">第 {{ page }} 页</span>
+        <span class="pager-current text-sm">第 {{ page }} 页</span>
         <button
           type="button"
-          class="pager-button pager-nav-button"
+          class="pager-button pager-nav-button text-sm"
           :disabled="isLastPage || loading"
           @click="handlePageChange(page + 1)"
         >
@@ -857,16 +857,16 @@ onUnmounted(() => {
 .records-remark-cell,
 .records-status-cell,
 .records-title-cell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.records-created-cell { color: #64748b; font-size: 13px; text-align: center; font-variant-numeric: tabular-nums; }
+.records-created-cell { color: #64748b; text-align: center; font-variant-numeric: tabular-nums; }
 .records-status-cell { text-align: center; }
 .records-status-wrap { display: inline-flex; align-items: center; gap: 6px; }
 .records-status-reason { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: #eef2f7; color: #64748b; cursor: default; }
 .records-status-reason:focus-visible { outline: 2px solid rgba(63,140,255,.55); outline-offset: 2px; }
 .records-table .records-title-cell { max-width: none; }
-.pager-info { color: #697789; font-size: 14px; }
+.pager-info { color: #697789; }
 .pager-numbers { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.pager-current { min-width: 68px; color: #48617f; text-align: center; font-size: 14px; font-weight: 600; }
-.pager-button { display: inline-flex; align-items: center; justify-content: center; min-height: 38px; padding: 0 14px; border: 1px solid rgba(184,204,227,.9); border-radius: 12px; background: rgba(255,255,255,.92); box-shadow: inset 0 1px 0 rgba(255,255,255,.75), 0 10px 20px rgba(118,146,178,.12); color: #48617f; font-size: 14px; font-weight: 600; transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease, color 160ms ease, border-color 160ms ease; }
+.pager-current { min-width: 68px; color: #48617f; text-align: center; font-weight: 600; }
+.pager-button { display: inline-flex; align-items: center; justify-content: center; min-height: 38px; padding: 0 14px; border: 1px solid rgba(184,204,227,.9); border-radius: 12px; background: rgba(255,255,255,.92); box-shadow: inset 0 1px 0 rgba(255,255,255,.75), 0 10px 20px rgba(118,146,178,.12); color: #48617f; font-weight: 600; transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease, color 160ms ease, border-color 160ms ease; }
 .pager-button:hover:not(:disabled) { transform: translateY(-1px); border-color: rgba(132,171,214,.96); background: rgba(244,249,255,.98); color: #2d5f98; box-shadow: inset 0 1px 0 rgba(255,255,255,.82), 0 14px 26px rgba(99,140,190,.18); }
 .pager-nav-button { min-width: 76px; }
 .pager-button:disabled { cursor: not-allowed; opacity: .5; transform: none; box-shadow: inset 0 1px 0 rgba(255,255,255,.6), 0 8px 18px rgba(118,146,178,.08); }

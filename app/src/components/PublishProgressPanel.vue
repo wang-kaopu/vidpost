@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ChevronDown, ChevronUp } from "lucide-vue-next";
+import { ChevronDown, ChevronUp, X } from "lucide-vue-next";
 import PlatformLogo from "@/components/PlatformLogo.vue";
 import IconButton from "@/components/ui/IconButton.vue";
 import type { PublishProgressPhase, PublishProgressTask } from "@/store/publish-progress";
@@ -39,7 +39,7 @@ const phasePresentation: Record<PublishProgressPhase, PhasePresentation> = {
   >
     <header class="flex items-center justify-between gap-5 border-b border-[rgba(216,226,238,.9)] px-[18px] py-4 max-[720px]:p-3.5">
       <div class="flex min-w-0 items-baseline gap-2.5">
-        <strong class="text-[17px] tracking-[-.02em] text-[#1f2b3a]">发布进度</strong>
+        <strong class="text-lg tracking-[-.02em] text-[#1f2b3a]">发布进度</strong>
         <span class="text-xs text-[#77889d]">共 {{ items.length }} 个任务</span>
       </div>
       <div class="inline-flex shrink-0 items-center gap-1">
@@ -61,12 +61,11 @@ const phasePresentation: Record<PublishProgressPhase, PhasePresentation> = {
         <IconButton
           size="sm"
           appearance="ghost"
-          class="text-[23px] leading-none"
           aria-label="关闭发布进度"
           title="关闭发布进度"
           @click="$emit('close')"
         >
-          ×
+          <X :size="18" aria-hidden="true" />
         </IconButton>
       </div>
     </header>
@@ -90,7 +89,7 @@ const phasePresentation: Record<PublishProgressPhase, PhasePresentation> = {
                   <strong class="shrink-0 text-sm text-[#243449]">{{ item.platformLabel }}</strong>
                   <span class="min-w-0 truncate text-xs text-[#8190a3]" :title="item.accountName">{{ item.accountName }}</span>
                 </div>
-                <p class="mt-[3px] mb-0 truncate text-[13px] leading-[1.4] text-[#516378]" :title="item.title">{{ item.title }}</p>
+                <p class="mt-[3px] mb-0 truncate text-sm leading-[1.4] text-[#516378]" :title="item.title">{{ item.title }}</p>
               </div>
             </div>
 

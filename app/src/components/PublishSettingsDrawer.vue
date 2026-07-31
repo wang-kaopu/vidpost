@@ -23,6 +23,7 @@ import {
   PUBLISH_DESCRIPTION_MAX_LENGTH,
   PUBLISH_TITLE_MAX_LENGTH,
 } from "@shared/publish-text";
+import { X } from "lucide-vue-next";
 import CapsuleButton from "./ui/CapsuleButton.vue";
 import IconButton from "./ui/IconButton.vue";
 import SelectField from "./ui/SelectField.vue";
@@ -256,7 +257,7 @@ useDialogLayer(() => props.visible);
         >
           <header class="flex shrink-0 items-start justify-between gap-5 px-7 pt-[34px] pb-[22px] max-[560px]:px-5">
             <div>
-              <h2 id="publish-settings-title" class="m-0 text-[22px] tracking-[-0.02em] text-[#16263a]">
+              <h2 id="publish-settings-title" class="m-0 text-2xl tracking-[-0.02em] text-[#16263a]">
                 发布设置
               </h2>
               <p v-if="item" class="mt-[7px] mb-0 max-w-80 truncate text-xs text-[#8a96a5]">{{ item.title }}</p>
@@ -266,13 +267,13 @@ useDialogLayer(() => props.visible);
               aria-label="关闭发布设置"
               @click="emit('close')"
             >
-              <span class="text-[28px] leading-none" aria-hidden="true">×</span>
+              <X :size="20" aria-hidden="true" />
             </IconButton>
           </header>
 
           <div class="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-7 pt-3 pb-[30px] max-[560px]:px-5">
             <label class="flex flex-col gap-[9px]">
-              <span class="text-[13px] font-bold text-[#344255]">标题</span>
+              <span class="text-sm font-bold text-[#344255]">标题</span>
               <div class="relative">
                 <TextInput
                   v-model="draft.title"
@@ -281,14 +282,14 @@ useDialogLayer(() => props.visible);
                   size="lg"
                   placeholder="填写作品标题"
                 />
-                <small class="pointer-events-none absolute right-3 bottom-2.5 text-[11px] text-[#a0aab7]">
+                <small class="pointer-events-none absolute right-3 bottom-2.5 text-xs text-[#a0aab7]">
                   {{ titleLength }} / {{ titleMaxLength }}
                 </small>
               </div>
             </label>
 
             <label class="flex flex-col gap-[9px]">
-              <span class="text-[13px] font-bold text-[#344255]">描述</span>
+              <span class="text-sm font-bold text-[#344255]">描述</span>
               <div class="relative">
                 <TextArea
                   v-model="draft.introduction"
@@ -296,14 +297,14 @@ useDialogLayer(() => props.visible);
                   :maxlength="PUBLISH_DESCRIPTION_MAX_LENGTH"
                   placeholder="添加作品简介"
                 />
-                <small class="pointer-events-none absolute right-3 bottom-2.5 text-[11px] text-[#a0aab7]">
+                <small class="pointer-events-none absolute right-3 bottom-2.5 text-xs text-[#a0aab7]">
                   {{ introductionLength }} / {{ PUBLISH_DESCRIPTION_MAX_LENGTH }}
                 </small>
               </div>
             </label>
 
             <fieldset v-if="draft.platform === 'douyin'" class="m-0 flex flex-col gap-3 border-0 p-0">
-              <legend class="mb-2.5 text-[13px] font-bold text-[#344255]">谁可以看</legend>
+              <legend class="mb-2.5 text-sm font-bold text-[#344255]">谁可以看</legend>
               <div class="grid grid-cols-3 gap-2.5">
                 <label class="flex min-h-[42px] cursor-pointer items-center justify-center gap-[7px] rounded-xl border border-[#dde5ef] bg-white text-xs text-[#4e5d70]">
                   <input v-model="draft.visibility" class="m-0 size-4 accent-primary-strong" type="radio" value="public" />公开
@@ -318,7 +319,7 @@ useDialogLayer(() => props.visible);
             </fieldset>
 
             <label v-if="draft.platform === 'bilibili'" class="flex flex-col gap-[9px]">
-              <span class="text-[13px] font-bold text-[#344255]">投稿分区</span>
+              <span class="text-sm font-bold text-[#344255]">投稿分区</span>
               <SelectField
                 :model-value="draft.humanTypeId ?? ''"
                 :disabled="platformOptionsLoading || Boolean(platformOptionsError)"
@@ -330,12 +331,12 @@ useDialogLayer(() => props.visible);
                   {{ humanType.id }} · {{ humanType.name }}
                 </option>
               </SelectField>
-              <small v-if="platformOptionsError" class="text-[11px] leading-normal text-danger">{{ platformOptionsError }}</small>
+              <small v-if="platformOptionsError" class="text-xs leading-normal text-danger">{{ platformOptionsError }}</small>
             </label>
 
             <template v-if="draft.platform === 'sohu'">
               <label class="flex flex-col gap-[9px]">
-                <span class="text-[13px] font-bold text-[#344255]">一级频道</span>
+                <span class="text-sm font-bold text-[#344255]">一级频道</span>
                 <SelectField
                   :model-value="draft.channelId ?? ''"
                   :disabled="platformOptionsLoading || Boolean(platformOptionsError)"
@@ -349,7 +350,7 @@ useDialogLayer(() => props.visible);
                 </SelectField>
               </label>
               <label class="flex flex-col gap-[9px]">
-                <span class="text-[13px] font-bold text-[#344255]">二级频道</span>
+                <span class="text-sm font-bold text-[#344255]">二级频道</span>
                 <SelectField
                   :model-value="draft.videoChannelId ?? ''"
                   :disabled="platformOptionsLoading || !selectedSohuChannel"
@@ -360,12 +361,12 @@ useDialogLayer(() => props.visible);
                     {{ channel.name }}
                   </option>
                 </SelectField>
-                <small v-if="platformOptionsError" class="text-[11px] leading-normal text-danger">{{ platformOptionsError }}</small>
+                <small v-if="platformOptionsError" class="text-xs leading-normal text-danger">{{ platformOptionsError }}</small>
               </label>
             </template>
 
             <fieldset v-if="draft.platform" class="m-0 flex flex-col gap-3 border-0 p-0">
-              <legend class="mb-2.5 text-[13px] font-bold text-[#344255]">定时发布</legend>
+              <legend class="mb-2.5 text-sm font-bold text-[#344255]">定时发布</legend>
               <div v-if="scheduleSupported" class="flex items-center gap-2.5">
                 <button
                   class="relative h-6 w-[42px] rounded-full p-0 transition duration-150"
@@ -389,12 +390,12 @@ useDialogLayer(() => props.visible);
                 :max="scheduleBounds?.max"
                 @update:model-value="updateScheduledAt"
               />
-              <small class="text-[11px] leading-normal text-[#929dac]">{{ scheduleHelp }}</small>
+              <small class="text-xs leading-normal text-[#929dac]">{{ scheduleHelp }}</small>
             </fieldset>
           </div>
 
           <footer class="shrink-0 border-t border-[#e2e9f1] bg-[rgba(249,251,254,0.96)] px-7 pt-[18px] pb-6 max-[560px]:px-5">
-            <p v-if="validationError" class="mt-0 mb-3 text-right text-[11px] text-danger">{{ validationError }}</p>
+            <p v-if="validationError" class="mt-0 mb-3 text-right text-xs text-danger">{{ validationError }}</p>
             <div class="grid grid-cols-[1fr_1.15fr] gap-3">
               <CapsuleButton variant="secondary" size="lg" type="button" @click="emit('close')">取消</CapsuleButton>
               <CapsuleButton

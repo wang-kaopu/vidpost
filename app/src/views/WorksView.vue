@@ -4,10 +4,10 @@ defineOptions({ name: "WorksView" });
 import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from "vue";
 import { useRouter } from "vue-router";
 import { Input as AntInput, Select as AntSelect, message } from "ant-design-vue";
-import { CirclePlay, RefreshCw, Search } from "lucide-vue-next";
+import { CirclePlay, RefreshCw, Search, X } from "lucide-vue-next";
 import BottomFloatingBar from "@/components/ui/BottomFloatingBar.vue";
 import CapsuleButton from "@/components/ui/CapsuleButton.vue";
-import CircleCheckbox from "@/components/ui/CircleCheckbox.vue";
+import SquareCheckbox from "@/components/ui/SquareCheckbox.vue";
 import FilterPopover from "@/components/ui/FilterPopover.vue";
 import IconButton from "@/components/ui/IconButton.vue";
 import PanelShell from "@/components/ui/PanelShell.vue";
@@ -274,7 +274,7 @@ useDialogLayer(() => previewVisible.value);
 </script>
 
 <template>
-  <PanelShell title="作品">
+  <PanelShell title="作品" title-size="sm">
     <template #actions>
         <FilterPopover v-slot="{ close }" panel-id="work-filter-popover" :active-count="activeWorkFilterCount">
           <div class="mb-4 flex items-center justify-between gap-4">
@@ -348,7 +348,7 @@ useDialogLayer(() => previewVisible.value);
             >
               <template v-if="item.status === '已完成'">
                 <img class="block size-full object-cover" :src="getCoverUrl(item)" :alt="item.title" />
-                <div class="absolute inset-0 flex items-center justify-center bg-[rgba(0,0,0,.22)] text-[44px] text-white opacity-0 transition-opacity duration-[160ms] ease-[ease] group-hover:opacity-100">
+                <div class="absolute inset-0 flex items-center justify-center bg-[rgba(0,0,0,.22)] text-white opacity-0 transition-opacity duration-[160ms] ease-[ease] group-hover:opacity-100">
                   <CirclePlay :size="44" :stroke-width="1.7" aria-hidden="true" />
                 </div>
               </template>
@@ -364,11 +364,11 @@ useDialogLayer(() => previewVisible.value);
                   {{ item.status }}
                 </ToneBadge>
               </div>
-              <h3 class="m-0 text-[17px] leading-[1.4] text-[#1b2430]" :title="item.title">{{ item.title }}</h3>
+              <h3 class="m-0 text-lg leading-[1.4] text-[#1b2430]" :title="item.title">{{ item.title }}</h3>
               <div class="mt-2.5 flex items-center justify-between gap-2">
-                <p class="m-0 text-[13px] text-[#738196]">{{ formatTime(item.updatedAt) }}</p>
+                <p class="m-0 text-sm text-[#738196]">{{ formatTime(item.updatedAt) }}</p>
                 <div v-if="item.status === '已完成'" class="shrink-0" @click.stop>
-                  <CircleCheckbox :checked="selectedWorkIds.has(item.id)" @change="toggleSelect(item.id)" />
+                  <SquareCheckbox :checked="selectedWorkIds.has(item.id)" @change="toggleSelect(item.id)" />
                 </div>
               </div>
             </div>
@@ -379,18 +379,18 @@ useDialogLayer(() => previewVisible.value);
     </div>
 
     <!-- 初次加载 -->
-    <div v-if="loading && worksList.length === 0" class="flex min-h-14 items-center justify-center px-6 pt-2 text-[13px] text-[#7d8897]">
+    <div v-if="loading && worksList.length === 0" class="flex min-h-14 items-center justify-center px-6 pt-2 text-sm text-[#7d8897]">
       <span>正在加载作品列表...</span>
     </div>
 
     <!-- 初次加载错误 -->
-    <div v-else-if="loadError && worksList.length === 0" class="flex min-h-14 items-center justify-center px-6 pt-2 text-[13px] text-[#7d8897]">
+    <div v-else-if="loadError && worksList.length === 0" class="flex min-h-14 items-center justify-center px-6 pt-2 text-sm text-[#7d8897]">
       <span>{{ loadError }}</span>
       <CapsuleButton variant="secondary" type="button" @click="reloadWorks">重新加载</CapsuleButton>
     </div>
 
     <!-- 分页加载状态 -->
-    <div v-else-if="worksList.length > 0" ref="sentinelRef" class="flex min-h-14 items-center justify-center px-6 pt-2 text-[13px] text-[#7d8897]">
+    <div v-else-if="worksList.length > 0" ref="sentinelRef" class="flex min-h-14 items-center justify-center px-6 pt-2 text-sm text-[#7d8897]">
       <span v-if="loadingMore">加载中...</span>
       <span v-else-if="loadError">{{ loadError }}</span>
       <span v-else-if="isEnd">没有更多了</span>
@@ -398,7 +398,7 @@ useDialogLayer(() => previewVisible.value);
     </div>
 
     <!-- 空状态 -->
-    <div v-if="!loading && !loadError && worksList.length === 0" class="flex min-h-60 items-center justify-center text-center text-[15px] text-[#7d8897]">
+    <div v-if="!loading && !loadError && worksList.length === 0" class="flex min-h-60 items-center justify-center text-center text-base text-[#7d8897]">
       <p class="m-0 text-lg text-[#6a7788]">暂无作品</p>
     </div>
 
@@ -425,10 +425,10 @@ useDialogLayer(() => previewVisible.value);
         <div class="dialog-surface flex h-[min(720px,calc(100vh-48px))] w-[min(960px,100%)] flex-col overflow-hidden rounded-3xl bg-white/[.96] shadow-[0_28px_80px_rgba(84,110,144,.3)] will-change-[transform,opacity]">
           <div class="flex shrink-0 items-center justify-between gap-4 px-[22px] pt-[18px] pb-3.5">
             <h3 class="m-0 text-xl text-[#1d2733]">{{ previewTitle || '视频预览' }}</h3>
-            <IconButton aria-label="关闭视频预览" @click="closePreview"><span class="text-[22px] leading-none">×</span></IconButton>
+            <IconButton aria-label="关闭视频预览" @click="closePreview"><X :size="20" aria-hidden="true" /></IconButton>
           </div>
           <div class="flex min-h-0 flex-1 items-center justify-center px-[22px] pb-[22px]">
-            <div v-if="previewLoading" class="text-[15px] text-[#7d8897]">加载中...</div>
+            <div v-if="previewLoading" class="text-base text-[#7d8897]">加载中...</div>
             <video v-else-if="previewVideoUrl" class="block max-h-full w-full max-w-full object-contain" :src="previewVideoUrl" controls autoplay></video>
           </div>
         </div>

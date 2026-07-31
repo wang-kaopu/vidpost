@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { Input as AntInput, Select as AntSelect, Tooltip as AntTooltip } from "ant-design-vue";
-import { Monitor, Plus, RefreshCw, Search, SquarePen, TestTubeDiagonal, Trash2 } from "lucide-vue-next";
+import { Monitor, Plus, RefreshCw, Search, SquarePen, TestTubeDiagonal, Trash2, X } from "lucide-vue-next";
 import { PLATFORMS, type Platform } from "@shared/electron-api";
 import AccountPlatformPickerDialog from "@/components/AccountPlatformPickerDialog.vue";
 import PlatformLogo from "@/components/PlatformLogo.vue";
@@ -694,7 +694,7 @@ useDialogLayer(() => accountDialogVisible.value);
           </td>
           <td>
             <div class="account-tags-cell">
-              <span v-for="tag in item.tags" :key="tag" class="account-tag-chip">
+              <span v-for="tag in item.tags" :key="tag" class="account-tag-chip text-sm">
                 {{ tag }}
                 <button
                   type="button"
@@ -702,10 +702,10 @@ useDialogLayer(() => accountDialogVisible.value);
                   :disabled="deletingAccountId === item.id"
                   @click="handleDeleteTag(item, tag)"
                 >
-                  ×
+                  <X :size="10" aria-hidden="true" />
                 </button>
               </span>
-              <button type="button" class="account-tag-add" @click="openTagDialog(item)">+ 添加</button>
+              <button type="button" class="account-tag-add text-sm" @click="openTagDialog(item)">+ 添加</button>
             </div>
           </td>
           <td>
@@ -795,22 +795,22 @@ useDialogLayer(() => accountDialogVisible.value);
     </DataList>
 
     <footer class="flex items-center justify-between gap-[18px] px-8 pt-[18px] pb-[26px] text-[#697789] max-[900px]:flex-col max-[900px]:items-start">
-      <div class="pager-info">
+      <div class="pager-info text-sm">
         本页 {{ accounts.length }} 条
       </div>
       <div class="pager-numbers">
         <button
           type="button"
-          class="pager-button pager-nav-button"
+          class="pager-button pager-nav-button text-sm"
           :disabled="page <= 1 || loading || pingingAll"
           @click="handlePageChange(page - 1)"
         >
           上一页
         </button>
-        <span class="pager-current">第 {{ page }} 页</span>
+        <span class="pager-current text-sm">第 {{ page }} 页</span>
         <button
           type="button"
-          class="pager-button pager-nav-button"
+          class="pager-button pager-nav-button text-sm"
           :disabled="isLastPage || loading || pingingAll"
           @click="handlePageChange(page + 1)"
         >
@@ -822,7 +822,7 @@ useDialogLayer(() => accountDialogVisible.value);
     <teleport to="body">
       <transition name="dialog-layer" appear>
         <div v-if="backendWindowVisible" class="platform-dialog-mask account-backend-mask">
-          <div class="account-backend-mask-status" role="status">正在同步账号状态…</div>
+          <div class="account-backend-mask-status text-sm" role="status">正在同步账号状态…</div>
         </div>
       </transition>
     </teleport>
@@ -846,8 +846,8 @@ useDialogLayer(() => accountDialogVisible.value);
         <div v-if="tagDialogVisible" class="platform-dialog-mask" @click.self="closeTagDialog">
           <div class="tag-dialog dialog-surface" @click.stop>
             <div class="tag-dialog-header">
-              <h3>添加标签</h3>
-              <button type="button" class="platform-dialog-close" @click="closeTagDialog">×</button>
+              <h3 class="text-lg">添加标签</h3>
+              <IconButton size="sm" aria-label="关闭添加标签" @click="closeTagDialog"><X :size="18" aria-hidden="true" /></IconButton>
             </div>
             <div class="tag-dialog-body">
               <div class="tag-dialog-field">
@@ -859,9 +859,9 @@ useDialogLayer(() => accountDialogVisible.value);
                   :disabled="tagDialogLoading"
                   @keydown.enter="confirmTagDialog"
                 />
-                <div class="tag-dialog-char-count">{{ tagDialogDraft.length }} / 20</div>
+                <div class="tag-dialog-char-count text-xs">{{ tagDialogDraft.length }} / 20</div>
               </div>
-              <div v-if="tagDialogError" class="tag-dialog-error">{{ tagDialogError }}</div>
+              <div v-if="tagDialogError" class="tag-dialog-error text-sm">{{ tagDialogError }}</div>
             </div>
             <div class="tag-dialog-footer">
               <CapsuleButton variant="secondary" type="button" :disabled="tagDialogLoading" @click="closeTagDialog">
@@ -886,8 +886,8 @@ useDialogLayer(() => accountDialogVisible.value);
         <div v-if="renameDialogVisible" class="platform-dialog-mask" @click.self="closeRenameDialog">
           <div class="tag-dialog dialog-surface" @click.stop>
             <div class="tag-dialog-header">
-              <h3>修改备注名</h3>
-              <button type="button" class="platform-dialog-close" @click="closeRenameDialog">×</button>
+              <h3 class="text-lg">修改备注名</h3>
+              <IconButton size="sm" aria-label="关闭修改备注名" @click="closeRenameDialog"><X :size="18" aria-hidden="true" /></IconButton>
             </div>
             <div class="tag-dialog-body">
               <div class="tag-dialog-field">
@@ -899,9 +899,9 @@ useDialogLayer(() => accountDialogVisible.value);
                   :disabled="renameDialogLoading"
                   @keydown.enter="confirmRenameDialog"
                 />
-                <div class="tag-dialog-char-count">{{ renameDialogDraft.length }} / 30</div>
+                <div class="tag-dialog-char-count text-xs">{{ renameDialogDraft.length }} / 30</div>
               </div>
-              <div v-if="renameDialogError" class="tag-dialog-error">{{ renameDialogError }}</div>
+              <div v-if="renameDialogError" class="tag-dialog-error text-sm">{{ renameDialogError }}</div>
             </div>
             <div class="tag-dialog-footer">
               <CapsuleButton variant="secondary" type="button" :disabled="renameDialogLoading" @click="closeRenameDialog">
@@ -933,36 +933,36 @@ useDialogLayer(() => accountDialogVisible.value);
 .accounts-table .accounts-col-actions { width: 174px; }
 
 .account-tags-cell { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.account-tag-chip { display: inline-flex; align-items: center; gap: 4px; min-height: 26px; padding: 0 8px 0 10px; border: 1px solid #dbe4ef; border-radius: 999px; background: #f4f8fc; color: #39506a; font-size: 13px; }
-.account-tag-remove { width: 16px; height: 16px; padding: 0; border-radius: 50%; background: transparent; color: #9aaaba; font-size: 16px; line-height: 1; cursor: pointer; }
+.account-tag-chip { display: inline-flex; align-items: center; gap: 4px; min-height: 26px; padding: 0 8px 0 10px; border: 1px solid #dbe4ef; border-radius: 999px; background: #f4f8fc; color: #39506a; }
+.account-tag-remove { width: 16px; height: 16px; padding: 0; border-radius: 50%; background: transparent; color: #9aaaba; line-height: 1; cursor: pointer; }
 .account-tag-remove:hover:not(:disabled) { color: #d86e65; }
-.account-tag-add { min-height: 26px; padding: 0 10px; border: 1px dashed #c8d4e3; border-radius: 999px; background: transparent; color: #7a8fa8; font-size: 13px; cursor: pointer; }
+.account-tag-add { min-height: 26px; padding: 0 10px; border: 1px dashed #c8d4e3; border-radius: 999px; background: transparent; color: #7a8fa8; cursor: pointer; }
 .account-tag-add:hover { border-color: #8aa4c0; color: #5a7a9a; }
 
-.pager-info { color: #697789; font-size: 14px; }
+.pager-info { color: #697789; }
 .pager-numbers { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.pager-current { min-width: 68px; color: #48617f; text-align: center; font-size: 14px; font-weight: 600; }
-.pager-button { display: inline-flex; align-items: center; justify-content: center; min-height: 38px; padding: 0 14px; border: 1px solid rgba(184, 204, 227, 0.9); border-radius: 12px; background: rgba(255, 255, 255, 0.92); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75), 0 10px 20px rgba(118, 146, 178, 0.12); color: #48617f; font-size: 14px; font-weight: 600; transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease, color 160ms ease, border-color 160ms ease; }
+.pager-current { min-width: 68px; color: #48617f; text-align: center; font-weight: 600; }
+.pager-button { display: inline-flex; align-items: center; justify-content: center; min-height: 38px; padding: 0 14px; border: 1px solid rgba(184, 204, 227, 0.9); border-radius: 12px; background: rgba(255, 255, 255, 0.92); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75), 0 10px 20px rgba(118, 146, 178, 0.12); color: #48617f; font-weight: 600; transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease, color 160ms ease, border-color 160ms ease; }
 .pager-button:hover:not(:disabled) { transform: translateY(-1px); border-color: rgba(132, 171, 214, 0.96); background: rgba(244, 249, 255, 0.98); color: #2d5f98; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82), 0 14px 26px rgba(99, 140, 190, 0.18); }
 .pager-nav-button { min-width: 76px; }
 .pager-button:disabled { cursor: not-allowed; opacity: 0.5; transform: none; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 8px 18px rgba(118, 146, 178, 0.08); }
 
 .platform-dialog-mask { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 24px; background: rgba(24, 35, 52, 0.22); backdrop-filter: blur(10px) saturate(116%); }
 .account-backend-mask { cursor: wait; }
-.account-backend-mask-status { padding: 12px 18px; border-radius: 14px; background: rgba(255, 255, 255, 0.94); box-shadow: 0 14px 36px rgba(45, 61, 82, 0.16); color: #536274; font-size: 14px; }
+.account-backend-mask-status { padding: 12px 18px; border-radius: 14px; background: rgba(255, 255, 255, 0.94); box-shadow: 0 14px 36px rgba(45, 61, 82, 0.16); color: #536274; }
 .dialog-surface { will-change: transform, opacity; }
 .tag-dialog { width: min(420px, calc(100vw - 48px)); padding: 24px; border-radius: 20px; background: rgba(255, 255, 255, 0.96); box-shadow: 0 28px 80px rgba(84, 110, 144, 0.24); }
 .tag-dialog-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
-.tag-dialog-header h3 { margin: 0; color: #1f2937; font-size: 18px; font-weight: 600; }
+.tag-dialog-header h3 { margin: 0; color: #1f2937; font-weight: 600; }
 .tag-dialog-body { margin-bottom: 24px; }
 .tag-dialog-field { position: relative; }
-.tag-dialog-field :deep(input) { width: 100%; height: 44px; padding: 0 60px 0 14px; border: 1px solid #dce3eb; border-radius: 12px; background: #fff; color: #1f2937; font-size: 14px; outline: none; transition: border-color 0.2s, box-shadow 0.2s; }
+.tag-dialog-field :deep(input) { width: 100%; height: 44px; padding: 0 60px 0 14px; border: 1px solid #dce3eb; border-radius: 12px; background: #fff; color: #1f2937; outline: none; transition: border-color 0.2s, box-shadow 0.2s; }
 .tag-dialog-field :deep(input:focus) { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12); }
 .tag-dialog-field :deep(input::placeholder) { color: #9ca3af; }
-.tag-dialog-char-count { position: absolute; top: 50%; right: 12px; transform: translateY(-50%); color: #9ca3af; font-size: 12px; pointer-events: none; }
+.tag-dialog-char-count { position: absolute; top: 50%; right: 12px; transform: translateY(-50%); color: #9ca3af; pointer-events: none; }
 .tag-dialog-footer { display: flex; justify-content: flex-end; gap: 12px; }
-.tag-dialog-footer :deep(button) { min-height: 44px; flex-shrink: 0; padding: 0 22px; border-radius: 12px; font-size: 15px; font-weight: 600; }
-.tag-dialog-error { margin-top: 10px; color: #d86e65; font-size: 13px; }
+.tag-dialog-footer :deep(button) { min-height: 44px; flex-shrink: 0; padding: 0 22px; border-radius: 12px; font-weight: 600; }
+.tag-dialog-error { margin-top: 10px; color: #d86e65; }
 
 .dialog-layer-enter-active,
 .dialog-layer-leave-active { transition: opacity 180ms ease, backdrop-filter 220ms ease, background 220ms ease; }

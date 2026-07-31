@@ -25,8 +25,8 @@ const variantClasses = {
 
 const sizeClasses = {
   sm: "h-9 min-h-9 px-3 text-xs",
-  md: "h-10 min-h-10 px-4 text-[13px]",
-  lg: "h-12 min-h-12 px-5 text-sm",
+  md: "h-10 min-h-10 px-4 text-sm",
+  lg: "h-12 min-h-12 px-5 text-base",
 } as const;
 </script>
 

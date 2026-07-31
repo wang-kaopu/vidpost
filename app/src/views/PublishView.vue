@@ -404,7 +404,7 @@ onBeforeUnmount(() => {
     <template #actions>
       <span
         v-if="publishQueue.items.length"
-        class="inline-flex min-h-[34px] items-center rounded-full bg-primary-soft px-[13px] text-[13px] font-semibold text-primary-strong"
+        class="inline-flex min-h-[34px] items-center rounded-full bg-primary-soft px-[13px] text-sm font-semibold text-primary-strong"
       >
         {{ publishQueue.items.length }} 个待发布作品
       </span>
@@ -469,15 +469,15 @@ onBeforeUnmount(() => {
               :platform="item.publishSettings.platformLabel"
             />
             <div class="flex min-w-0 flex-col gap-[5px]">
-              <strong class="truncate text-[15px] text-[#213249]">{{ item.publishSettings.accountName }}</strong>
-              <span class="w-fit rounded-full bg-success-soft px-[9px] py-[3px] text-[11px] text-success-strong">
+              <strong class="truncate text-base text-[#213249]">{{ item.publishSettings.accountName }}</strong>
+              <span class="w-fit rounded-full bg-success-soft px-[9px] py-[3px] text-xs text-success-strong">
                 {{ item.publishSettings.platformLabel }}
               </span>
             </div>
           </button>
           <button
             v-else
-            class="group inline-flex min-w-24 flex-col items-center gap-[7px] rounded-2xl bg-transparent px-3 py-2 text-[13px] text-[#344b65] transition duration-150 enabled:hover:-translate-y-px enabled:hover:bg-[rgba(231,239,248,0.7)] enabled:hover:text-primary-strong disabled:cursor-not-allowed disabled:opacity-55"
+            class="group inline-flex min-w-24 flex-col items-center gap-[7px] rounded-2xl bg-transparent px-3 py-2 text-sm text-[#344b65] transition duration-150 enabled:hover:-translate-y-px enabled:hover:bg-[rgba(231,239,248,0.7)] enabled:hover:text-primary-strong disabled:cursor-not-allowed disabled:opacity-55"
             type="button"
             :disabled="operationLocked"
             @click="openAccount(item.queueId)"

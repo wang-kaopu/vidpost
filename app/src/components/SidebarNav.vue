@@ -91,7 +91,7 @@ onBeforeUnmount(() => {
         </button>
         <div class="flex min-w-0 flex-col max-[1180px]:hidden">
           <strong class="truncate text-base text-ink">{{ displayName }}</strong>
-          <span class="truncate text-[13px] text-ink-muted">{{ displayRole }}</span>
+          <span class="truncate text-sm text-ink-muted">{{ displayRole }}</span>
         </div>
       </div>
       <Transition

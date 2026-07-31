@@ -33,7 +33,7 @@ function updateValue(event: Event): void {
   <input
     class="block w-full text-ink outline-none transition placeholder:text-ink-faint disabled:cursor-not-allowed disabled:text-ink-faint"
     :class="[
-      props.size === 'lg' ? 'text-base' : 'text-[13px]',
+      props.size === 'lg' ? 'text-base' : 'text-sm',
       props.variant === 'surface'
         ? 'h-10 min-h-10 rounded-xl border bg-surface px-3.5 focus:border-primary focus:ring-3 focus:ring-primary/10 disabled:bg-surface-muted'
         : 'h-auto min-h-0 border-0 bg-transparent px-0',

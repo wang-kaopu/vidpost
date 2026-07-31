@@ -61,10 +61,10 @@ useDialogLayer(() => props.visible);
         @click="emit('select', platform)"
       >
         <PlatformLogo
-          class="size-[72px]! rounded-[22px]! [&_.platform-logo-fallback]:text-[28px] [&>img]:size-12"
+          class="size-[72px]! rounded-[22px]! [&_.platform-logo-fallback]:text-3xl [&>img]:size-12"
           :platform="platform.label"
         />
-        <strong class="text-[22px] text-[#192534] max-[900px]:text-lg">
+        <strong class="text-2xl text-[#192534] max-[900px]:text-lg">
           {{ busyPlatformKey === platform.key ? busyLabel : platform.label }}
         </strong>
       </button>

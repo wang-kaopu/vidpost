@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { X } from "lucide-vue-next";
 import IconButton from "./IconButton.vue";
 
 /** 平台类弹窗共用的遮罩、表面、标题栏和过渡结构。 */
@@ -39,13 +40,13 @@ function handleMaskClick(): void {
         >
           <header class="mb-6 flex items-start justify-between gap-[18px]">
             <div>
-              <h2 class="m-0 text-[34px] tracking-[-0.05em] max-[900px]:text-[28px]">
+              <h2 class="m-0 text-4xl tracking-[-0.05em] max-[900px]:text-3xl">
                 {{ props.title }}
               </h2>
               <p v-if="props.description" class="mt-2 mb-0 text-base text-ink-muted">{{ props.description }}</p>
             </div>
             <IconButton aria-label="关闭" @click="emit('close')">
-              <span class="text-[26px] leading-none">×</span>
+              <X :size="20" aria-hidden="true" />
             </IconButton>
           </header>
           <slot />

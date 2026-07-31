@@ -1,5 +1,6 @@
 <script setup lang="ts">
-defineOptions({ inheritAttrs: false });
+/** 通用方形复选框，支持选中、半选和媒体背景样式。 */
+defineOptions({ name: "SquareCheckbox", inheritAttrs: false });
 
 const props = withDefaults(
   defineProps<{
@@ -28,7 +29,7 @@ function handleChange(event: Event): void {
 
 <template>
   <input
-    class="relative shrink-0 cursor-pointer appearance-none rounded-full border after:absolute after:top-1/2 after:left-1/2 after:-translate-x-1/2 after:-translate-y-[60%] after:rotate-[-45deg] after:border-b-[1.5px] after:border-l-[1.5px] after:border-white after:opacity-0 after:content-[''] checked:border-primary checked:bg-primary checked:after:opacity-100 indeterminate:border-primary indeterminate:bg-primary indeterminate:after:h-0 indeterminate:after:w-2 indeterminate:after:-translate-y-1/2 indeterminate:after:rotate-0 indeterminate:after:border-l-0 indeterminate:after:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+    class="relative shrink-0 cursor-pointer appearance-none rounded-[5px] border after:absolute after:top-1/2 after:left-1/2 after:-translate-x-1/2 after:-translate-y-[60%] after:rotate-[-45deg] after:border-b-[1.5px] after:border-l-[1.5px] after:border-white after:opacity-0 after:content-[''] checked:border-primary checked:bg-primary checked:after:opacity-100 indeterminate:border-primary indeterminate:bg-primary indeterminate:after:h-0 indeterminate:after:w-2 indeterminate:after:-translate-y-1/2 indeterminate:after:rotate-0 indeterminate:after:border-l-0 indeterminate:after:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
     :class="[
       props.size === 'sm'
         ? 'size-5 after:h-[0.26rem] after:w-[0.46rem]'

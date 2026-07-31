@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from "vue";
+import { X } from "lucide-vue-next";
 
 interface Props {
   modelValue: string[];
@@ -154,20 +155,20 @@ watch(
     >
       <span class="max-w-32 truncate">{{ tag }}</span>
       <button
-        class="grid size-4 place-items-center rounded-full text-sm leading-none text-primary/70 transition hover:bg-primary/10 hover:text-primary disabled:cursor-not-allowed"
+        class="grid size-4 place-items-center rounded-full text-primary/70 transition hover:bg-primary/10 hover:text-primary disabled:cursor-not-allowed"
         type="button"
         :disabled="disabled"
         :aria-label="`删除标签 ${tag}`"
         @click.stop="removeTag(index)"
       >
-        ×
+        <X :size="10" aria-hidden="true" />
       </button>
     </div>
 
     <input
       ref="inputRef"
       v-model="draft"
-      class="h-7 min-w-28 flex-1 border-0 bg-transparent px-1 text-[13px] text-ink outline-none placeholder:text-ink-faint"
+      class="h-7 min-w-28 flex-1 border-0 bg-transparent px-1 text-sm text-ink outline-none placeholder:text-ink-faint"
       type="text"
       :disabled="disabled"
       :placeholder="placeholder"

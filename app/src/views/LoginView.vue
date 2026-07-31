@@ -2,7 +2,7 @@
 import { computed, reactive, ref } from "vue";
 import { Phone, ShieldCheck } from "lucide-vue-next";
 import CapsuleButton from "@/components/ui/CapsuleButton.vue";
-import CircleCheckbox from "@/components/ui/CircleCheckbox.vue";
+import SquareCheckbox from "@/components/ui/SquareCheckbox.vue";
 import TextInput from "@/components/ui/TextInput.vue";
 import { sendCode } from "@/api/auth";
 import type { LoginForm } from "@/types";
@@ -71,7 +71,7 @@ const submit = () => {
   <div class="grid min-h-screen place-items-center px-6 py-12">
     <div class="w-full max-w-[480px] rounded-3xl border border-white/80 bg-white/90 px-12 py-11 shadow-[0_28px_80px_rgba(146,167,194,0.28)] backdrop-blur-xl max-sm:px-6">
       <div class="mb-9 text-center">
-        <h1 class="m-0 text-[clamp(2rem,4vw,2.625rem)] leading-[1.1] font-bold tracking-[-0.04em] text-ink">欢迎登录</h1>
+        <h1 class="m-0 text-4xl leading-tight font-bold tracking-[-0.04em] text-ink max-sm:text-3xl">欢迎登录</h1>
         <p class="mt-2.5 mb-0 text-base text-ink-faint">使用手机号快速登录</p>
       </div>
 
@@ -97,10 +97,10 @@ const submit = () => {
         </CapsuleButton>
       </div>
 
-      <p v-if="errorMessage" class="mt-2 mb-0 text-[13px] text-danger">{{ errorMessage }}</p>
+      <p v-if="errorMessage" class="mt-2 mb-0 text-sm text-danger">{{ errorMessage }}</p>
 
       <label class="my-6 flex items-center gap-2.5 text-sm text-ink">
-        <CircleCheckbox :checked="form.agreed" size="sm" @change="form.agreed = ($event.target as HTMLInputElement).checked" />
+        <SquareCheckbox :checked="form.agreed" size="sm" @change="form.agreed = ($event.target as HTMLInputElement).checked" />
         <span>我已阅读并同意《用户协议》和《隐私政策》</span>
       </label>
 

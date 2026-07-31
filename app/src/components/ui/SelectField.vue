@@ -25,7 +25,7 @@ function updateValue(event: Event): void {
 
 <template>
   <select
-    class="block h-10 min-h-10 w-full rounded-xl border bg-surface px-3.5 text-[13px] text-ink outline-none transition focus:border-primary focus:ring-3 focus:ring-primary/10 disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-ink-faint"
+    class="block h-10 min-h-10 w-full rounded-xl border bg-surface px-3.5 text-sm text-ink outline-none transition focus:border-primary focus:ring-3 focus:ring-primary/10 disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-ink-faint"
     :class="props.invalid ? 'border-danger focus:border-danger focus:ring-danger/10' : 'border-border'"
     :value="props.modelValue"
     v-bind="$attrs"
