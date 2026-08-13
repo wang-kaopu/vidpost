@@ -1,8 +1,8 @@
 {
-  "name": "agenthunt",
+  "name": "vidpost",
   "version": "1.0.2",
-  "description": "矩阵特工队",
-  "productName": "矩阵特工队",
+  "description": "VidPost",
+  "productName": "VidPost",
   "authors": "kelvinwww",
   "type": "module",
   "main": ".build/main.js",

@@ -202,13 +202,13 @@ function assertAccountQueueNotRunning(accountId: string | number): void {
 // 拼接账号文件路径，用于正在新增过程中、未获取数据自增ID的账号文件命名
 export function resolveDraftAccountFilePath(platform: Platform): string {
   const homeDir = process.env.HOME || process.env.USERPROFILE || ".";
-  return path.join(homeDir, ".agenthunt", "cookie_files", `${randomUUID()}_${platform}.json`);
+  return path.join(homeDir, ".vidpost", "cookie_files", `${randomUUID()}_${platform}.json`);
 }
 
 // 拼接账号文件路径，用于已获取数据自增ID的账号文件命名
 export function resolveAccountFilePath(accountId: string | number, platform: string): string {
   const homeDir = process.env.HOME || process.env.USERPROFILE || ".";
-  return path.join(homeDir, ".agenthunt", "cookie_files", `${accountId}_${platform}.json`);
+  return path.join(homeDir, ".vidpost", "cookie_files", `${accountId}_${platform}.json`);
 }
 
 // 将登录过程中生成的账号文件用自增id改文件名，并返回最终路径

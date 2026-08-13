@@ -1,7 +1,7 @@
 import type { LaunchIntent } from "@shared/electron-api.ts";
 
-export const AGENTHUNT_PROTOCOL = "agenthunt";
-export const AGENTHUNT_NAVIGATE_HOST = "navigate";
+export const VIDPOST_PROTOCOL = "vidpost";
+export const VIDPOST_NAVIGATE_HOST = "navigate";
 
 export type ProtocolClientRegistration = {
   path?: string;
@@ -25,7 +25,7 @@ function normalizePathname(pathname: string) {
   return trimmed.length > 1 ? trimmed.replace(/\/+$/, "") || "/" : trimmed;
 }
 
-export function parseAgenthuntUrl(rawUrl: string): LaunchIntent | null {
+export function parseVidpostUrl(rawUrl: string): LaunchIntent | null {
   const candidate = stripWrappingQuotes(String(rawUrl || "").trim());
   if (!candidate) {
     return null;
@@ -44,7 +44,7 @@ export function parseAgenthuntUrl(rawUrl: string): LaunchIntent | null {
   }
 }
 
-export function extractProtocolUrlFromCommandLine(argv: readonly string[], protocol = AGENTHUNT_PROTOCOL): string | null {
+export function extractProtocolUrlFromCommandLine(argv: readonly string[], protocol = VIDPOST_PROTOCOL): string | null {
   const prefix = `${protocol.toLowerCase()}://`;
 
   for (let index = argv.length - 1; index >= 0; index -= 1) {

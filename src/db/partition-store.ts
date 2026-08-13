@@ -24,7 +24,7 @@ type PartitionStoreData = Record<string, unknown>;
  */
 export function resolveDefaultPartitionStorePath(): string {
   const homeDir = process.env.HOME || process.env.USERPROFILE || ".";
-  return path.join(homeDir, ".agenthunt", DEFAULT_STORE_FILE);
+  return path.join(homeDir, ".vidpost", DEFAULT_STORE_FILE);
 }
 
 /**

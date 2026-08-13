@@ -20,8 +20,8 @@ const config: ForgeConfig = {
     prune: true,
     protocols: [
       {
-        name: '矩阵特工队 Deep Link',
-        schemes: ['agenthunt'],
+        name: 'VidPost Deep Link',
+        schemes: ['vidpost'],
       },
     ],
   },

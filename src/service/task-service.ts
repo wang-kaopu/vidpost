@@ -56,7 +56,7 @@ function buildPreferredAssetFilename(sourceUrl: string, fallbackName: string, pr
 
 /** 返回发布素材缓存的默认根目录。 */
 export function resolveDefaultPublishAssetCacheRoot(): string {
-  return path.join(os.tmpdir(), "agenthunt", "publish-assets");
+  return path.join(os.tmpdir(), "vidpost", "publish-assets");
 }
 
 /** 从发布参数中提取稳定的素材缓存键。 */

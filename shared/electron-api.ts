@@ -151,9 +151,9 @@ export interface ElectronLoggerAPI {
 /** Electron 主窗口使用的全部 invoke 与事件频道。 */
 export const IPC_CHANNELS = {
   getBilibiliHumanTypes: "video:get-bilibili-human-types",
-  getLaunchIntent: "agenthunt:get-launch-intent",
+  getLaunchIntent: "vidpost:get-launch-intent",
   getSohuChannels: "video:get-sohu-channels",
-  launchIntent: "agenthunt:launch-intent",
+  launchIntent: "vidpost:launch-intent",
   login: "login",
   openAccountBackend: "account:open-backend",
   ping: "ping",

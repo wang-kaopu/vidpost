@@ -142,7 +142,7 @@ function formatValue(value: unknown): string {
 
 /** 生成带固定应用标识和等级的完整日志文本。 */
 function formatLog(level: 'INFO' | 'ERROR', values: unknown[]): string {
-  return `[${formatTimestamp(new Date())}] - [agenthunt] - [${level}] - ${values.map(formatValue).join(' ')}`
+  return `[${formatTimestamp(new Date())}] - [vidpost] - [${level}] - ${values.map(formatValue).join(' ')}`
 }
 
 export const logger: Logger = {

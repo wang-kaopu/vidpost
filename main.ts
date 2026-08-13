@@ -9,9 +9,9 @@ import squirrelStartup from "electron-squirrel-startup";
 import { IPC_CHANNELS, type LaunchIntent, type RendererLogEntry } from "@shared/electron-api.ts";
 import { getBilibiliHumanTypes, getSohuChannels, login, openAccountBackend, publish, ping } from "@/src/funcs.ts";
 import {
-  AGENTHUNT_PROTOCOL,
+  VIDPOST_PROTOCOL,
   extractProtocolUrlFromCommandLine,
-  parseAgenthuntUrl,
+  parseVidpostUrl,
   resolveProtocolClientRegistration,
 } from "@/src/deep-link.ts";
 import { getSingletonLock } from "@/src/utils/lock.ts";
@@ -98,7 +98,7 @@ function registerIpcHandler(
 }
 
 function handleProtocolUrl(rawUrl: string): void {
-  const launchIntent = parseAgenthuntUrl(rawUrl);
+  const launchIntent = parseVidpostUrl(rawUrl);
   if (!launchIntent) {
     return;
   }
@@ -216,8 +216,8 @@ async function startApplication(): Promise<void> {
 
     // 注册自定义协议，优先使用 Electron 内置的注册方式
     const registration = resolveProtocolClientRegistration(process.argv, process.defaultApp);
-    if (registration && !app.setAsDefaultProtocolClient(AGENTHUNT_PROTOCOL, registration.path, registration.args)) {
-      logger.error(`[deep-link] failed to register protocol client for ${AGENTHUNT_PROTOCOL}`);
+    if (registration && !app.setAsDefaultProtocolClient(VIDPOST_PROTOCOL, registration.path, registration.args)) {
+      logger.error(`[deep-link] failed to register protocol client for ${VIDPOST_PROTOCOL}`);
     }
 
     // 处理可能的初始协议 URL（例如在 macOS 上通过 `open` 命令启动应用时）
@@ -232,7 +232,7 @@ async function startApplication(): Promise<void> {
 }
 
 if (hasSingletonLock) {
-  app.setAppLogsPath(path.join(app.getPath("home"), ".agenthunt", "logs"));
+  app.setAppLogsPath(path.join(app.getPath("home"), ".vidpost", "logs"));
   configureLogger(app.getPath("logs"));
   startApplication().catch((error) => {
     logger.error("[startup] failed to initialize application:", error);

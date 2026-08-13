@@ -1,4 +1,4 @@
-# 矩阵特工队
+# VidPost
 
 Electron + Vue 的多平台视频发布客户端。Electron 主进程、服务层、脚本和测试统一使用 TypeScript 与 ESM；Vue 渲染进程由 Vite 构建。
 
@@ -97,7 +97,7 @@ Windows 安装包必须在 Windows x64 主机上构建。从根目录的 `.nvmrc
 ```powershell
 nvm install 22.22.3
 nvm use 22.22.3
-Get-Process -Name "矩阵特工队" -ErrorAction SilentlyContinue | Stop-Process -Force
+Get-Process -Name "VidPost" -ErrorAction SilentlyContinue | Stop-Process -Force
 Remove-Item -Recurse -Force node_modules, app\node_modules, out, .build, app\dist -ErrorAction SilentlyContinue
 npm ci --include=dev --include=optional
 npm run typecheck
@@ -105,14 +105,14 @@ npm test
 npm run forge:make
 ```
 
-`forge:package` 只生成 `out/矩阵特工队-win32-x64` 下的可运行目录；`forge:make` 额外生成可分发安装包。打包前必须退出从 `out` 启动的旧应用，否则 Windows 会锁住 `app.asar` 并使清理或覆盖报 `EBUSY`。Forge 每次会覆盖旧的 package 目录，`.build` 和 `app/dist` 也会在构建前清空。
+`forge:package` 只生成 `out/VidPost-win32-x64` 下的可运行目录；`forge:make` 额外生成可分发安装包。打包前必须退出从 `out` 启动的旧应用，否则 Windows 会锁住 `app.asar` 并使清理或覆盖报 `EBUSY`。Forge 每次会覆盖旧的 package 目录，`.build` 和 `app/dist` 也会在构建前清空。
 
 Forge 使用运行时路径白名单，只复制根 `package.json`、`.build` 中的三个可执行入口、`app/dist`、两份浏览器身份文件，以及从根应用生产依赖计算出的 `node_modules` 传递闭包。前端 workspace 依赖已经由 Vite 写入 `app/dist`，不会重复打入 ASAR；source map、源码、脚本、测试和开发配置默认全部排除。新增运行时入口或资产时必须同步更新 `scripts/forge-packaging.ts` 白名单。
 
 Sharp 的 Windows 原生模块依赖同目录的 libvips DLL。打包前应确认 `node_modules/@img/sharp-win32-x64/lib` 同时包含 `.node` 和 `.dll` 文件；打包后应确认它们都被复制到：
 
 ```text
-out/矩阵特工队-win32-x64/resources/app.asar.unpacked/node_modules/@img/sharp-win32-x64/lib/
+out/VidPost-win32-x64/resources/app.asar.unpacked/node_modules/@img/sharp-win32-x64/lib/
 ```
 
 不得使用 `--omit=optional` 或从其他操作系统拷贝的 `node_modules` 打包 Windows 产物。
@@ -133,13 +133,13 @@ Forge 的 ASAR 配置会整体解包 Playwright、Sharp 和 `@img` 运行时目�
 
 项目源码统一通过 logger 输出日志。Node、Electron 和脚本使用 `src/utils/logger.ts`；浏览器代码通过 `app/src/utils/logger.ts` 保持相同的 `logger.info(...values)` 和 `logger.error(...values)` 调用方式，但格式化后会通过 `electronAPI.logger` 交给主进程持久化。正式 renderer 启动时会写入启动标记，并统一记录 Vue 未捕获异常、页面运行时异常、未处理的 Promise 拒绝、脱敏后的 HTTP 请求失败，以及直接调用 Electron IPC 的关键业务失败。HTTP 失败日志只记录方法、不含查询参数的相对 URL、状态码、错误码和业务说明，不记录认证 Header、查询参数或请求体。业务代码禁止直接调用 `console.*`。
 
-Electron 使用 log4js 在用户主目录的 `~/.agenthunt/logs` 保存两组文件：主进程及 Node 业务写入 `electron.log`，正式 renderer 写入 `renderer.log`。应用通过 `app.getPath("home")` 构造绝对路径并交给 `app.setAppLogsPath()`，不依赖 shell 展开 `~`。每组当前日志累计写入 24 小时后按数字序号轮转，当前日志不带序号，最近的历史日志为 `.1`，最旧为 `.6`，因此每组固定保留 7 个日志窗口。应用重启时会从当前文件的创建时间继续计算剩余时长；若关闭时间已超过 24 小时，则在下次启动时立即补做一次轮转，但不会为关闭期间生成空日志文件。应用退出前会等待轮转和异步日志写入完成。renderer 只能向受限 IPC 发送已经安全格式化的日志文本，不能访问文件系统或 log4js。
+Electron 使用 log4js 在用户主目录的 `~/.vidpost/logs` 保存两组文件：主进程及 Node 业务写入 `electron.log`，正式 renderer 写入 `renderer.log`。应用通过 `app.getPath("home")` 构造绝对路径并交给 `app.setAppLogsPath()`，不依赖 shell 展开 `~`。每组当前日志累计写入 24 小时后按数字序号轮转，当前日志不带序号，最近的历史日志为 `.1`，最旧为 `.6`，因此每组固定保留 7 个日志窗口。应用重启时会从当前文件的创建时间继续计算剩余时长；若关闭时间已超过 24 小时，则在下次启动时立即补做一次轮转，但不会为关闭期间生成空日志文件。应用退出前会等待轮转和异步日志写入完成。renderer 只能向受限 IPC 发送已经安全格式化的日志文本，不能访问文件系统或 log4js。
 
 日志使用运行机器的本地时区和 24 小时制，格式固定为：
 
 ```text
-[2026-07-11 14:30:05] - [agenthunt] - [INFO] - 开始发布
-[2026-07-11 14:30:06] - [agenthunt] - [ERROR] - 发布失败
+[2026-07-11 14:30:05] - [vidpost] - [INFO] - 开始发布
+[2026-07-11 14:30:06] - [vidpost] - [ERROR] - 发布失败
 ```
 
 对象会压缩为单行 JSON；普通字符串及错误堆栈中的换行保持不变，并且每次 logger 调用只添加一次前缀。`Buffer`、ArrayBuffer、TypedArray 和 DataView 会显示 Base64 编码后的前 100 个字符，同时记录类型、原始字节数和截断状态。Blob、File 只记录名称、MIME 和字节数；FormData 会展开字段并按相同规则描述其中的文件。
@@ -227,9 +227,7 @@ Bilibili、百家号、抖音和搜狐的 `xx-video.ts` 是稳定门面，只实
 
 平台账号登录窗口使用账号级 Electron `persist:` partition 隔离浏览器状态。partition 映射持久化在：
 
-`~/.agenthunt/partition-map.json`
-
-旧目录 `~/.matrix-account` 不再作为账号状态读写路径。
+`~/.vidpost/partition-map.json`
 
 ```json
 { "partition_map_table": { "1001": "persist:rpa-MTAwMQ" } }
@@ -252,6 +250,6 @@ Bilibili、百家号、抖音和搜狐的 `xx-video.ts` 是稳定门面，只实
 
 ## 已移除能力
 
-历史人工验证码存储模块及其桌面轮询链路已删除，因为其依赖的 runtime store 不存在。抖音发布短信验证码仍支持通过 `MATRIX_DOUYIN_PUBLISH_SMS_CODE` 环境变量自动填写。
+历史人工验证码存储模块及其桌面轮询链路已删除，因为其依赖的 runtime store 不存在。抖音发布短信验证码仍支持通过 `VIDPOST_DOUYIN_PUBLISH_SMS_CODE` 环境变量自动填写。
 
 登录后的 `syncNickname()` 接口、登录结果昵称字段，以及四个平台基于 DOM/Playwright 的昵称提取实现均已删除。账号昵称统一来自 HTTP `ping()` 响应。
