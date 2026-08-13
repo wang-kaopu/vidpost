@@ -3,31 +3,35 @@ import electron, { type IpcMainInvokeEvent } from "electron";
 import {
   IPC_CHANNELS,
   type AccountOptionsInput,
+  type AccountListInput,
   type BasePublishInput,
   type BilibiliHumanType,
   type LoginAccountResult,
   type OpenAccountBackendInput,
   type OpenAccountBackendResult,
+  type LocalAccountDTO,
+  type LocalPublishRecordDTO,
+  type PublishRecordListInput,
   type PingInput,
   type Platform,
   type PublishInput,
   type PublishTaskProgressEvent,
   type SohuChannel,
-  type WorkVideoType,
 } from "@shared/electron-api.ts";
 import { createAccount } from "@/src/infra/account/account.ts";
 import { createVideo } from "@/src/infra/video/video.ts";
 import {
-  loginAndCreateRemoteAccount,
+  loginAndCreateLocalAccount,
   openExistingAccountBackend,
   resolveAccountFilePath,
   resolveDraftAccountFilePath,
-  updateRemoteAccount,
+  updateLocalAccount,
 } from "@/src/service/account-service.ts";
-import { publishAndUpdateRemoteTask, type PublishExecutionPhase } from "@/src/service/task-service.ts";
+import { publishAndUpdateLocalRecord, type PublishExecutionPhase } from "@/src/service/task-service.ts";
 import { getBilibiliHumanTypes as queryBilibiliHumanTypes } from "@/src/infra/video/bilibili-video.ts";
 import { getSohuChannels as querySohuChannels } from "@/src/infra/video/sohu-video.ts";
-import { broadcast } from "@/src/sse/sse-server.ts";
+import { accountRepository } from "@/src/repository/account-repository.ts";
+import { publishRecordRepository } from "@/src/repository/publish-record-repository.ts";
 
 const { BrowserWindow } = electron;
 
@@ -56,15 +60,14 @@ function requirePayload(value: unknown, action: string): Record<string, unknown>
   return value as Record<string, unknown>;
 }
 
-/** 登录指定平台并创建或更新远程发布账号。 */
+/** 登录指定平台并创建或更新本地发布账号。 */
 export async function login(event: IpcMainInvokeEvent, platformValue: unknown): Promise<LoginAccountResult> {
   const platform = parsePlatform(platformValue);
   const parentWindow = BrowserWindow.fromWebContents(event.sender);
   const accountFile = resolveDraftAccountFilePath(platform);
   const account = createAccount(platform);
-  const result = await loginAndCreateRemoteAccount(platform, accountFile, parentWindow, account);
+  const result = await loginAndCreateLocalAccount(platform, accountFile, parentWindow, account);
   const { updatedExistingAccount, ...accountModel } = result;
-  broadcast(accountModel);
   return {
     accountId: String(accountModel.id),
     nickname: String(accountModel.nickname || accountModel.id),
@@ -72,7 +75,7 @@ export async function login(event: IpcMainInvokeEvent, platformValue: unknown): 
   };
 }
 
-/** 检测指定账号的在线状态并同步远程账号。 */
+/** 检测指定账号的在线状态并同步本地账号。 */
 export async function ping(_event: IpcMainInvokeEvent, accountValue: unknown) {
   const account = requirePayload(accountValue, "ping account");
   const platform = parsePlatform(account.platform);
@@ -80,7 +83,7 @@ export async function ping(_event: IpcMainInvokeEvent, accountValue: unknown) {
     throw new Error("ping account requires a string accountId");
   }
   const input: PingInput = { accountId: account.accountId.trim(), platform };
-  return updateRemoteAccount(input, createAccount(platform));
+  return updateLocalAccount(input, createAccount(platform));
 }
 
 /**
@@ -113,7 +116,7 @@ export async function openAccountBackend(
  *
  * @param event - Electron IPC 调用事件
  * @param payloadValue - 带前端跟踪 ID 的发布任务参数
- * @returns 已提交到平台的远程任务
+ * @returns 已写入本地 SQLite 的发布记录
  */
 export async function publish(event: IpcMainInvokeEvent, payloadValue: unknown) {
   const payload = requirePayload(payloadValue, "publish");
@@ -121,43 +124,27 @@ export async function publish(event: IpcMainInvokeEvent, payloadValue: unknown) 
   const stringFields = [
     "accountId",
     "accountName",
-    "coverUrl",
+    "coverPath",
     "introduction",
     "progressId",
     "scheduledAt",
     "title",
-    "videoType",
-    "videoUrl",
-    "workId",
+    "videoPath",
   ] as const;
   if (stringFields.some((field) => typeof payload[field] !== "string")) {
     throw new Error("publish task string fields have invalid types");
   }
   const stringPayload = payload as Record<(typeof stringFields)[number], string>;
 
-  let videoType: WorkVideoType;
-  switch (stringPayload.videoType) {
-    case "talking_head_video":
-    case "ai_ad_video":
-    case "ai_sora2_video":
-    case "social_commerce_video":
-      videoType = stringPayload.videoType;
-      break;
-    default:
-      throw new Error(`publish task has an unsupported videoType: ${stringPayload.videoType}`);
-  }
-
   const baseInput: BasePublishInput = {
     accountId: stringPayload.accountId.trim(),
     accountName: stringPayload.accountName.trim(),
-    coverUrl: stringPayload.coverUrl.trim(),
+    coverPath: stringPayload.coverPath.trim(),
     introduction: stringPayload.introduction,
     progressId: stringPayload.progressId.trim(),
     scheduledAt: stringPayload.scheduledAt,
     title: stringPayload.title.trim(),
-    videoType,
-    videoUrl: stringPayload.videoUrl.trim(),
-    workId: stringPayload.workId.trim(),
+    videoPath: stringPayload.videoPath.trim(),
   };
 
   let publishInput: PublishInput;
@@ -197,7 +184,7 @@ export async function publish(event: IpcMainInvokeEvent, payloadValue: unknown) 
       break;
   }
 
-  return publishAndUpdateRemoteTask(publishInput, createVideo(platform), (phase: PublishExecutionPhase) => {
+  return publishAndUpdateLocalRecord(publishInput, createVideo(platform), (phase: PublishExecutionPhase) => {
     if (event.sender.isDestroyed()) return;
     const progressEvent: PublishTaskProgressEvent = { taskId: publishInput.progressId, phase };
     try {
@@ -232,4 +219,79 @@ export async function getSohuChannels(
   }
   const input: AccountOptionsInput = { accountId: payload.accountId.trim() };
   return querySohuChannels(resolveAccountFilePath(input.accountId, "sohu"));
+}
+
+/** 将本地账号记录转换为 renderer 可接收的 DTO。 */
+function toLocalAccountDto(account: ReturnType<typeof accountRepository.findById>): LocalAccountDTO {
+  if (!account) throw new Error("本地账号不存在");
+  return { ...account, platform: account.platform as LocalAccountDTO["platform"] };
+}
+
+/** 查询 SQLite 本地账号。 */
+export function getAccounts(_event: IpcMainInvokeEvent, payloadValue?: unknown): LocalAccountDTO[] {
+  const payload = (payloadValue || {}) as AccountListInput;
+  return accountRepository.list(payload).map((account) => toLocalAccountDto(account));
+}
+
+/** 查询本地账号的标签集合。 */
+export function getAccountTags(): string[] {
+  return [...new Set(accountRepository.list({ limit: 300 }).flatMap((account) => account.tags))].sort();
+}
+
+/** 更新本地账号备注。 */
+export function updateAccount(_event: IpcMainInvokeEvent, payloadValue: unknown): LocalAccountDTO {
+  const payload = requirePayload(payloadValue, "update account");
+  if (typeof payload.accountId !== "number" || typeof payload.remarkName !== "string") throw new Error("更新账号参数无效");
+  return toLocalAccountDto(accountRepository.update(payload.accountId, { remarkName: payload.remarkName.trim() }));
+}
+
+/** 替换本地账号中的一个标签。 */
+export function addAccountTag(_event: IpcMainInvokeEvent, payloadValue: unknown): LocalAccountDTO {
+  const payload = requirePayload(payloadValue, "add account tag");
+  if (typeof payload.accountId !== "number" || typeof payload.tag !== "string") throw new Error("添加账号标签参数无效");
+  const account = accountRepository.findById(payload.accountId);
+  if (!account) throw new Error(`本地账号不存在: ${payload.accountId}`);
+  return toLocalAccountDto(accountRepository.replaceTags(account.id, [...account.tags, payload.tag]));
+}
+
+/** 删除本地账号中的一个标签。 */
+export function deleteAccountTag(_event: IpcMainInvokeEvent, payloadValue: unknown): LocalAccountDTO {
+  const payload = requirePayload(payloadValue, "delete account tag");
+  if (typeof payload.accountId !== "number" || typeof payload.tag !== "string") throw new Error("删除账号标签参数无效");
+  const account = accountRepository.findById(payload.accountId);
+  if (!account) throw new Error(`本地账号不存在: ${payload.accountId}`);
+  return toLocalAccountDto(accountRepository.replaceTags(account.id, account.tags.filter((tag) => tag !== payload.tag)));
+}
+
+/** 删除本地账号；存在发布记录时由外键约束拒绝删除，保护历史记录完整性。 */
+export function deleteAccount(_event: IpcMainInvokeEvent, accountIdValue: unknown): void {
+  if (typeof accountIdValue !== "number") throw new Error("删除账号参数无效");
+  accountRepository.delete(accountIdValue);
+}
+
+/** 查询 SQLite 本地发布记录。 */
+export function getPublishRecords(_event: IpcMainInvokeEvent, payloadValue?: unknown): LocalPublishRecordDTO[] {
+  const payload = (payloadValue || {}) as PublishRecordListInput;
+  return publishRecordRepository.list(payload).map((record) => ({
+    ...record,
+    platform: record.platform as LocalPublishRecordDTO["platform"],
+  }));
+}
+
+/** 删除本地发布记录。 */
+export function deletePublishRecord(_event: IpcMainInvokeEvent, recordIdValue: unknown): void {
+  if (typeof recordIdValue !== "number") throw new Error("删除发布记录参数无效");
+  // 发布记录删除属于明确的本地操作，仓储当前只允许通过 SQL 直接删除已存在记录。
+  const record = publishRecordRepository.findById(recordIdValue);
+  if (!record) throw new Error(`本地发布记录不存在: ${recordIdValue}`);
+  publishRecordRepository.delete(recordIdValue);
+}
+
+/** 更新本地发布记录备注。 */
+export function updatePublishRecordRemark(_event: IpcMainInvokeEvent, payloadValue: unknown): void {
+  const payload = requirePayload(payloadValue, "update publish record remark");
+  if (typeof payload.recordId !== "number" || typeof payload.remark !== "string") {
+    throw new Error("更新发布记录备注参数无效");
+  }
+  publishRecordRepository.updateRemark(payload.recordId, payload.remark);
 }

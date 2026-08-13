@@ -10,6 +10,14 @@ import {
 
 // 将需要暴露给渲染进程的 API 通过 contextBridge 暴露出来
 const electronApi: ElectronAPI = {
+  addAccountTag: (payload) => ipcRenderer.invoke(IPC_CHANNELS.addAccountTag, payload),
+  deleteAccount: (accountId) => ipcRenderer.invoke(IPC_CHANNELS.deleteAccount, accountId),
+  deleteAccountTag: (payload) => ipcRenderer.invoke(IPC_CHANNELS.deleteAccountTag, payload),
+  deletePublishRecord: (recordId) => ipcRenderer.invoke(IPC_CHANNELS.deletePublishRecord, recordId),
+  getAccountTags: () => ipcRenderer.invoke(IPC_CHANNELS.getAccountTags),
+  getAccounts: (payload) => ipcRenderer.invoke(IPC_CHANNELS.getAccounts, payload),
+  getPublishRecords: (payload) => ipcRenderer.invoke(IPC_CHANNELS.getPublishRecords, payload),
+  updatePublishRecordRemark: (payload) => ipcRenderer.invoke(IPC_CHANNELS.updatePublishRecordRemark, payload),
   logger: {
     error: (message) => ipcRenderer.send(IPC_CHANNELS.rendererLog, { level: "error", message }),
     info: (message) => ipcRenderer.send(IPC_CHANNELS.rendererLog, { level: "info", message }),
@@ -18,6 +26,8 @@ const electronApi: ElectronAPI = {
   publish: async (payload) => {
     await ipcRenderer.invoke(IPC_CHANNELS.publish, payload);
   },
+  selectLocalFile: (payload) => ipcRenderer.invoke(IPC_CHANNELS.selectLocalFile, payload),
+  updateAccount: (payload) => ipcRenderer.invoke(IPC_CHANNELS.updateAccount, payload),
   ping: async (payload) => {
     await ipcRenderer.invoke(IPC_CHANNELS.ping, payload);
   },

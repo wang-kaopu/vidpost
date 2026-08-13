@@ -72,7 +72,7 @@ export interface PublishedStatePayload {
   accountFile: string;
   abortSignal?: AbortSignal;
   title?: string | null;
-  remoteTaskId?: string | number | null;
+  localRecordId?: string | number | null;
   publishedAt?: string | null;
   link?: string | null;
   attributes?: Record<string, unknown> | null;
@@ -94,7 +94,7 @@ export interface Video<TPayload extends VideoUploadPayload = VideoUploadPayload>
   /**
    * 执行最终投稿前的完整预发布流程，但不提交作品。
    *
-   * 该流程可能向平台上传远端临时素材。
+   * 该流程可能向平台上传本地素材的临时副本。
    */
   dryRun(payload: TPayload): Promise<void>;
 

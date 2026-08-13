@@ -1,258 +1,51 @@
 # VidPost
 
-Electron + Vue 的多平台视频发布客户端。Electron 主进程、服务层、脚本和测试统一使用 TypeScript 与 ESM；Vue 渲染进程由 Vite 构建。
+VidPost 是一个 Electron + Vue 的本地多平台视频发布客户端。应用不依赖 VidPost 自有服务器：平台账号登录、账号探活、视频投稿、审核状态查询和发布记录都在本机完成。
 
-后端 TypeScript 的 `@/` 指向仓库根目录，项目内模块统一使用 `@/src/...`、`@/scripts/...` 等绝对引用，不使用 `./` 或 `../` 模块路径。唯一例外是 `forge.config.ts`：Electron Forge 的 Jiti 配置加载器不解析 tsconfig paths，因此继续相对引用打包规则。前端是独立工程，`app` 内的 `@/` 指向 `app/src`。
+## 本地数据
 
-## 环境与安装
+- SQLite 数据库：`~/.vidpost/vidpost.db`
+- 平台 Cookie / storage-state：`~/.vidpost/cookie_files/<accountId>_<platform>.json`
+- 浏览器 partition 映射：`~/.vidpost/partition-map.json`
 
-项目使用 npm workspace，只维护根目录一份 `package-lock.json`。Node 版本由 `.nvmrc` 固定。
+SQLite 只由 Electron 主进程访问，renderer 通过受限 IPC 获取账号和发布记录 DTO。数据库启动时启用外键、WAL 和 5 秒 busy timeout，并在事务中执行版本迁移。平台 Cookie 和浏览器 storage-state 不写入 SQLite。
+
+## 安装与开发
 
 ```bash
 nvm use
 npm install
-```
-
-前端环境变量维护在 `app/.env`，包括 API 地址和应用名称。`RENDERER_DEV_SERVER_URL` 由开发启动器按实际端口动态注入，无需手动配置。
-
-## 前端样式与 UI 组件
-
-渲染进程使用 Tailwind CSS 4，并通过官方 `@tailwindcss/vite` 插件接入 Vite。依赖由根目录 npm workspace 统一管理；单独补装前端样式依赖时使用：
-
-```bash
-npm install -D tailwindcss @tailwindcss/vite --workspace app
-```
-
-`app/src/styles.css` 是唯一全局样式入口，只保留 Tailwind 入口、`@theme` 设计令牌、基础 reset、原生表单继承和工作区弹窗状态。页面布局优先使用 Tailwind 工具类；复杂动画和业务状态直接放在所属组件的 `<style scoped>` 中，不拆分为独立 CSS 文件。不要新增页面级全局按钮、字段、徽标或业务选择器。
-
-界面字号统一使用 Tailwind 标准阶梯：`text-xs` 用于辅助说明、计数和表头，`text-sm` 用于表单、按钮、菜单及表格正文，`text-base` 用于强调正文，`text-lg` 及以上用于不同层级的标题。不要使用 `text-[Npx]` 或在 scoped CSS 中直接声明 `font-size`；响应式标题通过标准字号配合断点实现。图标统一由 Lucide 的 `size` 属性控制，不得通过文字字号控制字符图标。
-
-无业务语义的小组件统一维护在 `app/src/components/ui/`。当前包含按钮、图标按钮、文本输入框、文本域、选择字段、方形复选框、数据表、页面面板、弹窗外壳、筛选浮层、操作菜单和状态消息。业务组件直接组合这些组件，并通过明确的 `variant`、`tone`、`size` 等属性选择外观。例如：
-
-```vue
-<CapsuleButton variant="primary" size="sm">绑定账号</CapsuleButton>
-<TextInput v-model="keyword" placeholder="搜索标题" />
-<SelectField v-model="platform">...</SelectField>
-<ToneBadge tone="success" dot>在线</ToneBadge>
-<PanelShell title="作品" title-size="sm">...</PanelShell>
-```
-
-新增通用交互优先扩展 `app/src/components/ui` 中已有组件；只有业务结构和行为无法归入现有基础组件时才新建组件。UI 小组件不得直接请求接口、读取 Electron API 或依赖具体业务类型。
-
-`DataList` 统一将表格中的 SVG 图标和平台 Logo 按原尺寸的 80% 居中显示，并保留原布局占位，业务页面不再单独调整表格图标尺寸。
-
-页面入口统一平铺在 `app/src/views/`，包括登录、账号、作品、发布和记录五个视图。路由表位于 `app/src/router/index.ts`，使用 Vue Router 4 的 hash history，保证 Vite 开发服务器与 Electron `file:` 协议共享同一套路由。需要登录的工作区视图通过路由元信息统一拦截。
-
-```bash
-npm install vue-router@4 --workspace app
-```
-
-路由入口使用 `createRouter()` 和 `createWebHashHistory()`，应用壳通过 `RouterView` 渲染当前视图，侧边栏通过 `RouterLink` 导航。
-
-业务组件统一平铺在 `app/src/components/`，只有无业务语义的基础组件使用 `app/src/components/ui/` 二级目录，不再按页面或组件名称建立其他二级目录。视图和业务组件样式直接维护在对应 Vue 文件的 `<style scoped>` 中。
-
-界面图标统一使用 Lucide 官方 Vue 包，不维护自定义 SVG 图标组件，也不在 Vue 模板中手写图标路径。依赖安装和基础用法如下：
-
-```bash
-npm install lucide-vue-next --workspace app
-```
-
-```vue
-<script setup lang="ts">
-import { Search, Trash2 } from "lucide-vue-next";
-</script>
-
-<Search :size="18" aria-hidden="true" />
-<Trash2 :size="16" aria-hidden="true" />
-```
-
-账号、作品和记录页的筛选条件统一收纳在标题栏“筛选”按钮的轻量浮层中。浮层、下拉筛选框和文本框分别使用 Ant Design Vue 的 `Popover`、`Select` 和 `Input`，字段高度使用组件默认值，下拉筛选框与文本框支持一键清空。账号筛选中的下拉框未选择时分别显示“选择平台”“选择标签”和“选择状态”，记录筛选中的下拉框未选择时分别显示“选择平台”和“选择类别”。日期条件继续使用原生日期输入。浮层支持按钮切换、点击外部或按 `Esc` 关闭；按钮上的数字表示当前启用的筛选条件数量。筛选浮层允许越过短内容面板的底边显示，不受 `PanelShell` 高度裁切。
-
-## 开发与验证
-
-```bash
-# 构建 Electron，并为当前实例启动专属 Vite 开发服务器
 npm run dev
+```
 
-# 构建 Electron 后启动桌面应用，只加载已有前端构建产物
-npm start
+常用验证命令：
 
-# 类型检查、测试和完整构建
-npm run check:renderer-css
+```bash
 npm run lint
 npm run typecheck
 npm test
 npm run build
-
-# 一次执行渲染进程 CSS 边界、ESLint、vue-tsc 和前端构建
-npm run verify:renderer
-
-# Electron Forge
-npm run forge:start
-npm run forge:package
-npm run forge:make
 ```
 
-### Windows x64 打包
+`better-sqlite3` 是主进程的 SQLite 驱动；其原生模块会被 Electron Forge 自动加入生产依赖，并在 ASAR 中解包。
 
-Windows 安装包必须在 Windows x64 主机上构建。从根目录的 `.nvmrc` 选择 Node 版本，然后按 lockfile 重建包含开发与可选依赖的完整依赖树：
+## 使用流程
 
-```powershell
-nvm install 22.22.3
-nvm use 22.22.3
-Get-Process -Name "VidPost" -ErrorAction SilentlyContinue | Stop-Process -Force
-Remove-Item -Recurse -Force node_modules, app\node_modules, out, .build, app\dist -ErrorAction SilentlyContinue
-npm ci --include=dev --include=optional
-npm run typecheck
-npm test
-npm run forge:make
-```
+1. 在“账号”页选择平台并完成平台账号登录。
+2. 在“发布”页选择本地视频和封面，绑定平台账号并填写标题、简介与平台选项。
+3. 执行发布检测后确认投稿。
+4. 在“记录”页查看本地发布记录、平台审核状态和失败原因。
 
-`forge:package` 只生成 `out/VidPost-win32-x64` 下的可运行目录；`forge:make` 额外生成可分发安装包。打包前必须退出从 `out` 启动的旧应用，否则 Windows 会锁住 `app.asar` 并使清理或覆盖报 `EBUSY`。Forge 每次会覆盖旧的 package 目录，`.build` 和 `app/dist` 也会在构建前清空。
+视频和封面始终使用本地绝对路径；原始文件不会被应用删除。平台上传、审核查询和账号探活仍需要对应内容平台的网络连接，但不需要 VidPost 后端、手机号登录、Authorization token 或远端作品中心。
 
-Forge 使用运行时路径白名单，只复制根 `package.json`、`.build` 中的三个可执行入口、`app/dist`、两份浏览器身份文件，以及从根应用生产依赖计算出的 `node_modules` 传递闭包。前端 workspace 依赖已经由 Vite 写入 `app/dist`，不会重复打入 ASAR；source map、源码、脚本、测试和开发配置默认全部排除。新增运行时入口或资产时必须同步更新 `scripts/forge-packaging.ts` 白名单。
+## 项目结构
 
-Sharp 的 Windows 原生模块依赖同目录的 libvips DLL。打包前应确认 `node_modules/@img/sharp-win32-x64/lib` 同时包含 `.node` 和 `.dll` 文件；打包后应确认它们都被复制到：
+- `main.ts` / `preload.ts`：Electron 生命周期、SQLite 初始化和受限 IPC。
+- `src/db/`：SQLite 连接与迁移。
+- `src/repository/`：账号、标签和发布记录仓储。
+- `src/service/`：账号队列、发布编排和审核状态恢复。
+- `src/infra/account/`：四个平台账号登录与探活。
+- `src/infra/video/`：四个平台投稿和审核查询。
+- `app/src/views/`：账号、发布和记录工作区。
 
-```text
-out/VidPost-win32-x64/resources/app.asar.unpacked/node_modules/@img/sharp-win32-x64/lib/
-```
-
-不得使用 `--omit=optional` 或从其他操作系统拷贝的 `node_modules` 打包 Windows 产物。
-
-Electron 主进程构建为 `.build/main.js` ESM。`preload.ts` 仍在源码层使用 TypeScript 和 ESM 语法，但为了保留 sandbox，构建产物为 `.build/preload.cjs`。
-
-Forge 的 ASAR 配置会整体解包 Playwright、Sharp 和 `@img` 运行时目录。Sharp 的 Windows 原生模块及其 libvips DLL 必须共同位于 `app.asar.unpacked`，否则打包应用启动时会因系统加载器无法从 ASAR 读取依赖 DLL 而报 `ERR_DLOPEN_FAILED`。
-
-`shared/electron-api.ts` 是主进程、preload 和正式 renderer 共用的唯一 Electron IPC 契约，同时提供 DTO、平台联合和 channel 常量。preload 与 renderer 不再用 `unknown` 表示业务参数或结果；只有主进程 IPC 入口把跨进程输入视为 `unknown`，完成必要的结构校验并投影为共享 DTO。账号相关输入统一使用 `accountId`，发布输入统一使用 camelCase 字段，不兼容旧 `id`、`account_id` 和平台选项 snake_case 别名。
-
-根目录 TypeScript 工程已启用 `strict: true`，主进程、脚本和 `src/` 下的运行时代码必须通过严格类型检查，不保留目录级豁免。
-
-`npm run dev` 会选择空闲端口启动当前项目的 Vite，并通过 `RENDERER_DEV_SERVER_URL` 将准确地址交给 Electron。Electron 不再探测固定端口，因此不会连接其他项目或工作区的开发服务器。`npm start` 和打包后的应用只加载 `app/dist/index.html`。
-
-`app/src/App.vue` 是正式渲染入口，`app/src/router/index.ts` 负责加载 `app/src/views/` 下的正式页面；正式 renderer 的入口、应用壳、配置、路由、类型、样式、API、组件、组合式函数、Store 和工具模块统一放在 `app/src/` 下。`app/src/scripts/sse-register.ts` 保留用于后端联调。
-
-## 日志规范
-
-项目源码统一通过 logger 输出日志。Node、Electron 和脚本使用 `src/utils/logger.ts`；浏览器代码通过 `app/src/utils/logger.ts` 保持相同的 `logger.info(...values)` 和 `logger.error(...values)` 调用方式，但格式化后会通过 `electronAPI.logger` 交给主进程持久化。正式 renderer 启动时会写入启动标记，并统一记录 Vue 未捕获异常、页面运行时异常、未处理的 Promise 拒绝、脱敏后的 HTTP 请求失败，以及直接调用 Electron IPC 的关键业务失败。HTTP 失败日志只记录方法、不含查询参数的相对 URL、状态码、错误码和业务说明，不记录认证 Header、查询参数或请求体。业务代码禁止直接调用 `console.*`。
-
-Electron 使用 log4js 在用户主目录的 `~/.vidpost/logs` 保存两组文件：主进程及 Node 业务写入 `electron.log`，正式 renderer 写入 `renderer.log`。应用通过 `app.getPath("home")` 构造绝对路径并交给 `app.setAppLogsPath()`，不依赖 shell 展开 `~`。每组当前日志累计写入 24 小时后按数字序号轮转，当前日志不带序号，最近的历史日志为 `.1`，最旧为 `.6`，因此每组固定保留 7 个日志窗口。应用重启时会从当前文件的创建时间继续计算剩余时长；若关闭时间已超过 24 小时，则在下次启动时立即补做一次轮转，但不会为关闭期间生成空日志文件。应用退出前会等待轮转和异步日志写入完成。renderer 只能向受限 IPC 发送已经安全格式化的日志文本，不能访问文件系统或 log4js。
-
-日志使用运行机器的本地时区和 24 小时制，格式固定为：
-
-```text
-[2026-07-11 14:30:05] - [vidpost] - [INFO] - 开始发布
-[2026-07-11 14:30:06] - [vidpost] - [ERROR] - 发布失败
-```
-
-对象会压缩为单行 JSON；普通字符串及错误堆栈中的换行保持不变，并且每次 logger 调用只添加一次前缀。`Buffer`、ArrayBuffer、TypedArray 和 DataView 会显示 Base64 编码后的前 100 个字符，同时记录类型、原始字节数和截断状态。Blob、File 只记录名称、MIME 和字节数；FormData 会展开字段并按相同规则描述其中的文件。
-
-平台协议日志可能包含 HTTP Header、Cookie、Token 和请求数据；部分平台会对身份 Header 做定向脱敏，但生产日志文件仍不得交给无关人员。ESLint 对业务源码启用 `no-console`，仅两个 logger 门面及其契约测试允许访问原生 console。
-
-## 平台资源基础设施
-
-`src/infra` 按资源而不是按平台组织，只包含账号和视频两个目录：
-
-```text
-src/infra/
-├── browser-identity.ts
-├── browser-storage-state.ts
-├── account/
-│   ├── account.ts
-│   ├── account-browser-window.ts
-│   ├── account-backend-flow.ts
-│   ├── account-backend-window.ts
-│   ├── account-login-flow.ts
-│   ├── account-login-window.ts
-│   ├── baijiahao-account.ts
-│   ├── bilibili-account.ts
-│   ├── douyin-account.ts
-│   └── sohu-account.ts
-└── video/
-    ├── video.ts
-    ├── baijiahao-video.ts
-    ├── baijiahao/{media,publish,record-status}.ts
-    ├── bilibili-video.ts
-    ├── bilibili/{publish,record-status}.ts
-    ├── douyin-video.ts
-    ├── douyin/{upload,electron-runtime,record-status}.ts
-    ├── sohu-video.ts
-    └── sohu/{publish,record-status}.ts
-```
-
-`account.ts` 定义登录和探活接口，`video.ts` 通过基础接口、四个平台输入接口和 `Video<TPayload>` 定义预发布演练、发布和发布状态查询能力。业务调用方通过 `createAccount(platform)` 和 `createVideo(platform)` 获取具体实现。`browser-storage-state.ts` 是账号登录、探活和 HTTP 视频协议共同使用的 storage-state 结构与读写入口；`browser-identity.ts` 统一选择宿主系统对应的两份固定浏览器身份文件。平台登录保存草稿账号文件后必须调用同一个 HTTP `ping()` 完成最终在线校验和昵称读取；不再通过 DOM 或 Playwright 单独同步昵称。
-
-各平台实现有意保持自包含。除浏览器身份、storage-state、日志和视频契约外，Cookie 业务校验、HTTP 请求、上传重试和状态解析不跨平台复用。平台目录内允许少量重复代码，避免形成通用 HTTP、Cookie、分片或视频工具层。新增平台时必须分别提供 `Account` 和 `Video` 实现，不再使用旧的 `platformRegistry` 或 `src/infra/platforms` 目录。
-
-### 发布工作台
-
-正式渲染器侧边栏包含“发布”入口。作品页勾选已完成作品后使用“加入发布”直接写入应用级待发布队列并切换到发布页，不再打开旧账号选择或发布计划弹窗；每次加入都会创建独立条目，同一作品 ID 可以重复加入并分别配置、检测和删除。每个条目的“复制”操作会在其后创建独立副本，保留作品、标题、简介、预约时间和平台专属参数，但清空发布账号并重置检测结果。发布失败的记录提供“添加到发布”操作，点击后使用记录中保存的账号、文案、预约时间和平台专属选项把作品加入发布页，不自动切换页面，并在底部居中显示自动消失的“已添加, 前往发布页查看”轻提示。未配置作品展示“添加账号”按钮，该按钮打开独立的账号选择抽屉，可按平台或账号标签筛选并为当前作品绑定一个在线账号，此时“发布设置”置灰且不可点击；绑定后可点击账号信息重新选择账号。同平台换绑账号时保留已有发布参数，跨平台换绑时重置不适用的平台参数。“发布设置”抽屉不包含账号选择，只根据作品已经绑定的账号平台展示字段。公共字段为标题和简介；抖音增加可见范围；Bilibili 按账号加载投稿分区；搜狐按账号加载一级、二级频道；百家号、Bilibili 和抖音提供各自合法时间窗口内的定时发布。点击右下角“发布检测”后，前端先按队列顺序校验账号、标题、平台专属参数和预约时间；发现错误时只通过底部浮层提示第一条、标明对应视频标题并立即停止，不调用账号 `ping()`。参数有效后再按平台和账号 ID 对当前条目去重，分批探活并刷新账号列表；正在发布的账号不并发探活，条目标记为“已排队，执行前检测”，仍可确定发布。每个作品分别展示未检测、检测中、检测成功、已排队或带原因的检测失败。再次点击会校验平台设置和定时时间、加载作品素材并提交现有 `publish()` 链路，任务随后由应用级发布进度面板持续跟踪。发布过程中可以继续添加、配置和确认新批次；确认批次按操作顺序派发，只移除该批次快照，不会清除准备期间新追加的条目。进度面板仅保留验证码、身份验证、登录状态、发布频率和发布额度等已有运行期具体错误；未被识别的技术异常及不应进入该阶段的参数错误统一提示“请前往账号后台重新登录或手动发布一次”。检测和单次提交准备过程中禁止更换账号、修改该批次发布设置、复制或删除该批次条目，账号或发布设置后续变化时对应结果重置。退出登录时会清空尚未提交的队列；待发布队列和账号执行队列仅保证当前应用会话，不在重启后恢复。
-
-### 视频上传链路
-
-Bilibili、百家号、抖音和搜狐的 `xx-video.ts` 是稳定门面，只实现 `dryRun()`、`upload()` 和 `fetchPublishedState()` 并调用同平台语义模块。三个 HTTP 平台以 `publish.ts` 和 `record-status.ts` 为主；百家号额外使用 `media.ts` 处理 MP4 元数据、MD5 和封面；抖音由 `electron-runtime.ts` 管理窗口、IPC 与签名宿主，`upload.ts` 执行 renderer 上传协议。调用关系保持单向，不使用平台目录 barrel 文件。
-
-- 四个平台都要求标题、视频和封面，封面缺失时任务不会提交。
-- 远程视频和封面按远程发布任务 ID 隔离到临时缓存；每次投稿无论成功或失败，都会在 `finally` 删除该任务的缓存素材。本地来源文件不删除，清理失败也不会覆盖投稿结果。
-- 同账号任务按用户确认顺序严格串行，不同账号并行。任务到达账号队首后才创建远程 `running` 记录、检测账号、准备素材并投稿；账号登录、验证、频率或额度错误会暂停该账号后续任务，素材、参数和计划时间等单任务错误只失败当前任务并继续队列。
-- 发布标题按 Unicode 码点统一截断：百家号 50、Bilibili 80、抖音 30、搜狐 30；四平台简介统一截断为 100。规范化结果同时用于远程任务和平台投稿，搜狐不再使用旧的 60 字符上限报错。
-- Bilibili、百家号和抖音使用平台服务端定时能力，逐条计划按上海时区填写 `YYYY-MM-DD HH:mm`；搜狐仍仅支持立即发布。UI 在平台原始最小提前量上固定预留 10 分钟上传时间，同账号批量任务不按队列位置继续增加余量。任务到达账号队首时按平台原始时间窗口重新校验，已经失效的计划明确失败，不自动改成立即发布。
-- Bilibili 必须按账号动态查询并选择投稿分区 `humanTypeId`。
-- 搜狐必须按账号动态查询一级、二级频道。UI 自动选择首个有效组合，底层发布仍强制要求显式 `channelId` 和 `videoChannelId`，并校验父子关系。
-- 搜狐使用 Node.js + Axios 复刻生产内容管理协议，以 512 KiB、并发 3 的方式流式上传视频分片；旧的发布窗口、DOM 填表和点击发布路径已废弃。
-- 搜狐账号文件必须包含 Cookie、`vuex`、`sp-cm` 和 `dv-id`。历史残缺账号需要重新登录，不提供浏览器发布兜底。
-- 抖音必须逐任务选择 `public`、`friends` 或 `self`，默认 `public`。
-- 抖音 HTTP 上传复用当前应用的账号级 Electron partition，不启动第二个 Electron Profile。
-- 四个平台通过同一个身份 loader 根据宿主 OS 读取 `assets/browser-identity` 下对应的固定 Chrome 138 身份文件。登录窗口统一应用 UA、平台、语言、Client Hints 和时区；平台 HTTP 协议按需使用其中字段。不通过环境变量或运行参数回退或自定义身份。GPU、CPU、内存和屏幕信息仍由当前宿主 Chromium 提供。
-- 抖音最终投稿被安全网关要求身份验证时，任务会直接失败并提示前往“账号后台”进行一次人工发布；完成同一账号 partition 中的人工发布验证后再重新发布。
-- `dryRun()` 执行完整预发布流程但不进行最终投稿，成功时不返回内部准备上下文。四个平台的演练都可能上传远端临时素材；抖音演练结束后会关闭隐藏窗口、IPC 和 Session 资源。清理失败只记录日志，不向调用方抛错。
-- 最终投稿请求和整条发布流程不会自动重试。搜狐发布链路只重试 GET 网络错误、429 和 5xx，所有写请求（包括分片）失败后直接暴露；搜狐审核查询关闭 Axios 内层重试，交由主进程每 30 秒重试。其他平台只对各自可安全重复的探测请求及分片做有限重试。
-- HTTP 调试日志按原 Service 行为输出完整 Header、Cookie、Token 和响应，请勿把生产日志交给无关人员。
-- 远程任务保存平台作品 ID、公开链接和非敏感发布选项。搜狐将投稿成功响应的标量 `data` 保存为 `postId` 和 `review_state_clues.platform_work_id`；该值对应作品列表的 `record.id`，不兼容 `clientNewsId`。
-
-### 发布状态监控
-
-抖音、百家号、Bilibili 和搜狐投稿成功后由 Electron 主进程注册独立监控：首轮在 30 秒后执行，之后每 30 秒查询一次，最多等待 2 小时。定时投稿的截止时间为平台计划发布时间加 2 小时；立即投稿以投稿成功时间为基准。应用重启后会恢复带 `platform_work_id` 的 `reviewing` 和 `running` 任务；搜狐活跃任务缺少 ID 时可从投稿响应 `data` 或旧审核记录 `raw.id` 回填。退出时清理所有计时器和在途请求。
-
-四个平台的审核查询均使用账号 storage-state 中的 Cookie 直连平台 HTTP 接口，不再启动 Playwright browser/context，也不使用标题、链接或发布时间匹配。平台审核失败映射为 `non_public`；发布过程被中断、记录无法恢复和审核超时映射为 `failed`。网络错误、HTTP 错误及响应结构错误不改变任务状态，只写入 `review_state.sync_error` 并在下一轮重试。已经取得平台终态但远程任务写回失败时只重试写回，不重复请求平台。状态变化通过主进程 IPC 通知记录页刷新，记录页不建立自己的轮询计时器。
-
-记录页在状态胶囊后显示信息图标，并通过悬浮或键盘聚焦提示状态原因。提示依次读取任务状态原因、审核原因、同步错误、发布失败详情和 `error_msg`，不使用带问号的系统帮助光标。
-
-记录页不单独占用“账号 ID”和“预约发布时间”列；每条记录通过操作列的纵向三点轻菜单查看记录 ID、账号 ID、预约时间并执行删除操作。
-
-记录页在状态右侧单独显示任务创建时间，并按当前系统本地时区格式化为年月日和时分。
-
-记录页使用服务端游标分页，底部每页数量按钮支持选择 50、75、100、200 或 300 条；切换数量后回到第一页重新查询，并保留已选择的发布记录。
-
-上传实现复用 `axios-retry`、`crc-32`、`file-type`、`mp4box`、`p-limit` 和 `sharp`，搜狐迁移没有新增依赖。抖音隐藏网络窗口脚本由 `npm run build:electron` 生成到 `.build/douyin-publish-renderer.js`。
-
-## 账号浏览器环境隔离
-
-平台账号登录窗口使用账号级 Electron `persist:` partition 隔离浏览器状态。partition 映射持久化在：
-
-`~/.vidpost/partition-map.json`
-
-```json
-{ "partition_map_table": { "1001": "persist:rpa-MTAwMQ" } }
-```
-
-- 同一个账号 ID 复用同一个 partition，重启后从本地映射恢复。
-- 不同账号 ID 使用不同 partition，避免浏览器状态串号。
-- 主应用窗口使用 `persist:app-main`，不与平台账号页面共用。
-- 登录窗口关闭不会删除账号 partition。
-- 登录窗口不向平台页面注入悬浮关闭按钮，只通过原生标题栏或 `Cmd/Ctrl+W` 关闭，也不响应 `Esc`。
-- 新账号登录窗口和已有账号后台窗口都会在 frame 导航阶段静默拦截平台隐藏 iframe 发起的 `bitbrowser:` 外部协议探测，避免 Windows 弹出应用关联提示；HTTP/HTTPS 平台导航不受影响。
-- 登录窗口确认成功并保存草稿账号文件后，四个平台统一执行一次最多 20 秒的 HTTP `ping()`；离线、检测异常或平台稳定账号 ID 缺失时不创建远程账号。
-- 新增和重新登录都按 `(platform_account_id, user_id, platform)` 复用已有远程账号；昵称缺失不影响身份识别。
-- 账号管理页执行日常 `ping()` 前会检查 cookie 文件和已绑定的 partition；任一不存在时不请求平台接口，直接同步为离线，也不自动补建 partition 映射。
-- 账号管理页的“修改备注”通过账号更新接口写入 `remark_name`，平台返回的 `nickname` 仅作为账号昵称展示，不会被前端备注操作覆盖。
-
-账号管理页为抖音、Bilibili、百家号和搜狐号提供“账号后台”入口。账号列表将平台、昵称、手机号、标签和状态筛选提交给服务端，并通过 `last_id` 游标每次读取 10 条，不再批量读取后在浏览器内切片分页；账号新标签保存成功后会立即加入标签筛选选项。账号表格不展示手机号，账号 ID 列展示平台稳定账号 ID，操作列提供仅图标展示的“检测”快捷入口；“重新登录”快捷入口仅在账号离线时显示于离线状态后方，“账号后台”仍保留在更多操作菜单中。入口使用账号专属 partition 打开平台后台首页，并以模态窗口和前端遮罩阻止主界面继续操作；全局同时最多存在一个账号后台窗口。账号登录和后台窗口不强制直连，使用 Chromium 默认的代理解析。已有 storage-state 会在加载前恢复 Cookie 和 localStorage，文件失效或缺失时仍允许用户在窗口内重新登录。四个平台分别使用 `uid`、`mid`、`app_id` 和搜狐账号信息 `id` 识别稳定平台身份；登录窗口根据账号 upsert 返回的 `is_inserted` 判断首次登录或更新已有账号，不再查询账号列表。新插入账号会立即将标签初始化为空数组；复用已有账号时不提交标签字段，避免覆盖用户原有标签。绑定账号命中已有记录时，账号管理页会通知用户登录态已更新到该账号。A 切换为 B 后，A 离线并清除本地登录态，B 接收当前账号文件和 partition，账号管理页会通知用户已更新其他账号；标签、备注与发布历史保留在各自记录中。
-
-账号后台统一从平台后台首页进入，登录态失效时允许平台自行跳转登录页或跨域同步页。首次主页面需要在 30 秒内加载成功；正常鉴权跳转产生的 `ERR_ABORTED` 不视为失败，真正的主页面加载错误或启动超时会解除遮罩并提示用户。页面成功打开后不设置使用超时，只使用原生标题栏与 `Cmd/Ctrl+W` 关闭，不拦截 `Esc`，网页请求打开的新窗口统一交给系统浏览器。首次页面加载前关闭窗口不会保存不完整状态；打开后关闭时保存失败不会阻止窗口关闭，账号管理页会显示错误通知。账号后台不监听用户在平台页面中的手动发布行为，也不会补建发布记录。只要应用级发布进度中仍存在等待、准备、排队或上传投稿任务，前端就拒绝打开账号后台；平台已接受投稿后的审核阶段不属于该互斥范围。
-
-## 已移除能力
-
-历史人工验证码存储模块及其桌面轮询链路已删除，因为其依赖的 runtime store 不存在。抖音发布短信验证码仍支持通过 `VIDPOST_DOUYIN_PUBLISH_SMS_CODE` 环境变量自动填写。
-
-登录后的 `syncNickname()` 接口、登录结果昵称字段，以及四个平台基于 DOM/Playwright 的昵称提取实现均已删除。账号昵称统一来自 HTTP `ping()` 响应。
+账号与发布记录是本地数据，不会与服务器同步；删除或迁移应用前请自行备份 `~/.vidpost`。

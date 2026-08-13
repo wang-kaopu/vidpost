@@ -1,39 +1,22 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, type Component } from "vue";
+import { onBeforeUnmount, onMounted, ref, type Component } from "vue";
 import { RouterLink } from "vue-router";
-import { History, Send, UserRound, Video } from "lucide-vue-next";
+import { History, Send, UserRound } from "lucide-vue-next";
 import PopoverPanel from "./ui/PopoverPanel.vue";
-import type { MenuKey, User } from "@/types";
-
-const props = defineProps<{
-  user?: User | null;
-}>();
-
-const emit = defineEmits<{
-  logout: [];
-}>();
+import type { MenuKey } from "@/types";
 
 const menus: Array<{ key: MenuKey; label: string; icon: Component }> = [
   { key: "accounts", label: "账号", icon: UserRound },
-  { key: "works", label: "作品", icon: Video },
   { key: "publish", label: "发布", icon: Send },
   { key: "records", label: "记录", icon: History },
 ];
 
-const displayName = computed(() => props.user?.nickname || "Admin");
-const displayRole = computed(() => props.user?.role || "超级管理员");
-const avatarLetter = computed(() => {
-  const name = props.user?.nickname || "A";
-  return name.trim().slice(0, 1).toUpperCase();
-});
+const displayName = "VidPost";
+const displayRole = "本地工作区";
+const avatarLetter = "V";
 
 const menuOpen = ref(false);
 const cardRef = ref<HTMLElement | null>(null);
-
-const handleLogout = () => {
-  menuOpen.value = false;
-  emit("logout");
-};
 
 const onDocumentClick = (event: MouseEvent) => {
   if (!cardRef.value || cardRef.value.contains(event.target as Node)) {
@@ -101,9 +84,7 @@ onBeforeUnmount(() => {
         leave-to-class="translate-y-1.5 opacity-0"
       >
         <PopoverPanel v-if="menuOpen" class="absolute bottom-[calc(100%+10px)] left-2.5 p-1.5">
-          <button class="min-h-9 rounded-lg px-3 text-sm text-ink-muted transition hover:bg-surface-muted hover:text-ink" type="button" @click.stop="handleLogout">
-            退出登录
-          </button>
+          <span class="block px-3 py-2 text-sm text-ink-muted">数据保存在本机</span>
         </PopoverPanel>
       </Transition>
     </div>

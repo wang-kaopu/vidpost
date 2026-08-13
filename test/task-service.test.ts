@@ -6,14 +6,12 @@ import { normalizeScheduledAt, resolvePublishOptions } from '@/src/service/task-
 const BASE_PUBLISH_INPUT = {
   accountId: '101',
   accountName: '测试账号',
-  coverUrl: '/tmp/cover.png',
+  coverPath: '/tmp/cover.png',
   introduction: '简介',
   progressId: 'progress-1',
   scheduledAt: '0',
   title: '标题',
-  videoType: 'talking_head_video' as const,
-  videoUrl: '/tmp/video.mp4',
-  workId: 'work-1',
+  videoPath: '/tmp/video.mp4',
 }
 
 test('发布时间仅将 "0" 视为立即发布标记', () => {

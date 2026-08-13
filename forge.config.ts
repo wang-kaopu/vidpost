@@ -12,7 +12,7 @@ const configDirectory = path.dirname(fileURLToPath(import.meta.url));
 const config: ForgeConfig = {
   packagerConfig: {
     asar: {
-      unpack: '**/node_modules/{playwright,playwright-core,sharp,@img}/**',
+      unpack: '**/node_modules/{better-sqlite3,playwright,playwright-core,sharp,@img}/**',
     },
     ignore: (targetPath) => !isPackagedPathAllowed(targetPath, configDirectory),
     junk: true,

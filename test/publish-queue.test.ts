@@ -7,16 +7,18 @@ import {
   usePublishQueueStore,
 } from "@/app/src/store/publish-queue.ts";
 import type { PublishTask } from "@/app/src/api/publish.ts";
-import type { WorkItem } from "@/app/src/types.ts";
+import type { PublishAssetItem } from "@/app/src/types.ts";
 
-/** 构造供待发布队列测试使用的已完成作品。 */
-const createWork = (id: string, title: string): WorkItem => ({
+/** 构造供待发布队列测试使用的本地素材。 */
+const createWork = (id: string, title: string): PublishAssetItem => ({
   id,
   platform: "真人口播视频",
   platformShort: "播",
   title,
   duration: "00:14",
   cover: `https://example.com/${id}.jpg`,
+  coverPath: `/tmp/${id}.jpg`,
+  videoPath: `/tmp/${id}.mp4`,
   status: "已完成",
   updatedAt: "2026-07-17 10:00",
 });
@@ -31,12 +33,10 @@ const createFailedTask = (
   account_id: "account-1",
   platform,
   title: "历史发布标题",
-  work_id: "work-901",
   introduction: "历史简介",
-  cover_url: "https://example.com/cover.jpg",
-  video_url: "https://example.com/video.mp4",
+  cover_path: "/tmp/cover.jpg",
+  video_path: "/tmp/video.mp4",
   scheduled_at: "2026-07-20 18:30",
-  video_type: "talking_head_video",
   created_at: "2026-07-17T10:00:00+08:00",
   attributes: {
     account_id: "account-1",
@@ -269,12 +269,14 @@ test("发布队列从失败记录恢复全部已保存设置", () => {
   const { queueId, ...rest } = item;
   assert.ok(queueId);
   assert.deepEqual(rest, {
-    id: "work-901",
-    platform: "真人口播视频",
-    platformShort: "播",
+    id: "901",
+    platform: "抖音",
+    platformShort: "抖",
     title: "历史发布标题",
     duration: "--:--",
-    cover: "https://example.com/cover.jpg",
+    cover: "/tmp/cover.jpg",
+    coverPath: "/tmp/cover.jpg",
+    videoPath: "/tmp/video.mp4",
     status: "已完成",
     updatedAt: "2026-07-17T10:00:00+08:00",
     orientation: "portrait",

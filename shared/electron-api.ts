@@ -4,25 +4,16 @@ export const PLATFORMS = ["baijiahao", "bilibili", "douyin", "sohu"] as const;
 /** Electron 客户端当前支持的平台。 */
 export type Platform = (typeof PLATFORMS)[number];
 
-/** 作品生成业务类型。 */
-export type WorkVideoType =
-  | "talking_head_video"
-  | "ai_ad_video"
-  | "ai_sora2_video"
-  | "social_commerce_video";
-
 /** renderer 发起发布任务时必须提供的公共字段。 */
 export interface BasePublishInput {
   accountId: string;
   accountName: string;
-  coverUrl: string;
+  coverPath: string;
   introduction: string;
   progressId: string;
   scheduledAt: string;
   title: string;
-  videoType: WorkVideoType;
-  videoUrl: string;
-  workId: string;
+  videoPath: string;
 }
 
 /** 百家号发布参数。 */
@@ -113,7 +104,67 @@ export interface SohuChannel {
 
 /** 自定义协议能够请求的页面。 */
 export interface LaunchIntent {
-  page: "accounts" | "works";
+  page: "accounts" | "publish" | "records";
+}
+
+/** 主进程返回的本地账号 DTO。 */
+export interface LocalAccountDTO {
+  id: number;
+  platform: Platform;
+  platformAccountId: string;
+  nickname: string;
+  remarkName: string;
+  status: string;
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 主进程返回的本地发布记录 DTO。 */
+export interface LocalPublishRecordDTO {
+  id: number;
+  accountId: number;
+  accountName: string;
+  platform: Platform;
+  title: string;
+  introduction: string;
+  videoPath: string;
+  coverPath: string;
+  scheduledAt: string;
+  platformOptions: Record<string, unknown>;
+  status: string;
+  platformWorkId: string | null;
+  publishedLink: string | null;
+  publishResult: Record<string, unknown> | null;
+  reviewState: Record<string, unknown> | null;
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AccountListInput {
+  limit?: number;
+  offset?: number;
+  platform?: Platform;
+  status?: string;
+  nickname?: string;
+  tag?: string;
+}
+
+export interface PublishRecordListInput {
+  accountId?: number;
+  platform?: Platform;
+  status?: string;
+  title?: string;
+  remark?: string;
+  scheduledStart?: string;
+  scheduledEnd?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface LocalFileSelectionInput {
+  kind: "cover" | "video";
 }
 
 /** 发布任务持久化状态。 */
@@ -150,30 +201,50 @@ export interface ElectronLoggerAPI {
 
 /** Electron 主窗口使用的全部 invoke 与事件频道。 */
 export const IPC_CHANNELS = {
+  addAccountTag: "local-account:add-tag",
+  deleteAccount: "local-account:delete",
+  deleteAccountTag: "local-account:delete-tag",
+  deletePublishRecord: "local-publish-record:delete",
+  getAccountTags: "local-account:get-tags",
+  getAccounts: "local-account:list",
   getBilibiliHumanTypes: "video:get-bilibili-human-types",
   getLaunchIntent: "vidpost:get-launch-intent",
   getSohuChannels: "video:get-sohu-channels",
   launchIntent: "vidpost:launch-intent",
   login: "login",
+  selectLocalFile: "local-file:select",
   openAccountBackend: "account:open-backend",
   ping: "ping",
   publish: "publish",
   publishTaskProgress: "publish-task-progress",
   publishTaskStateChanged: "publish-task-state-changed",
+  getPublishRecords: "local-publish-record:list",
+  updatePublishRecordRemark: "local-publish-record:update-remark",
+  updateAccount: "local-account:update",
   rendererLog: "logger:renderer",
 } as const;
 
 /** contextBridge 向正式 renderer 暴露的 Electron 能力。 */
 export interface ElectronAPI {
+  addAccountTag(payload: { accountId: number; tag: string }): Promise<LocalAccountDTO>;
+  deleteAccount(accountId: number): Promise<void>;
+  deleteAccountTag(payload: { accountId: number; tag: string }): Promise<LocalAccountDTO>;
+  deletePublishRecord(recordId: number): Promise<void>;
+  getAccountTags(): Promise<string[]>;
+  getAccounts(payload?: AccountListInput): Promise<LocalAccountDTO[]>;
   getBilibiliHumanTypes(payload: AccountOptionsInput): Promise<BilibiliHumanType[]>;
   getLaunchIntent(): Promise<LaunchIntent | null>;
   getSohuChannels(payload: AccountOptionsInput): Promise<SohuChannel[]>;
   logger: ElectronLoggerAPI;
   login(platform: Platform): Promise<LoginAccountResult>;
+  selectLocalFile(payload: LocalFileSelectionInput): Promise<string | null>;
   onLaunchIntent(handler: (payload: LaunchIntent) => void): () => void;
   onPublishTaskProgress(handler: (payload: PublishTaskProgressEvent) => void): () => void;
   onPublishTaskStateChanged(handler: (payload: PublishTaskStateChangedEvent) => void): () => void;
   openAccountBackend(payload: OpenAccountBackendInput): Promise<OpenAccountBackendResult>;
   ping(payload: PingInput): Promise<void>;
   publish(payload: PublishInput): Promise<void>;
+  getPublishRecords(payload?: PublishRecordListInput): Promise<LocalPublishRecordDTO[]>;
+  updatePublishRecordRemark(payload: { recordId: number; remark: string }): Promise<void>;
+  updateAccount(payload: { accountId: number; remarkName?: string }): Promise<LocalAccountDTO>;
 }

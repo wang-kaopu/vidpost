@@ -1,22 +1,4 @@
-export type MenuKey = "accounts" | "works" | "publish" | "records";
-
-export interface LoginForm {
-  phone: string;
-  code: string;
-  agreed: boolean;
-}
-
-export interface LoginResponse {
-  access_token: string;
-  refresh_token: string;
-}
-
-export interface User {
-  id?: string;
-  phone?: string;
-  nickname?: string;
-  role?: string;
-}
+export type MenuKey = "accounts" | "publish" | "records";
 
 export interface AccountItem {
   id: string;
@@ -41,7 +23,8 @@ export interface PlatformItem {
 
 export type WorkStatus = "生成中" | "已完成" | "生成失败";
 
-export interface WorkItem {
+/** 发布页待处理的本地素材条目。 */
+export interface PublishAssetItem {
   id: string;
   platform: string;
   platformShort: string;
@@ -52,4 +35,6 @@ export interface WorkItem {
   updatedAt: string;
   orientation?: "portrait" | "landscape";
   isEdited?: boolean;
+  videoPath?: string;
+  coverPath?: string;
 }

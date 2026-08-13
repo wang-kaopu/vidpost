@@ -2,12 +2,28 @@ import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { app, ipcMain, BrowserWindow, session, type IpcMainInvokeEvent } from "electron";
+import { app, dialog, ipcMain, BrowserWindow, session, type IpcMainInvokeEvent, type OpenDialogOptions } from "electron";
 import * as electron from "electron";
 import squirrelStartup from "electron-squirrel-startup";
 
 import { IPC_CHANNELS, type LaunchIntent, type RendererLogEntry } from "@shared/electron-api.ts";
-import { getBilibiliHumanTypes, getSohuChannels, login, openAccountBackend, publish, ping } from "@/src/funcs.ts";
+import {
+  addAccountTag,
+  deleteAccount,
+  deleteAccountTag,
+  deletePublishRecord,
+  updatePublishRecordRemark,
+  getAccountTags,
+  getAccounts,
+  getBilibiliHumanTypes,
+  getPublishRecords,
+  getSohuChannels,
+  login,
+  openAccountBackend,
+  publish,
+  ping,
+  updateAccount,
+} from "@/src/funcs.ts";
 import {
   VIDPOST_PROTOCOL,
   extractProtocolUrlFromCommandLine,
@@ -15,7 +31,7 @@ import {
   resolveProtocolClientRegistration,
 } from "@/src/deep-link.ts";
 import { getSingletonLock } from "@/src/utils/lock.ts";
-import { setApiClientWindow } from "@/src/api/api-client.ts";
+import { closeDatabase, openDatabase } from "@/src/db/database.ts";
 import {
   configureTaskStateServiceRuntime,
   recoverTaskStateMonitors,
@@ -175,11 +191,25 @@ const createWindow = (): BrowserWindow => {
     logger.error("[renderer] failed to load renderer:", error);
   });
 
-  // 将主窗口传给 API 客户端模块以便通信，如获取token
-  setApiClientWindow(mainWindow);
-
   return mainWindow;
 };
+
+/** 打开受限的本地素材选择器，仅返回用户明确选择的绝对路径。 */
+async function selectLocalFile(event: IpcMainInvokeEvent, payload: unknown): Promise<string | null> {
+  const kind = payload && typeof payload === "object" && "kind" in payload ? Reflect.get(payload, "kind") : null;
+  if (kind !== "video" && kind !== "cover") throw new Error("本地素材类型无效");
+  const parentWindow = BrowserWindow.fromWebContents(event.sender);
+  const options: OpenDialogOptions = {
+    properties: ["openFile"],
+    filters: kind === "video"
+      ? [{ name: "视频", extensions: ["mp4", "mov", "webm", "mkv"] }]
+      : [{ name: "图片", extensions: ["jpg", "jpeg", "png", "webp"] }],
+  };
+  const result = parentWindow
+    ? await dialog.showOpenDialog(parentWindow, options)
+    : await dialog.showOpenDialog(options);
+  return result.canceled ? null : result.filePaths[0] ?? null;
+}
 
 async function startApplication(): Promise<void> {
   electronCdpPort = await findAvailableCdpPort();
@@ -200,7 +230,8 @@ async function startApplication(): Promise<void> {
   });
 
   // 应用准备就绪后注册 IPC 监听器并创建窗口
-  app.whenReady().then(() => {
+  await app.whenReady();
+  openDatabase(path.join(app.getPath("home"), ".vidpost", "vidpost.db"));
     // 注册 IPC 监听器和处理器
     registerIpcHandler(IPC_CHANNELS.login, login);
     registerIpcHandler(IPC_CHANNELS.publish, publish);
@@ -208,6 +239,16 @@ async function startApplication(): Promise<void> {
     registerIpcHandler(IPC_CHANNELS.openAccountBackend, openAccountBackend);
     registerIpcHandler(IPC_CHANNELS.getBilibiliHumanTypes, getBilibiliHumanTypes);
     registerIpcHandler(IPC_CHANNELS.getSohuChannels, getSohuChannels);
+    registerIpcHandler(IPC_CHANNELS.getAccounts, getAccounts);
+    registerIpcHandler(IPC_CHANNELS.getAccountTags, getAccountTags);
+    registerIpcHandler(IPC_CHANNELS.updateAccount, updateAccount);
+    registerIpcHandler(IPC_CHANNELS.addAccountTag, addAccountTag);
+    registerIpcHandler(IPC_CHANNELS.deleteAccountTag, deleteAccountTag);
+    registerIpcHandler(IPC_CHANNELS.deleteAccount, deleteAccount);
+    registerIpcHandler(IPC_CHANNELS.getPublishRecords, getPublishRecords);
+    registerIpcHandler(IPC_CHANNELS.deletePublishRecord, deletePublishRecord);
+    registerIpcHandler(IPC_CHANNELS.updatePublishRecordRemark, updatePublishRecordRemark);
+    registerIpcHandler(IPC_CHANNELS.selectLocalFile, selectLocalFile);
     registerIpcHandler(IPC_CHANNELS.getLaunchIntent, () => pendingLaunchIntent);
     ipcMain.on(IPC_CHANNELS.rendererLog, (event, payload: unknown) => {
       if (!mainWindow || event.sender !== mainWindow.webContents || !isRendererLogEntry(payload)) return;
@@ -227,8 +268,7 @@ async function startApplication(): Promise<void> {
     }
 
     // 创建主窗口
-    createWindow();
-  });
+  createWindow();
 }
 
 if (hasSingletonLock) {
@@ -247,6 +287,7 @@ if (hasSingletonLock) {
   app.on("before-quit", (event) => {
     willQuitApp = true;
     stopTaskStateMonitors();
+    closeDatabase();
     destroyAccountBackendWindow();
     destroyVideoWindows();
     if (loggerShutdownStarted) return;

@@ -1,9 +1,9 @@
 import type { Platform, PublishTaskStateChangedEvent } from "@shared/electron-api.ts";
-import { listPublishTasks, updatePublishTask } from "@/src/api/task-api.ts";
 import { createVideo } from "@/src/infra/video/video.ts";
 import type { PublishedStatePayload, PublishedStateResult } from "@/src/infra/video/video.ts";
 import { resolveAccountFilePath } from "@/src/service/account-service.ts";
 import { logger } from "@/src/utils/logger.ts";
+import { publishRecordRepository, type PublishRecord } from "@/src/repository/publish-record-repository.ts";
 
 const REVIEWING_STATUS = "reviewing";
 const RUNNING_STATUS = "running";
@@ -13,6 +13,58 @@ export const TASK_STATE_POLL_INTERVAL_MS = 30_000;
 export const TASK_STATE_MAX_WAIT_MS = 2 * 60 * 60 * 1_000;
 
 const MONITORED_PLATFORMS = new Set<Platform>(["douyin", "baijiahao", "bilibili", "sohu"]);
+
+function recordToTask(record: PublishRecord): PublishTaskStateInput {
+  return {
+    id: record.id,
+    accountId: record.accountId,
+    attributes: {
+      account_id: record.accountId,
+      account_name: record.accountName,
+      publish_options: record.platformOptions,
+      publish_result: record.publishResult,
+      review_state: record.reviewState,
+      review_state_clues: {
+        platform_work_id: record.platformWorkId,
+        published_at: record.reviewState?.published_at ?? record.updatedAt,
+      },
+      error_message: record.errorMessage,
+    },
+    link: record.publishedLink,
+    platform: record.platform,
+    scheduledAt: record.scheduledAt,
+    status: record.status,
+    title: record.title,
+    updatedAt: record.updatedAt,
+  };
+}
+
+/** 以旧监控内部任务形状读取本地 SQLite 发布记录。 */
+function listLocalPublishTasks(options: { status?: string; lastId?: number; limit?: number }) {
+  const records = publishRecordRepository.list({ status: options.status, limit: options.limit ?? 200, beforeId: options.lastId });
+  const tasks = records.map(recordToTask);
+  const lastId = tasks.at(-1)?.id ?? options.lastId ?? 0;
+  return { isEnd: tasks.length < (options.limit ?? 200), lastId, tasks };
+}
+
+/** 将审核监控的状态写回本地 SQLite。 */
+function updateLocalPublishTask(id: number, patch: { status?: string; link?: string | null; attributes?: Record<string, unknown> }) {
+  const attributes = patch.attributes ?? {};
+  const reviewState = normalizeRecord(attributes.review_state);
+  const reviewClues = normalizeRecord(attributes.review_state_clues);
+  const publishResult = normalizeRecord(attributes.publish_result);
+  return recordToTask(publishRecordRepository.update(id, {
+    ...(patch.status !== undefined ? { status: patch.status } : {}),
+    ...(patch.link !== undefined ? { publishedLink: patch.link } : {}),
+    ...(reviewClues && "platform_work_id" in reviewClues ? { platformWorkId: normalizeString(reviewClues.platform_work_id) } : {}),
+    ...(reviewState !== null ? { reviewState } : {}),
+    ...(publishResult !== null ? { publishResult } : {}),
+    ...(typeof attributes.error_message === "string" ? { errorMessage: attributes.error_message } : {}),
+  }));
+}
+
+const listPublishTasks = listLocalPublishTasks;
+const updatePublishTask = updateLocalPublishTask;
 
 /** 状态监控只依赖的发布任务字段。 */
 export interface PublishTaskStateInput {
@@ -89,6 +141,7 @@ function mergeTaskAttributes(task: PublishTask, patches: Record<string, unknown>
 
 /** 构建一次成功平台查询对应的审核证据。 */
 function buildReviewState(task: PublishTask, fetchResult: PublishedStateResult): Record<string, unknown> {
+  const previous = normalizeRecord(normalizeRecord(task.attributes)?.review_state);
   return {
     status: fetchResult.status,
     link: fetchResult.link ?? task.link ?? null,
@@ -97,6 +150,7 @@ function buildReviewState(task: PublishTask, fetchResult: PublishedStateResult):
     reason: fetchResult.reason ?? null,
     synced_at: new Date(runtime.now()).toISOString(),
     sync_error: null,
+    ...(previous?.remark ? { remark: previous.remark } : {}),
   };
 }
 
@@ -111,6 +165,7 @@ function buildReviewStateError(task: PublishTask, message: string): Record<strin
     reason: previous?.reason ?? null,
     synced_at: new Date(runtime.now()).toISOString(),
     sync_error: message,
+    ...(previous?.remark ? { remark: previous.remark } : {}),
   };
 }
 
@@ -205,7 +260,7 @@ function buildFetchPayload(task: PublishTask, abortSignal?: AbortSignal): Publis
     publishResult: normalizeRecord(attributes?.publish_result),
     publishedAt:
       normalizeString(normalizeRecord(attributes?.review_state_clues)?.published_at) ?? task.updatedAt ?? null,
-    remoteTaskId: task.id ?? null,
+    localRecordId: task.id ?? null,
     timeoutMs: TASK_STATE_POLL_INTERVAL_MS,
     title: task.title ?? null,
   };
@@ -269,6 +324,9 @@ async function persistTerminalState(monitor: TaskMonitor): Promise<boolean> {
     reason: terminal.reason || null,
     synced_at: new Date(runtime.now()).toISOString(),
     sync_error: null,
+    ...(normalizeRecord(normalizeRecord(monitor.task.attributes)?.review_state)?.remark
+      ? { remark: normalizeRecord(normalizeRecord(monitor.task.attributes)?.review_state)?.remark }
+      : {}),
   };
   const attributes = mergeTaskAttributes(monitor.task, {
     review_state: reviewState,

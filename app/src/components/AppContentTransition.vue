@@ -2,7 +2,7 @@
 import { computed, ref, watch, type Component } from "vue";
 import type { MenuKey } from "@/types";
 
-const MENU_ORDER: MenuKey[] = ["accounts", "works", "publish", "records"];
+const MENU_ORDER: MenuKey[] = ["accounts", "publish", "records"];
 
 const props = defineProps<{
   view: Component;

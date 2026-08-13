@@ -1,84 +1,38 @@
-import { apiClient, normalizeQueryParams, requestBlob, requestEnvelope, requestSuccess } from "./request";
-import type { ApiEnvelope, ListResponse } from "./types";
+import type { Platform } from "@shared/electron-api";
 
-// Platform
-export interface BackendPlatform {
-  name: string;
-  is_deleted?: number;
-  created_at?: string;
-  updated_at?: string;
-  attributes?: unknown;
-}
-
-export interface PlatformOption {
-  id: string;
-  key: string;
-  label: string;
-}
-
-export interface PublishTaskReviewState {
-  link?: string | null;
-  matched_by?: string | null;
-  raw?: unknown;
-  reason?: string | null;
-  status?: string | null;
-  sync_error?: string | null;
-  synced_at?: string | null;
-}
-
+export interface PlatformOptionListItem { name: string; }
+export interface PlatformOption { id: string; key: string; label: string; }
+export interface PublishTaskReviewState { link?: string | null; reason?: string | null; status?: string | null; sync_error?: string | null; raw?: unknown; }
 export interface PublishTaskAttributes {
   account_id?: string | null;
   account_name?: string | null;
-  error_msg?: string | null;
   error_message?: string | null;
-  remark?: string | null;
-  failure_detail?: {
-    detail?: string | null;
-    reason?: string | null;
-  } | null;
+  error_msg?: string | null;
+  failure_detail?: { detail?: string | null; reason?: string | null } | null;
   publish_options?: Record<string, unknown> | null;
+  publish_result?: Record<string, unknown> | null;
   review_state?: PublishTaskReviewState | null;
-  [key: string]: unknown;
+  review_state_clues?: Record<string, unknown> | null;
+  remark?: string | null;
 }
-
-// Publish Task
 export interface PublishTask {
   id: number;
   status: string;
   account_id?: string | null;
   platform?: string | null;
   title?: string | null;
-  work_id?: string | null;
   introduction?: string | null;
-  cover_url?: string | null;
-  video_url?: string | null;
+  video_path?: string | null;
+  cover_path?: string | null;
   scheduled_at?: string | null;
   link?: string | null;
   reason?: string | null;
   status_reason?: string | null;
   error_msg?: string | null;
-  video_type?: "talking_head_video" | "ai_ad_video" | "ai_sora2_video" | "social_commerce_video" | null;
-  user_id?: string;
   created_at?: string;
   updated_at?: string;
   attributes?: PublishTaskAttributes | null;
 }
-
-// Account
-export interface BackendAccount {
-  id: string | number;
-  platform_account_id?: string;
-  nickname?: string;
-  platform?: string;
-  status?: string;
-  phone_number?: string;
-  tags?: string[];
-  remark_name?: string;
-  created_at?: string;
-  updated_at?: string;
-  attributes?: unknown;
-}
-
 export interface PublishAccountItem {
   id: string;
   platformAccountId?: string;
@@ -91,206 +45,99 @@ export interface PublishAccountItem {
   tags: string[];
   remarkName: string;
 }
-
-const platformLabelMap: Record<string, string> = {
-  douyin: "抖音",
-  kuaishou: "快手",
-  xiaohongshu: "小红书",
-  tencent: "视频号",
-  jinritoutiao: "今日头条",
-  baijiahao: "百家号",
-  bilibili: "哔哩哔哩",
-  sohu: "搜狐号",
-};
-
-function getPlatformLabel(key: string | null | undefined): string {
-  const normalized = String(key || "").trim().toLowerCase();
-  return platformLabelMap[normalized] || normalized || "未知平台";
+interface LocalAccountRecord {
+  id: number | string;
+  platform: string;
+  platform_account_id?: string;
+  nickname: string;
+  status: string;
+  tags: string[];
+  remark_name?: string;
 }
 
-export function normalizePublishAccount(raw: BackendAccount): PublishAccountItem {
-  const tags = Array.isArray(raw.tags)
-    ? raw.tags.map((t) => String(t).trim()).filter(Boolean)
-    : [];
-  const platformKey = String(raw.platform || "").trim().toLowerCase();
-  const status = String(raw.status || "").trim();
+const platformLabels: Record<string, string> = { baijiahao: "百家号", bilibili: "哔哩哔哩", douyin: "抖音", sohu: "搜狐号" };
+const statusLabels: Record<string, string> = { online: "在线", offline: "离线" };
 
+/** 将主进程账号 DTO 映射为发布页模型。 */
+export function normalizePublishAccount(raw: LocalAccountRecord): PublishAccountItem {
+  const platformAccountId = raw.platform_account_id || "";
   return {
-    id: String(raw.id ?? ""),
-    platformAccountId: String(raw.platform_account_id || "").trim() || undefined,
-    nickname: String(raw.nickname || raw.id || "未命名账号"),
-    platformKey,
-    platform: getPlatformLabel(platformKey),
-    status,
-    statusLabel: status || "未知状态",
-    phoneNumber: String(raw.phone_number || "").trim() || "--",
-    tags,
-    remarkName: String(raw.remark_name || "").trim() || "--",
+    id: String(raw.id), platformAccountId, nickname: raw.nickname,
+    platformKey: raw.platform, platform: platformLabels[raw.platform] || raw.platform,
+    status: raw.status, statusLabel: statusLabels[raw.status] || raw.status,
+    phoneNumber: "--", tags: raw.tags, remarkName: raw.remark_name || "--",
   };
 }
 
-// 获取平台列表
-export async function getPublishPlatforms(options?: { lastId?: number; limit?: number }): Promise<ListResponse<BackendPlatform>> {
-  return requestEnvelope(
-    apiClient.get<ApiEnvelope<ListResponse<BackendPlatform>>>("/publish/platforms", {
-      params: normalizeQueryParams({
-        last_id: options?.lastId,
-        limit: options?.limit,
-      }),
-    }),
-    "平台列表请求失败",
-  );
+/** 返回当前支持的平台静态列表。 */
+export async function getPublishPlatforms(): Promise<{ list: PlatformOptionListItem[] }> {
+  return { list: ["baijiahao", "bilibili", "douyin", "sohu"].map((name) => ({ name })) };
 }
 
-/**
- * 按筛选条件和远端游标获取发布任务列表。
- *
- * @param options - 筛选条件、页大小和上一页返回的游标
- * @returns 当前页发布任务及下一页游标
- */
-export async function getPublishTasks(options?: {
-  lastId?: number;
-  limit?: number;
-  status?: string;
-  accountId?: string;
-  platform?: string;
-  title?: string;
-  remark?: string;
-  type?: string;
-  startDate?: string;
-  endDate?: string;
-}): Promise<ListResponse<PublishTask>> {
-  return requestEnvelope(
-    apiClient.get<ApiEnvelope<ListResponse<PublishTask>>>("/publish/tasks", {
-      params: normalizeQueryParams({
-        last_id: options?.lastId,
-        limit: options?.limit,
-        status: options?.status,
-        account_id: options?.accountId,
-        platform: options?.platform,
-        title: options?.title,
-        remark: options?.remark,
-        type: options?.type,
-        start_date: options?.startDate,
-        end_date: options?.endDate,
-      }),
-    }),
-    "发布任务列表请求失败",
-  );
+/** 查询本地账号供账号页和发布页复用。 */
+export async function getPublishAccounts(options: { lastId?: number; limit?: number; offset?: number; platform?: string; status?: string; nickname?: string; tags?: string } = {}): Promise<{ list: LocalAccountRecord[]; is_end: boolean; last_id: number }> {
+  const records = await window.electronAPI!.getAccounts({
+    limit: options.limit,
+    offset: options.offset ?? options.lastId,
+    platform: options.platform as Platform | undefined,
+    status: options.status,
+    nickname: options.nickname,
+    tag: options.tags,
+  });
+  const list = records.map((record) => ({ id: record.id, platform: record.platform, platform_account_id: record.platformAccountId, nickname: record.nickname, status: record.status, tags: record.tags, remark_name: record.remarkName }));
+  return { list, is_end: list.length < (options.limit ?? 200), last_id: (options.lastId ?? options.offset ?? 0) + list.length };
 }
 
-// 删除发布任务记录
-export async function deletePublishTask(taskId: string | number): Promise<void> {
-  await requestSuccess(
-    apiClient.delete<ApiEnvelope<unknown>>(`/publish/tasks/${taskId}`),
-    "删除发布任务请求失败",
-  );
-}
+/** 查询本地账号标签。 */
+export async function getAccountTags(): Promise<string[]> { return window.electronAPI!.getAccountTags(); }
 
-/**
- * 更新发布任务 attributes 中的备注字段。
- *
- * @param taskId - 发布任务 ID
- * @param remark - 新备注，空字符串表示清空
- */
-export async function updatePublishTaskRemark(taskId: string | number, remark: string): Promise<void> {
-  await requestSuccess(
-    apiClient.put<ApiEnvelope<unknown>>(`/publish/tasks/${taskId}`, {
-      attributes: { remark },
-    }),
-    "更新发布任务备注请求失败",
-  );
-}
-
-// 获取账号标签列表
-export async function getAccountTags(): Promise<string[]> {
-  return requestEnvelope(
-    apiClient.get<ApiEnvelope<string[]>>("/publish/accounts/tags"),
-    "账号标签请求失败",
-  );
-}
-
-// 获取账号列表
-export async function getPublishAccounts(options?: {
-  lastId?: number;
-  limit?: number;
-  platform?: string;
-  tags?: string;
-  status?: string;
-  nickname?: string;
-  phoneNumber?: string;
-}): Promise<ListResponse<BackendAccount>> {
-  return requestEnvelope(
-    apiClient.get<ApiEnvelope<ListResponse<BackendAccount>>>("/publish/accounts", {
-      params: normalizeQueryParams({
-        last_id: options?.lastId ?? 0,
-        limit: options?.limit ?? 200,
-        platform: options?.platform,
-        tags: options?.tags,
-        status: options?.status,
-        nickname: options?.nickname,
-        phone_number: options?.phoneNumber,
-      }),
-    }),
-    "账号列表请求失败",
-  );
-}
-
-// 添加账号标签
+/** 添加本地账号标签。 */
 export async function addAccountTag(accountId: string | number, tag: string): Promise<void> {
-  await requestSuccess(
-    apiClient.post<ApiEnvelope<unknown>>(`/publish/accounts/${accountId}/tags`, { tag }),
-    "添加账号标签请求失败",
-  );
+  await window.electronAPI!.addAccountTag({ accountId: Number(accountId), tag });
 }
 
-// 删除账号标签
+/** 删除本地账号标签。 */
 export async function deleteAccountTag(accountId: string | number, tag: string): Promise<void> {
-  await requestSuccess(
-    apiClient.delete<ApiEnvelope<unknown>>(`/publish/accounts/${accountId}/tags`, {
-      data: { tag },
-    }),
-    "删除账号标签请求失败",
-  );
+  await window.electronAPI!.deleteAccountTag({ accountId: Number(accountId), tag });
 }
 
-export type PublishTaskExportColumn =
-  | "platform"
-  | "nickname"
-  | "title"
-  | "remark"
-  | "status"
-  | "created_at"
-  | "scheduled_at"
-  | "link";
-
-export interface PublishTaskExportConfig {
-  documentTitle: string;
-  exportType: "html" | "pdf";
-  columns: PublishTaskExportColumn[];
+function normalizeRecord(raw: Awaited<ReturnType<NonNullable<typeof window.electronAPI>["getPublishRecords"]>>[number]): PublishTask {
+  const attributes: PublishTaskAttributes = {
+    account_id: String(raw.accountId),
+    account_name: raw.accountName,
+    publish_options: raw.platformOptions,
+    publish_result: raw.publishResult,
+    review_state: raw.reviewState as PublishTaskReviewState | null,
+    review_state_clues: { platform_work_id: raw.platformWorkId },
+    error_message: raw.errorMessage,
+  };
+  attributes.remark = String((raw.reviewState as Record<string, unknown> | null)?.remark || "").trim() || null;
+  const reason = raw.errorMessage || String((raw.reviewState as Record<string, unknown> | null)?.reason || "").trim() || null;
+  return { id: raw.id, status: raw.status, account_id: String(raw.accountId), platform: raw.platform, title: raw.title, introduction: raw.introduction, video_path: raw.videoPath, cover_path: raw.coverPath, scheduled_at: raw.scheduledAt, link: raw.publishedLink, reason, status_reason: reason, error_msg: raw.errorMessage, created_at: raw.createdAt, updated_at: raw.updatedAt, attributes };
 }
 
-/**
- * 将指定发布任务导出为文件。
- *
- * @param input - 任务 ID、文档标题、导出格式和导出列
- * @returns 导出文件
- */
-export async function exportPublishTasks(input: PublishTaskExportConfig & {
-  taskIds: (string | number)[];
-}): Promise<Blob> {
-  const response = await requestBlob(
-    {
-      method: "POST",
-      url: "/publish/tasks/export",
-      data: {
-        task_ids: input.taskIds.map(String),
-        document_title: input.documentTitle,
-        export_type: input.exportType,
-        columns: input.columns,
-      },
-    },
-    "导出发布任务请求失败",
-  );
-  return response.data;
+/** 查询本地发布记录，lastId 在本地实现中表示偏移量。 */
+export async function getPublishTasks(options: { lastId?: number; limit?: number; status?: string; accountId?: string; platform?: string; title?: string; remark?: string; startDate?: string; endDate?: string } = {}): Promise<{ list: PublishTask[]; is_end: boolean; last_id: number }> {
+  const limit = options.limit ?? 50;
+  const records = await window.electronAPI!.getPublishRecords({ limit, offset: options.lastId ?? 0, status: options.status, accountId: options.accountId ? Number(options.accountId) : undefined, platform: options.platform as Platform | undefined, title: options.title, remark: options.remark, scheduledStart: options.startDate, scheduledEnd: options.endDate });
+  return { list: records.map(normalizeRecord), is_end: records.length < limit, last_id: (options.lastId ?? 0) + records.length };
+}
+
+/** 删除本地发布记录。 */
+export async function deletePublishTask(taskId: string | number): Promise<void> { await window.electronAPI!.deletePublishRecord(Number(taskId)); }
+
+/** 更新本地发布记录备注；备注保存在审核状态 JSON 的本地元数据字段中。 */
+export async function updatePublishTaskRemark(taskId: string | number, remark: string): Promise<void> {
+  await window.electronAPI!.updatePublishRecordRemark({ recordId: Number(taskId), remark });
+}
+
+export type PublishTaskExportColumn = "platform" | "nickname" | "title" | "remark" | "status" | "created_at" | "scheduled_at" | "link";
+export interface PublishTaskExportConfig { documentTitle: string; exportType: "html" | "pdf"; columns: PublishTaskExportColumn[]; }
+
+/** 将本地记录导出为浏览器可下载的 HTML 文档。 */
+export async function exportPublishTasks(input: PublishTaskExportConfig & { taskIds: (string | number)[] }): Promise<Blob> {
+  const records = await window.electronAPI!.getPublishRecords({ limit: 300 });
+  const selected = new Set(input.taskIds.map(Number));
+  const rows = records.filter((record) => selected.has(record.id)).map((record) => `<tr><td>${record.id}</td><td>${record.platform}</td><td>${record.title}</td><td>${record.status}</td></tr>`).join("");
+  return new Blob([`<html><head><meta charset="utf-8"><title>${input.documentTitle}</title></head><body><table><tbody>${rows}</tbody></table></body></html>`], { type: "text/html" });
 }

@@ -1,9 +1,8 @@
 <script setup lang="ts">
-/** 发布工作台，集中承载从作品页加入并完成检测、提交的待发布作品。 */
+/** 发布工作台，集中承载本地素材选择、检测和提交。 */
 defineOptions({ name: "PublishView" });
 
 import { computed, onBeforeUnmount, ref } from "vue";
-import { useRouter } from "vue-router";
 import { CircleCheck, CircleX, Copy, ListTodo, LoaderCircle, Plus, ShieldCheck, Trash2, Video } from "lucide-vue-next";
 import type { BasePublishInput, PublishInput } from "@shared/electron-api";
 import {
@@ -11,7 +10,6 @@ import {
   normalizePublishAccount,
   type PublishAccountItem,
 } from "@/api/publish";
-import { fetchWorkPublishPayload } from "@/api/works";
 import {
   findFirstPublishQueueValidationError,
   usePublishQueueStore,
@@ -33,7 +31,6 @@ import ToneBadge from "@/components/ui/ToneBadge.vue";
 const publishQueue = usePublishQueueStore();
 const notificationCenter = useNotificationStore();
 const publishProgressCenter = usePublishProgressStore();
-const router = useRouter();
 const activeAccountQueueId = ref("");
 const activeSettingsQueueId = ref("");
 const submittingPublish = ref(false);
@@ -266,21 +263,18 @@ const confirmPublish = async (): Promise<void> => {
           throw new Error(`${settings.platformLabel}账号「${settings.accountName}」《${settings.title}》：${scheduleError}`);
         }
 
-        const workPayload = await fetchWorkPublishPayload(item.id);
-        if (!workPayload.coverPath) {
+        if (!item.coverPath || !item.videoPath) {
           throw new Error(`${settings.platformLabel}账号「${settings.accountName}」的任务缺少封面`);
         }
         const baseInput: BasePublishInput = {
           accountId: settings.accountId,
           accountName: settings.accountName,
-          coverUrl: workPayload.coverPath,
+          coverPath: item.coverPath,
           introduction: settings.introduction,
           progressId: crypto.randomUUID(),
           scheduledAt: settings.scheduledAt,
           title: settings.title,
-          videoType: workPayload.videoType,
-          videoUrl: workPayload.videoPath,
-          workId: workPayload.workId,
+          videoPath: item.videoPath,
         };
 
         let input: PublishInput;
@@ -393,6 +387,21 @@ const duplicateWork = (queueId: string): void => {
   publishQueue.duplicate(queueId);
 };
 
+/** 选择本地视频和封面，并创建一个新的待发布条目。 */
+const addLocalFiles = async (): Promise<void> => {
+  const selectLocalFile = window.electronAPI?.selectLocalFile;
+  if (!selectLocalFile) {
+    showPublishValidationMessage("当前环境未提供本地素材选择能力");
+    return;
+  }
+  const videoPath = await selectLocalFile({ kind: "video" });
+  if (!videoPath) return;
+  const coverPath = await selectLocalFile({ kind: "cover" });
+  if (!coverPath) return;
+  const title = videoPath.split(/[\\/]/u).pop()?.replace(/\.[^.]+$/u, "")?.trim() || "本地视频";
+  publishQueue.addLocalAsset(videoPath, coverPath, title);
+};
+
 onBeforeUnmount(() => {
   if (publishValidationMessageTimer !== null) window.clearTimeout(publishValidationMessageTimer);
   publishValidationMessageTimer = null;
@@ -423,7 +432,10 @@ onBeforeUnmount(() => {
           <div
             class="relative aspect-[9/16] h-20 w-[45px] shrink-0 overflow-hidden rounded-[13px] bg-[#dfe9f5] shadow-[inset_0_0_0_1px_rgba(30,54,80,0.08)] max-[620px]:h-16 max-[620px]:w-9"
           >
-            <img class="block size-full object-cover" :src="item.cover" :alt="item.title" />
+            <img v-if="item.cover" class="block size-full object-cover" :src="item.cover" :alt="item.title" />
+            <span v-else class="grid size-full place-items-center text-primary/70" :title="item.videoPath">
+              <Video :size="22" aria-hidden="true" />
+            </span>
           </div>
 
           <div class="flex min-w-0 flex-1 flex-col gap-[7px] overflow-hidden">
@@ -535,9 +547,9 @@ onBeforeUnmount(() => {
         <Video :size="34" :stroke-width="1.5" aria-hidden="true" />
       </span>
       <h3 class="mt-5 mb-2 text-xl text-[#213047]">还没有待发布作品</h3>
-      <p class="mt-0 mb-[22px] text-sm text-[#7a8798]">前往作品页勾选已完成的作品，然后点击“加入发布”。</p>
-      <CapsuleButton variant="primary" size="md" type="button" @click="router.push({ name: 'works' })">
-        前往作品
+      <p class="mt-0 mb-[22px] text-sm text-[#7a8798]">选择本地视频和封面后即可配置账号并发布。</p>
+      <CapsuleButton variant="primary" size="md" type="button" @click="addLocalFiles">
+        选择本地素材
       </CapsuleButton>
     </div>
   </PanelShell>

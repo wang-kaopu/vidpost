@@ -2,7 +2,7 @@ import { ref } from "vue";
 import { defineStore } from "pinia";
 import type { DouyinVisibility, Platform } from "@shared/electron-api";
 import type { PublishTask } from "../api/publish";
-import type { WorkItem } from "../types";
+import type { PublishAssetItem } from "../types";
 import { validateScheduledAt } from "../utils/publish-schedule";
 
 export type PublishSettings = {
@@ -24,7 +24,9 @@ export type PublishCheckState = {
   status: "checking" | "deferred" | "failed" | "idle" | "success";
 };
 
-export type PublishQueueItem = WorkItem & {
+export type PublishQueueItem = PublishAssetItem & {
+  coverPath: string;
+  videoPath: string;
   checkState: PublishCheckState;
   publishSettings: PublishSettings;
   /** 当前待发布条目的唯一标识；同一作品可对应多个独立条目。 */
@@ -32,7 +34,7 @@ export type PublishQueueItem = WorkItem & {
 };
 
 /**
- * 从失败发布记录恢复作品信息和已保存的平台发布参数。
+ * 从失败发布记录恢复本地素材和已保存的平台发布参数。
  *
  * @param task - 失败发布记录
  * @returns 可直接加入发布页的完整队列条目
@@ -55,16 +57,16 @@ export function createRetryPublishQueueItem(task: PublishTask): PublishQueueItem
       throw new Error(`发布记录的平台不受支持：${platformKey || "未知平台"}`);
   }
 
-  const workId = String(task.work_id || "").trim();
   const title = String(task.title || "").trim();
-  const cover = String(task.cover_url || "").trim();
+  const cover = String(task.cover_path || "").trim();
+  const videoPath = String(task.video_path || "").trim();
   const attributes = task.attributes;
   const rawAccountId = attributes?.account_id ?? task.account_id;
   const accountId = typeof rawAccountId === "string" ? rawAccountId.trim() : "";
-  const accountName = String(attributes?.account_name || "").trim();
+  const accountName = String(attributes?.account_name || accountId).trim();
   const rawOptions = attributes?.publish_options;
-  if (!workId || !title || !cover || !accountId || !accountName) {
-    throw new Error("发布记录缺少添加到发布所需的作品或账号参数");
+  if (!title || !cover || !videoPath || !accountId) {
+    throw new Error("发布记录缺少添加到发布所需的本地素材或账号参数");
   }
   if (!rawOptions || typeof rawOptions !== "object" || Array.isArray(rawOptions)) {
     throw new Error("发布记录缺少平台发布参数");
@@ -76,17 +78,6 @@ export function createRetryPublishQueueItem(task: PublishTask): PublishQueueItem
     douyin: { label: "抖音", short: "抖" },
     sohu: { label: "搜狐号", short: "搜" },
   };
-  const workTypePresentation = {
-    talking_head_video: { label: "真人口播视频", short: "播" },
-    ai_ad_video: { label: "卡通营销视频", short: "卡" },
-    ai_sora2_video: { label: "高级广告大片", short: "高" },
-    social_commerce_video: { label: "全球网红带货视频", short: "全" },
-  } as const;
-  const workPresentation = task.video_type ? workTypePresentation[task.video_type] : undefined;
-  if (!workPresentation) {
-    throw new Error("发布记录缺少受支持的视频类型");
-  }
-
   let channelId: number | null = null;
   let humanTypeId: number | null = null;
   let videoChannelId: number | null = null;
@@ -127,12 +118,14 @@ export function createRetryPublishQueueItem(task: PublishTask): PublishQueueItem
   }
 
   return {
-    id: workId,
-    platform: workPresentation.label,
-    platformShort: workPresentation.short,
+    id: String(task.id),
+    platform: platformPresentation[platform].label,
+    platformShort: platformPresentation[platform].short,
     title,
     duration: "--:--",
     cover,
+    coverPath: cover,
+    videoPath,
     status: "已完成",
     updatedAt: String(task.updated_at || task.created_at || "").trim(),
     orientation: "portrait",
@@ -204,7 +197,7 @@ export function findFirstPublishQueueValidationError(items: PublishQueueItem[]):
 }
 
 /**
- * 创建应用级待发布作品队列，使作品页和发布页共享同一份状态。
+ * 创建应用级本地素材队列，使发布页共享同一份状态。
  *
  * @returns 待发布作品及其增删操作
  */
@@ -213,9 +206,11 @@ export const usePublishQueueStore = defineStore("publishQueue", () => {
   let submissionTail: Promise<unknown> = Promise.resolve();
 
   /** 将每次选择作为独立条目追加到发布页，并返回本次新增数量。 */
-  const add = (works: WorkItem[]): number => {
+  const add = (works: PublishAssetItem[]): number => {
     const additions = works.map((item): PublishQueueItem => ({
       ...item,
+      coverPath: item.coverPath || "",
+      videoPath: item.videoPath || "",
       checkState: {
         errorMessage: "",
         status: "idle",
@@ -237,6 +232,23 @@ export const usePublishQueueStore = defineStore("publishQueue", () => {
     }));
     items.value = [...items.value, ...additions];
     return additions.length;
+  };
+
+  /** 将用户选择的本地视频和封面加入待发布队列。 */
+  const addLocalAsset = (videoPath: string, coverPath: string, title: string): void => {
+    add([{
+      id: crypto.randomUUID(),
+      platform: "本地视频",
+      platformShort: "视",
+      title,
+      duration: "--:--",
+      cover: "",
+      coverPath,
+      videoPath,
+      status: "已完成",
+      updatedAt: new Date().toISOString(),
+      orientation: "landscape",
+    }]);
   };
 
   /** 使用失败记录中保存的参数把作品重新加入发布页。 */
@@ -320,6 +332,7 @@ export const usePublishQueueStore = defineStore("publishQueue", () => {
   return {
     items,
     add,
+    addLocalAsset,
     addRetry,
     duplicate,
     updateCheckState,

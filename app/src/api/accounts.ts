@@ -1,5 +1,3 @@
-import { apiClient, normalizeQueryParams, requestEnvelope, requestSuccess } from "./request";
-import type { ApiEnvelope, ListResponse } from "./types";
 import type { AccountItem } from "@/types";
 
 export interface FetchAccountsOptions {
@@ -11,128 +9,48 @@ export interface FetchAccountsOptions {
   limit?: number;
 }
 
-interface BackendAccount {
-  id: number | string;
-  platform_account_id?: string | null;
-  nickname?: string | null;
-  platform?: string | null;
-  status?: string | null;
-  phone_number?: string | null;
-  tags?: string[] | null;
-  remark_name?: string | null;
-  created_at?: string | null;
-  updated_at?: string | null;
+function platformLabel(platform: string): string {
+  return ({ baijiahao: "百家号", bilibili: "哔哩哔哩", douyin: "抖音", sohu: "搜狐号" } as Record<string, string>)[platform] || platform;
 }
 
-const platformNameMap: Record<string, string> = {
-  douyin: "抖音",
-  kuaishou: "快手",
-  xiaohongshu: "小红书",
-  tencent: "视频号",
-  jinritoutiao: "今日头条",
-  baijiahao: "百家号",
-  bilibili: "哔哩哔哩",
-  sohu: "搜狐号",
-};
-
-const statusLabelMap: Record<string, AccountItem["status"]> = {
-  getting_qrcode: "获取二维码中",
-  waiting_scan: "等待扫码",
-  checking_login: "校验登录中",
-  login_success: "在线",
-  login_fail: "离线",
-  login_timeout: "登录超时",
-};
-
-function mapPlatformName(platform: string | null | undefined): string {
-  const normalized = String(platform || "").trim().toLowerCase();
-  return platformNameMap[normalized] || normalized || "未知平台";
+function statusLabel(status: string): AccountItem["status"] {
+  return status === "online" ? "在线" : status === "offline" ? "离线" : "未知状态";
 }
 
-function mapStatusLabel(status: string | null | undefined): AccountItem["status"] {
-  const normalized = String(status || "").trim().toLowerCase();
-  return statusLabelMap[normalized] || "未知状态";
-}
-
-function normalizeAccount(account: BackendAccount): AccountItem {
-  const tags = Array.isArray(account.tags)
-    ? account.tags.map((tag) => String(tag).trim()).filter(Boolean)
-    : [];
-  const phone = String(account.phone_number || "").trim();
-  const rawStatus = String(account.status || "").trim().toLowerCase();
+function normalizeAccount(account: Awaited<ReturnType<NonNullable<typeof window.electronAPI>["getAccounts"]>>[number]): AccountItem {
   return {
-    id: String(account.id ?? ""),
-    platformAccountId: String(account.platform_account_id || "").trim() || undefined,
-    rawStatus: rawStatus || undefined,
-    platformKey: String(account.platform || "").trim().toLowerCase() || undefined,
-    platform: mapPlatformName(account.platform),
-    nickname: String(account.nickname || account.id || "未命名账号"),
-    tags,
-    status: mapStatusLabel(rawStatus),
-    phone: phone || "--",
-    tag: tags.length ? tags.join(" / ") : "--",
+    id: String(account.id),
+    platformAccountId: account.platformAccountId,
+    rawStatus: account.status,
+    platformKey: account.platform,
+    platform: platformLabel(account.platform),
+    nickname: account.nickname || String(account.id),
+    tags: account.tags,
+    status: statusLabel(account.status),
+    phone: "--",
+    tag: account.tags.length ? account.tags.join(" / ") : "--",
   };
 }
 
-// 获取账号详情
-async function fetchAccountDetail(accountId: string): Promise<AccountItem> {
-  const data = await requestEnvelope(
-    apiClient.get<ApiEnvelope<BackendAccount>>(`/publish/accounts/${accountId}`),
-    "账号详情请求失败",
-  );
-  return normalizeAccount(data);
+/** 查询本地 SQLite 账号。 */
+export async function fetchAccounts(options: FetchAccountsOptions = {}): Promise<AccountItem[]> {
+  const records = await window.electronAPI!.getAccounts({
+    limit: options.limit,
+    offset: options.lastId ?? 0,
+    nickname: options.nickname,
+    status: options.status,
+    tag: options.tags?.[0],
+  });
+  return records.map(normalizeAccount);
 }
 
-// 获取账号列表
-export async function fetchAccounts(options?: FetchAccountsOptions): Promise<AccountItem[]> {
-  const data = await requestEnvelope(
-    apiClient.get<ApiEnvelope<ListResponse<BackendAccount>>>("/publish/accounts", {
-      params: normalizeQueryParams({
-        status: options?.status,
-        nickname: options?.nickname,
-        phone: options?.phone,
-        last_id: options?.lastId ?? 0,
-        limit: options?.limit ?? 99,
-        tags: options?.tags,
-      }),
-    }),
-    "账号列表请求失败",
-  );
-  if (!Array.isArray(data.list)) {
-    throw new Error("账号列表响应格式无效");
-  }
-  return data.list.map(normalizeAccount);
+/** 更新本地账号备注。 */
+export async function updateAccount(accountId: string, payload: { remarkName?: string }): Promise<AccountItem> {
+  const record = await window.electronAPI!.updateAccount({ accountId: Number(accountId), remarkName: payload.remarkName ?? "" });
+  return normalizeAccount(record);
 }
 
-// 更新账号信息（备注名、手机号、标签）
-export async function updateAccount(
-  accountId: string,
-  payload: { remarkName?: string; phoneNumber?: string; tags?: string[] },
-): Promise<AccountItem> {
-  await requestSuccess(
-    apiClient.put<ApiEnvelope<unknown>>(`/publish/accounts/${accountId}`, {
-      ...(payload.remarkName !== undefined ? { remark_name: payload.remarkName } : {}),
-      ...(payload.phoneNumber !== undefined ? { phone_number: payload.phoneNumber } : {}),
-      ...(payload.tags !== undefined ? { tags: payload.tags } : {}),
-    }),
-    "账号更新请求失败",
-  );
-  return fetchAccountDetail(accountId);
-}
-
-// 删除账号记录
+/** 删除本地账号。 */
 export async function removeAccount(accountId: string): Promise<void> {
-  await requestSuccess(
-    apiClient.delete<ApiEnvelope<unknown>>(`/publish/accounts/${accountId}`),
-    "账号删除请求失败",
-  );
-}
-
-// 设置账号状态（在线/离线）
-export async function setAccountStatus(accountId: string, status: "online" | "offline"): Promise<AccountItem> {
-  await requestSuccess(
-    apiClient.put<ApiEnvelope<unknown>>(`/publish/accounts/${accountId}`, { status }),
-    "账号状态更新请求失败",
-  );
-  return fetchAccountDetail(accountId);
+  await window.electronAPI!.deleteAccount(Number(accountId));
 }

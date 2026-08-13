@@ -10,7 +10,8 @@ export type ProtocolClientRegistration = {
 
 const PAGE_BY_PATHNAME: Record<string, LaunchIntent["page"]> = {
   "/accounts": "accounts",
-  "/works": "works",
+  "/publish": "publish",
+  "/records": "records",
 };
 
 function stripWrappingQuotes(value: string) {

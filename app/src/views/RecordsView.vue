@@ -22,7 +22,7 @@ import {
   exportPublishTasks,
   updatePublishTaskRemark,
 } from "@/api/publish";
-import type { PublishTask, BackendPlatform, PublishTaskExportConfig } from "@/api/publish";
+import type { PublishTask, PlatformOptionListItem, PublishTaskExportConfig } from "@/api/publish";
 import { useNotificationStore } from "@/store/notification";
 import { usePublishQueueStore } from "@/store/publish-queue";
 import { logger } from "@/utils/logger";
@@ -57,7 +57,6 @@ const pushRecordsError = (title: string, message: string): void => {
 
 const titleFilter = ref("");
 const platformFilter = ref<string>();
-const categoryFilter = ref<string>();
 const statusFilter = ref<string>();
 const remarkFilter = ref("");
 const scheduledStart = ref("");
@@ -65,7 +64,6 @@ const scheduledEnd = ref("");
 const appliedFilters = ref({
   title: "",
   platform: undefined as string | undefined,
-  type: undefined as string | undefined,
   status: undefined as string | undefined,
   remark: "",
   startDate: "",
@@ -75,7 +73,6 @@ const activeRecordFilterCount = computed(
   () => [
     titleFilter.value.trim(),
     platformFilter.value,
-    categoryFilter.value,
     statusFilter.value,
     remarkFilter.value.trim(),
     scheduledStart.value,
@@ -94,13 +91,6 @@ const platformOptions = ref<{ id: string; key: string; label: string }[]>([]);
 const platformFilterOptions = computed(() =>
   platformOptions.value.map(({ key, label }) => ({ value: key, label })),
 );
-
-const categoryOptions = [
-  { value: "talking_head_video", label: "真人口播视频" },
-  { value: "ai_ad_video", label: "卡通营销视频" },
-  { value: "ai_sora2_video", label: "高级广告大片" },
-  { value: "social_commerce_video", label: "全球网红带货视频" },
-];
 
 const platformLabelMap: Record<string, string> = {
   douyin: "抖音",
@@ -226,8 +216,8 @@ const loadPlatforms = async () => {
   try {
     const res = await getPublishPlatforms();
     platformOptions.value = (res.list || [])
-      .filter((p: BackendPlatform) => p.name)
-      .map((p: BackendPlatform) => {
+      .filter((p: PlatformOptionListItem) => p.name)
+      .map((p: PlatformOptionListItem) => {
         const key = p.name.trim().toLowerCase();
         return {
           id: String(p.name),
@@ -327,7 +317,6 @@ const handleSearch = () => {
   appliedFilters.value = {
     title: titleFilter.value.trim(),
     platform: platformFilter.value,
-    type: categoryFilter.value,
     status: statusFilter.value,
     remark: remarkFilter.value.trim(),
     startDate: scheduledStart.value,
@@ -340,7 +329,6 @@ const handleSearch = () => {
 const resetFilters = () => {
   titleFilter.value = "";
   platformFilter.value = undefined;
-  categoryFilter.value = undefined;
   statusFilter.value = undefined;
   remarkFilter.value = "";
   scheduledStart.value = "";
@@ -348,7 +336,6 @@ const resetFilters = () => {
   appliedFilters.value = {
     title: "",
     platform: undefined,
-    type: undefined,
     status: undefined,
     remark: "",
     startDate: "",
@@ -555,16 +542,6 @@ onUnmounted(() => {
                 class="w-full"
                 placeholder="选择平台"
                 :options="platformFilterOptions"
-              />
-            </label>
-            <label class="col-span-2 flex flex-col gap-2 max-[900px]:col-span-1">
-              <span class="text-xs font-semibold text-ink-muted">视频类别</span>
-              <AntSelect
-                v-model:value="categoryFilter"
-                allow-clear
-                class="w-full"
-                placeholder="选择类别"
-                :options="categoryOptions"
               />
             </label>
             <label class="col-span-3 flex flex-col gap-2 max-[900px]:col-span-1">

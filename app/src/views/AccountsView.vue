@@ -23,7 +23,7 @@ import {
   normalizePublishAccount,
 } from "@/api/publish";
 import { removeAccount, updateAccount } from "@/api/accounts";
-import type { PublishAccountItem, PlatformOption, BackendPlatform } from "@/api/publish";
+import type { PublishAccountItem, PlatformOption, PlatformOptionListItem } from "@/api/publish";
 import { useNotificationStore } from "@/store/notification";
 import { usePublishProgressStore } from "@/store/publish-progress";
 import { logger } from "@/utils/logger";
@@ -119,10 +119,10 @@ const statusToneMap: Record<string, "success" | "danger"> = {
 const loadPlatforms = async () => {
   try {
     const res = await getPublishPlatforms();
-    const list = (res.list || []) as BackendPlatform[];
+    const list = (res.list || []) as PlatformOptionListItem[];
     platformOptions.value = list
-      .filter((p: BackendPlatform) => p.name)
-      .map((p: BackendPlatform) => {
+      .filter((p: PlatformOptionListItem) => p.name)
+      .map((p: PlatformOptionListItem) => {
         const key = p.name.trim().toLowerCase();
         return { id: String(p.name), key, label: platformLabelMap[key] || key };
       });
@@ -507,10 +507,10 @@ const openPlatformDialog = async () => {
   creatingPlatformKey.value = "";
   try {
     const res = await getPublishPlatforms();
-    const list = (res.list || []) as BackendPlatform[];
+    const list = (res.list || []) as PlatformOptionListItem[];
     platforms.value = list
-      .filter((p: BackendPlatform) => p.name && accountBackendPlatforms.has(p.name.trim().toLowerCase()))
-      .map((p: BackendPlatform) => {
+      .filter((p: PlatformOptionListItem) => p.name && accountBackendPlatforms.has(p.name.trim().toLowerCase()))
+      .map((p: PlatformOptionListItem) => {
         const key = p.name.trim().toLowerCase() as Platform;
         return { id: String(p.name), key, label: platformLabelMap[key] || key };
       });
