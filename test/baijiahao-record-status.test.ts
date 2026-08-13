@@ -53,12 +53,14 @@ test("百家号仅匹配 nid，不回退匹配标题或分享链接", () => {
 test("百家号在有效列表中找不到 nid 时判定为未公开", async () => {
   const accountFile = await createBaijiahaoAccountFile();
   const previousAdapter = axios.defaults.adapter;
+  const requestedPages: number[] = [];
   axios.defaults.adapter = async (config) => {
     assert.equal(config.url, "https://baijiahao.baidu.com/pcui/article/lists");
-    assert.equal(config.params.currentPage, 1);
+    const currentPage = Number(config.params.currentPage);
+    requestedPages.push(currentPage);
     return {
       config,
-      data: { errno: 0, data: { list: [{ nid: "other", status: "publish" }] } },
+      data: { errno: 0, data: { list: currentPage === 1 ? [{ nid: "other", status: "publish" }] : [] } },
       headers: {},
       status: 200,
       statusText: "OK",
@@ -70,6 +72,7 @@ test("百家号在有效列表中找不到 nid 时判定为未公开", async () 
       attributes: { review_state_clues: { platform_work_id: "target" } },
     });
     assert.equal(result?.status, "non_public");
+    assert.deepEqual(requestedPages, [1, 2]);
   } finally {
     axios.defaults.adapter = previousAdapter;
   }

@@ -25,13 +25,16 @@ npm install -D tailwindcss @tailwindcss/vite --workspace app
 
 `app/src/styles.css` 是唯一全局样式入口，只保留 Tailwind 入口、`@theme` 设计令牌、基础 reset、原生表单继承和工作区弹窗状态。页面布局优先使用 Tailwind 工具类；复杂动画和业务状态直接放在所属组件的 `<style scoped>` 中，不拆分为独立 CSS 文件。不要新增页面级全局按钮、字段、徽标或业务选择器。
 
-无业务语义的小组件统一维护在 `app/src/components/ui/`。当前包含按钮、图标按钮、文本输入框、文本域、选择字段、圆形复选框、数据表、页面面板、弹窗外壳、筛选浮层、操作菜单和状态消息。业务组件直接组合这些组件，并通过明确的 `variant`、`tone`、`size` 等属性选择外观。例如：
+界面字号统一使用 Tailwind 标准阶梯：`text-xs` 用于辅助说明、计数和表头，`text-sm` 用于表单、按钮、菜单及表格正文，`text-base` 用于强调正文，`text-lg` 及以上用于不同层级的标题。不要使用 `text-[Npx]` 或在 scoped CSS 中直接声明 `font-size`；响应式标题通过标准字号配合断点实现。图标统一由 Lucide 的 `size` 属性控制，不得通过文字字号控制字符图标。
+
+无业务语义的小组件统一维护在 `app/src/components/ui/`。当前包含按钮、图标按钮、文本输入框、文本域、选择字段、方形复选框、数据表、页面面板、弹窗外壳、筛选浮层、操作菜单和状态消息。业务组件直接组合这些组件，并通过明确的 `variant`、`tone`、`size` 等属性选择外观。例如：
 
 ```vue
 <CapsuleButton variant="primary" size="sm">绑定账号</CapsuleButton>
 <TextInput v-model="keyword" placeholder="搜索标题" />
 <SelectField v-model="platform">...</SelectField>
 <ToneBadge tone="success" dot>在线</ToneBadge>
+<PanelShell title="作品" title-size="sm">...</PanelShell>
 ```
 
 新增通用交互优先扩展 `app/src/components/ui` 中已有组件；只有业务结构和行为无法归入现有基础组件时才新建组件。UI 小组件不得直接请求接口、读取 Electron API 或依赖具体业务类型。
