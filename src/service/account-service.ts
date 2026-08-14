@@ -84,8 +84,8 @@ export class AccountPublishQueueBlockedError extends Error {
    *
    * @param message - 用户可据此恢复账号的错误说明
    */
-  constructor(message: string) {
-    super(message);
+  constructor(message: string, cause?: unknown) {
+    super(message, cause === undefined ? undefined : { cause });
     this.name = "AccountPublishQueueBlockedError";
   }
 }
@@ -334,7 +334,7 @@ export async function checkLocalAccountBeforePublish(input: PingInput, accountRe
     model = await detectAndUpdateLocalAccount(input, accountResource);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    throw new AccountPublishQueueBlockedError(`账号执行前检测失败：${message}`);
+    throw new AccountPublishQueueBlockedError(`账号执行前检测失败：${message}`, error);
   }
   if (model.status !== "online") {
     throw new AccountPublishQueueBlockedError(`账号 ${input.accountId} 登录状态已失效，请重新登录后恢复队列`);

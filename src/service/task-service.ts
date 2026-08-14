@@ -133,12 +133,14 @@ export async function publishAndUpdateLocalRecord(
         }
         return {
           id: String(record.id),
+          localRecordId: record.id,
           platform,
           accountName: normalizedPayload.accountName,
           accountId,
           title: normalizedPayload.title,
           status: "reviewing",
           scheduledAt: normalizedPayload.scheduledAt,
+          platformWorkId: String(monitorTask.attributes.review_state_clues.platform_work_id || "") || null,
           link: link || "",
         };
       },
@@ -158,6 +160,6 @@ export async function publishAndUpdateLocalRecord(
       }
     }
     const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`${platform} publish failed: ${message}`);
+    throw new Error(`${platform} publish failed: ${message}`, { cause: error });
   }
 }

@@ -1,5 +1,6 @@
 import { Buffer } from "node:buffer";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 import log4js, { type Logger as Log4jsLogger } from "log4js";
@@ -16,6 +17,8 @@ let rolloverStartedAt = 0;
 let rolloverPromise: Promise<void> | null = null;
 let rolloverTimer: NodeJS.Timeout | null = null;
 let loggerShuttingDown = false;
+let writeConsoleOutput = true;
+let redactSensitiveOutput = false;
 
 export interface Logger {
   /** 输出 INFO 级别日志。 */
@@ -149,10 +152,28 @@ function normalizeValue(value: unknown, ancestors: WeakSet<object>): unknown {
 }
 
 /** 将一个 logger 参数格式化为可读文本。 */
+function escapeRegularExpression(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+}
+
+/** 对 CLI 日志隐藏凭据、认证头和本地绝对路径。 */
+function redactSensitiveText(value: string): string {
+  if (!redactSensitiveOutput) return value;
+  const homeDirectory = os.homedir();
+  const localRoots = [homeDirectory, process.cwd()].filter(Boolean).map(escapeRegularExpression);
+  let redacted = value
+    .replace(/("?(?:authorization|proxy-authorization|cookie|set-cookie|x-csrf-token|x-ware-csrf-token|x-upos-auth|account_file|cookie_file|auth|token|accesskeyid|secretaccesskey|sessiontoken|ms[_-]?token|xmst|sp-cm|dv-id|mp-cv)"?\s*[:=]\s*)(?:"(?:\\.|[^"\\])*"|'[^']*'|[^,}\s]+)/giu, "$1[redacted]")
+    .replace(/\bBearer\s+[^\s,}]+/giu, "Bearer [redacted]");
+  if (localRoots.length > 0) {
+    redacted = redacted.replace(new RegExp(`(?:${localRoots.join("|")})(?:[/\\\\][^\\s"']*)?`, "gu"), "[local-path]");
+  }
+  return redacted.replace(/(?:[A-Za-z]:[\\/]|\/(?:Users|home|private|tmp|var|Volumes|opt|mnt|root)\/)[^\s"'`,;]+/gu, "[local-path]");
+}
+
 function formatValue(value: unknown): string {
-  if (typeof value === "string") return value;
+  if (typeof value === "string") return redactSensitiveText(value);
   try {
-    return JSON.stringify(normalizeValue(value, new WeakSet<object>()));
+    return redactSensitiveText(JSON.stringify(normalizeValue(value, new WeakSet<object>())));
   } catch (error) {
     return `[Unserializable: ${error instanceof Error ? error.message : String(error)}]`;
   }
@@ -260,8 +281,17 @@ function scheduleRollover(): void {
 }
 
 /** 配置 Electron 主进程和 renderer 的独立 24 小时数字序号日志文件。 */
-export function configureLogger(directory: string): void {
+export interface LoggerOptions {
+  /** CLI 模式下关闭 stdout/stderr 日志，保证 stdout 只输出 JSONL 事件。 */
+  consoleOutput?: boolean;
+  /** CLI 模式下隐藏认证信息、账号文件信息和本地绝对路径。 */
+  redactSensitive?: boolean;
+}
+
+export function configureLogger(directory: string, options: LoggerOptions = {}): void {
   if (electronFileLogger || rendererFileLogger) throw new Error("Logger 已完成配置，不能重复初始化");
+  writeConsoleOutput = options.consoleOutput ?? true;
+  redactSensitiveOutput = options.redactSensitive ?? false;
   fs.mkdirSync(directory, { recursive: true });
   const now = Date.now();
   rolloverStartedAt = resolveRolloverStartedAt(directory, now);
@@ -302,7 +332,7 @@ export const logger: Logger = {
   info(...values): void {
     try {
       const message = formatLog("INFO", values);
-      console.info(message);
+      if (writeConsoleOutput) console.info(message);
       electronFileLogger?.info(message);
     } catch {
       // 日志输出失败不能中断业务流程。
@@ -311,7 +341,7 @@ export const logger: Logger = {
   error(...values): void {
     try {
       const message = formatLog("ERROR", values);
-      console.error(message);
+      if (writeConsoleOutput) console.error(message);
       electronFileLogger?.error(message);
     } catch {
       // 日志输出失败不能中断业务流程。

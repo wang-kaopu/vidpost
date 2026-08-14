@@ -2,7 +2,7 @@
   "name": "vidpost",
   "version": "1.0.2",
   "description": "VidPost",
-  "productName": "VidPost",
+  "productName": "vidpost",
   "authors": "kelvinwww",
   "type": "module",
   "main": ".build/main.js",
