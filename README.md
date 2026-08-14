@@ -31,10 +31,59 @@ npm run build
 
 ## 使用流程
 
+### GUI
+
 1. 在“账号”页选择平台并完成平台账号登录。
 2. 在“发布”页选择本地视频和封面，绑定平台账号并填写标题、简介与平台选项。
 3. 执行发布检测后确认投稿。
 4. 在“记录”页查看本地发布记录、平台审核状态和失败原因。
+
+### CLI
+
+CLI 与 GUI 共用本机的账号、Cookie 和发布记录。打包后的可执行文件以 `vidpost` 表示；开发环境可将下列命令替换为 `npm run dev -- <命令>`。
+
+1. 先通过登录命令完成对应平台的人工登录；命令会打开平台登录窗口，成功后在 stdout 输出包含本地 `accountId` 的 JSONL 结果。
+
+   ```bash
+   vidpost login douyin
+   ```
+
+   支持的平台为 `baijiahao`、`bilibili`、`douyin` 和 `sohu`。
+
+2. 创建发布请求 JSON。`videoPath` 和 `coverPath` 必须是本地非空文件的绝对路径；`accountId` 必须是上一步登录得到的本地账号 ID。
+
+   ```json
+   {
+     "version": 1,
+     "task": {
+       "platform": "douyin",
+       "accountId": 123,
+       "accountName": "账号名称",
+       "progressId": "job-uuid",
+       "title": "标题",
+       "introduction": "简介",
+       "videoPath": "/absolute/path/video.mp4",
+       "coverPath": "/absolute/path/cover.jpg",
+       "scheduledAt": "",
+       "visibility": "public"
+     }
+   }
+   ```
+
+   平台专属参数：Bilibili 需要 `humanTypeId`，搜狐需要 `channelId` 和 `videoChannelId`，抖音需要 `visibility`（`public`、`friends` 或 `self`）；百家号不需要额外参数。
+
+3. 传入请求文件执行发布。stdout 依次输出 `ready`、`progress` 和 `result` 或 `error` JSONL 事件，适合由脚本或 Agent 解析。
+
+   ```bash
+   vidpost publish /absolute/path/request.json
+   ```
+
+4. 使用 `records` 查看本地发布记录；可选的查询 JSON 可按账号、平台、状态、标题、备注、计划时间和分页条件筛选。
+
+   ```bash
+   vidpost records
+   vidpost records /absolute/path/query.json
+   ```
 
 视频和封面始终使用本地绝对路径；原始文件不会被应用删除。平台上传、审核查询和账号探活仍需要对应内容平台的网络连接，但不需要 VidPost 后端、手机号登录、Authorization token 或远端作品中心。
 
